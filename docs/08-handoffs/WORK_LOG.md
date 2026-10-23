@@ -20,3 +20,4 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - 84 CC0-Animationen (Quaternius UAL1/UAL2) → VRMA (`build_quaternius_vrma.py`), alle glTF-Validator-fehlerfrei.
 - Owner: „Tu was du für richtig hältst.“ → Mixamo-abgeleitete `assets/animation-*` und doppelte Quaternius-Ordner aus `assets/` entfernt (Git-Historie bleibt; ersetzt durch CC0-VRMA, OQ-03 erledigt).
 - Test-Avatar B (MakeHuman-CC0-Pipeline, `tools/assets/build_makehuman_vrm.py`): Macro-Morph → Rig aus Gelenk-Würfeln des gemorphten Körpers → Gewichte → `.mhclo`-Proxys (Augen, Brauen, Wimpern, Haar, Shirt, Hose) per Barycentric-Bindung → VRM 1.0. Validierung: Schema 0 Fehler, glTF-Validator 0 Fehler; Render-Vorschau `content/testcandidate/previews/`.
+- Skinning-Test: Avatar B + `UAL1/Sitting_Idle_Loop.vrma` (Frame 10) verformt sich sauber (`previews/avatar_b_sitting_idle_vrma.png`, `tools/assets/pose_test.py`).
