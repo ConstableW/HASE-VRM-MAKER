@@ -13,3 +13,5 @@ Chronologisches Register. Maßgeblich für Owner-Entscheidungen ist `../00-proje
 | D-007 | 2026-10-23 | Konzeptdokumente committet und auf Branch `claude/gifted-ptolemy-tdh9vc` gepusht | Owner-Freigabe OD-019 | Owner: „Git nach eigenem Ermessen“ | ja |
 | D-008 | 2026-10-23 | Produktlizenz Apache-2.0 (Code) + CC0/CC-BY (Eigen-Assets) | Owner delegiert → ADR-0009/OD-020 | Passt zum permissiven Stack und offenem Package-Ökosystem | ja |
 | D-009 | 2026-10-23 | Content-Beschaffung: frei nutzbar + selbst erstellt + KI-generiert, Community später (ADR-0010/OD-021) | Owner | Kostenfrei, C-03 | ja |
+| D-010 | 2026-10-23 | OQ-26 geschlossen (OD-022), OQ-27 teilweise entschieden (OD-023): Asset-Recherche beauftragt | Owner | Testcandidate vorbefüllt, Austausch bis RC | ja |
+| D-011 | 2026-10-23 | Container-Netz: nur raw.githubusercontent.com und PyPI erreichbar; github.com/Clone und Asset-Sites gesperrt | Befund | Beeinflusst Asset-Beschaffung (C-10) | – |

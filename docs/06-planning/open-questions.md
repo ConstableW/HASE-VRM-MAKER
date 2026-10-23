@@ -28,5 +28,5 @@
 | OQ-23 | Welches interne Austauschformat für das evaluierte Character-Intermediate? (z. B. glTF-basiert mit HASE-Erweiterungen) | ADR-0003 | offen |
 | OQ-24 | Umfang des „Haarstudios“: Karten-/Streifenhaar vs. Strand-basiert | Feature-Katalog | offen |
 | OQ-25 | Zielwerte für Polygon-/Textur-/Bone-Budgets je Zielprofil (VRChat, VTuber-Apps, Spiele-Engines) | Research + OQ-06 | offen |
-| OQ-26 | Rechtsstatus und Werkzeugwahl für KI-generierte Assets (Schutzfähigkeit, Nutzungsbedingungen, Weitergabe) | Recherche + ggf. juristische Prüfung | offen |
-| OQ-27 | Wer erstellt das Basismesh (Humanoid-Topologie mit Morph-Set): Owner extern (z. B. Blender), skriptgesteuert/prozedural, KI-Ausgangsform mit Nachbearbeitung? | Owner-Rückmeldung; SP-01 | offen |
+| OQ-26 | **GESCHLOSSEN 2026-10-23 (OD-022).** Rechtsstatus KI-Assets: Owner akzeptiert „State of the Art“; Rechte an von Claude generierten Assets liegen laut Owner-Position beim Projekt/Owner. Rechtliche Unsicherheit bleibt dokumentiert (ADR-0010); Provenienzpflicht bleibt | – | erledigt |
+| OQ-27 | **TEILWEISE ENTSCHIEDEN 2026-10-23 (OD-023).** Basismesh: entweder in Blender (per MCP/Skript) bauen oder passende lizenzkonforme Open-Source-Assets nutzen; für den Testcandidate vorbefüllt mit Fremdassets, Austausch bis Release Candidate erlaubt. Konkrete Auswahl offen: `../04-research/` (Asset-Recherche) | Auswahl nach Recherche; SP-01 | offen |
