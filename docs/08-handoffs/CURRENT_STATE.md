@@ -11,7 +11,7 @@ Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testca
   - `avatar_a_quaternius_female.vrm` (Quaternius-Basischarakter + Haare, VRM 1.0)
   - `avatar_b_makehuman.vrm` (MakeHuman-CC0-Pipeline: Macro-Morph, Rig aus Gelenk-Würfeln, Gewichte, 6 Proxys; 73k Tris)
   - `animations/UAL1`, `UAL2`: 84 CC0-Animationen als VRMA
-  - Prüfungen: VRM-Schema 0 Fehler, glTF-Validator 0 Fehler, Skinning-Render-Test mit VRMA (`previews/`)
+  - Prüfungen: VRM-Schema 0 Fehler, glTF-Validator 0 Fehler, Skinning-Render-Test mit VRMA (`previews/`); **Owner-Test in HASEC: Avatar A lädt, Laufen/Tanzen/Springen mit den CC0-VRMA funktionieren** (Avatar B noch ungetestet)
   - Herkunft: `content/PROVENANCE.md`, `content/PROVENANCE_downloads.csv` (158 CC0, 3 CC-BY, 14 wegen AGPL-Header gesperrt)
 - **Werkzeuge (`tools/`):** bpy-Build-Skripte (`assets/`), VRM-Schema-Validator (`validate/`). Benötigen PyPI `bpy` 5.2.3 und `bpy-vrm-format` 4.10.2 (nur lokal, GPL/MIT-or-GPL, nicht Teil des Produkts), Python 3.13.
 - **Entfernt:** Mixamo-abgeleitete `assets/animation-*` und Duplikate (Historie bleibt).
@@ -21,7 +21,7 @@ Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testca
 Container ohne GPU und ohne Windows. Netzwerk-Allowlist vom Owner erweitert (MakeHuman, Quaternius); `github.com`-Clone bleibt gesperrt, `raw.githubusercontent.com` und PyPI funktionieren (C-10).
 
 ## Offene Punkte am Testcandidate
-MToon-Materialien (aktuell Standard-PBR), Expression-Blendshapes, Polygonreduktion (Brauen/Wimpern), echter Viewer-Test (Owner), Shirt/Hose-Texturqualität, gesperrte AGPL-Assets nicht verwendet.
+MToon-Materialien (aktuell Standard-PBR), Expression-Blendshapes, Polygonreduktion (Brauen/Wimpern), echter Viewer-Test von Avatar B (Owner; A bestanden), Shirt/Hose-Texturqualität, gesperrte AGPL-Assets nicht verwendet.
 
 ## Offene Owner-Entscheidungen
 `docs/06-planning/open-questions.md`: OQ-01 (Stack, nach Konzeptarbeit), OQ-04 (Spikes SP-01…09 einzeln), OQ-06…10. Geschlossen heute: OQ-02, -03, -05, -11, -26, -27.
