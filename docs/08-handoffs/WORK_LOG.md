@@ -12,3 +12,4 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - Git-Freigabe vom Owner erhalten (OD-019); Ergebnisse committet und gepusht.
 - Push erfolgreich nach Wiederherstellung des GitHub-Zugriffs (Branch `claude/gifted-ptolemy-tdh9vc`).
 - OQ-02 auf Owner-Delegation entschieden: ADR-0009 (Apache-2.0), OD-020.
+- OQ-05 per Owner-Vorgabe entschieden: ADR-0010, OD-021; neue Fragen OQ-26/-27.

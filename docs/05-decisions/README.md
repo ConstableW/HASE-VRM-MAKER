@@ -15,4 +15,6 @@
 
 | ADR-0009 | Lizenzmodell des Produkts | OWNER DECIDED (delegiert, OD-020) |
 
+| ADR-0010 | Beschaffung der Basis-Content-Assets | OWNER DECIDED (Entscheidung), Ausgestaltung PROPOSED |
+
 Reservierung ist keine Entscheidung. Nicht vom Owner freigegebene ADRs bleiben PROPOSED.

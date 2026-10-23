@@ -25,3 +25,4 @@ Nur was hier steht, gilt als OWNER DECIDED. Offene Punkte stehen in `../06-plann
 | OD-018 | Endgültige Architekturfreigabe ausschließlich durch den Product Owner | 12 | REQ-GOV-003 |
 | OD-019 | Git-Operationen (Commit, Push auf die Entwicklungsbranch) nach Ermessen des Agenten freigegeben (Owner-Nachricht 2026-10-23: „Git nach eigenem Ermessen“). Gilt nicht für Releases, Veröffentlichungen, Pull Requests oder kostenpflichtige Ressourcen | Sitzung 2026-10-23 | REQ-GOV-001 |
 | OD-020 | Lizenzmodell: Entscheidung an Claude delegiert („best guess“), umgesetzt in ADR-0009 (Apache-2.0 Code, CC0/CC-BY Eigen-Assets, Autor-Wahl für Packages). Durch Owner jederzeit revidierbar | Sitzung 2026-10-23 | REQ-LEG-001, ADR-0009 |
+| OD-021 | Basis-Content: frei nutzbare, selbst erstellte und KI-generierte Assets; Community später; keine kostenpflichtige Beschaffung. Ausgestaltung siehe ADR-0010 | Sitzung 2026-10-23 | REQ-PKG-011, REQ-LEG-002, ADR-0010 |

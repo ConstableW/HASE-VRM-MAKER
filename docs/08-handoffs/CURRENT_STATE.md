@@ -23,7 +23,7 @@ Discovery & Architecture (Konzeptphase). **Kein Produktcode.** Owner-Abnahme nic
 Keine laufenden Hintergrundaufgaben.
 
 ## Offene Entscheidungen
-Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-05 (Basis-Content, kostenpflichtig), OQ-01 (Stack, nach weiterer Konzeptarbeit), OQ-04 (Spikes).
+Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-27 (Basismesh-Erstellung), OQ-01 (Stack, nach weiterer Konzeptarbeit), OQ-04 (Spikes).
 
 ## Wichtigste Erkenntnisse aus der Recherche (RESEARCHED/PROPOSED, siehe Berichte)
 1. VRM 1.0 verlangt 15 Humanoid-Pflicht-Bones und genau ein Humanoid-Mapping; Demi-Formen sind über Extra-Nodes/Spring-Chains konform, echte Nicht-Humanoide nicht → Export-Profile (P5).

@@ -12,3 +12,4 @@ Chronologisches Register. Maßgeblich für Owner-Entscheidungen ist `../00-proje
 | D-006 | 2026-10-23 | Rechercheberichte unverändert übernommen, Empfehlungen als PROPOSED geführt | Routine | Evidenz bleibt nachvollziehbar | ja |
 | D-007 | 2026-10-23 | Konzeptdokumente committet und auf Branch `claude/gifted-ptolemy-tdh9vc` gepusht | Owner-Freigabe OD-019 | Owner: „Git nach eigenem Ermessen“ | ja |
 | D-008 | 2026-10-23 | Produktlizenz Apache-2.0 (Code) + CC0/CC-BY (Eigen-Assets) | Owner delegiert → ADR-0009/OD-020 | Passt zum permissiven Stack und offenem Package-Ökosystem | ja |
+| D-009 | 2026-10-23 | Content-Beschaffung: frei nutzbar + selbst erstellt + KI-generiert, Community später (ADR-0010/OD-021) | Owner | Kostenfrei, C-03 | ja |
