@@ -13,4 +13,6 @@
 | ADR-0007 | Asset-Pipeline und Provenienz | reserviert |
 | ADR-0008 | Blender-Integration | reserviert |
 
+| ADR-0009 | Lizenzmodell des Produkts | OWNER DECIDED (delegiert, OD-020) |
+
 Reservierung ist keine Entscheidung. Nicht vom Owner freigegebene ADRs bleiben PROPOSED.

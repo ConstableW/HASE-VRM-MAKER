@@ -4,7 +4,7 @@
 
 | # | Aktion | Ziel | Voraussetzung | Erwartetes Ergebnis | Akzeptanzkriterien | Status | Agent |
 |---|---|---|---|---|---|---|---|
-| 1 | Owner-Review der Erstergebnisse und Entscheidung zu OQ-11 (Commit/Push), OQ-02 (Lizenz) | Ergebnisse sichern, Lizenzbewertung entsperren | – | Freigabe/Entscheidung | Entscheidung in `owner-decisions.md` bzw. `DECISION_LOG.md` | wartet auf Owner | – |
+| 1 | Owner-Review der Erstergebnisse inkl. ADR-0009 (Lizenz, delegiert entschieden) | Ergebnisse sichern, Lizenzbewertung entsperren | – | Freigabe/Entscheidung | Entscheidung in `owner-decisions.md` bzw. `DECISION_LOG.md` | wartet auf Owner | – |
 | 2 | Species-/Package-System ausarbeiten (`species-system.md`, `package-system.md`) inkl. Kriterien „Topologie-Familie vs. Archetype“, Kompatibilitäts- und Versionsregeln | Kern von REQ-ARCH/PKG | Recherche `references.md` B, `feasibility.md` §4 | Zwei Architekturdokumente + ADR-0004/-0005 (PROPOSED) | Jede REQ-ARCH-*/PKG-* referenziert; Beispiele für Mensch, Elf, Katzen-Demi, Hunde-Demi; Konfliktfälle beschrieben | offen | – |
 | 3 | Spezifikationen: Projektformat, Package-Manifest, Species-/Asset-Schema, Kompatibilitätsregeln + Beispielpakete in `examples/species/` | REQ-PKG-005/-008 | Aktion 2 | `03-specifications/*`, Beispiel-Manifeste | Beispiele validieren gegen die Schemas (Prüfung auf Papierebene bzw. JSON-Schema-Dateien) | offen | – |
 | 4 | Geometrie/Morphing, Rigging/Animation, Fitting-Konzept | R-01/-03/-05/-06 | Aktion 2 | `geometry-morphing.md`, `rigging-animation.md`, ADR-0004/-0006 | Delta-Layer-Modell, Invalidierungsregeln, Fitting-Pipeline und Qualitätsmetriken definiert | offen | – |

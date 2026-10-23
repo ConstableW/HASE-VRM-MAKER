@@ -23,7 +23,7 @@ Discovery & Architecture (Konzeptphase). **Kein Produktcode.** Owner-Abnahme nic
 Keine laufenden Hintergrundaufgaben.
 
 ## Offene Entscheidungen
-Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-11 (Commit/Push), OQ-02 (Produktlizenz), OQ-05 (Basis-Content, kostenpflichtig), OQ-01 (Stack, nach weiterer Konzeptarbeit), OQ-04 (Spikes).
+Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-05 (Basis-Content, kostenpflichtig), OQ-01 (Stack, nach weiterer Konzeptarbeit), OQ-04 (Spikes).
 
 ## Wichtigste Erkenntnisse aus der Recherche (RESEARCHED/PROPOSED, siehe Berichte)
 1. VRM 1.0 verlangt 15 Humanoid-Pflicht-Bones und genau ein Humanoid-Mapping; Demi-Formen sind über Extra-Nodes/Spring-Chains konform, echte Nicht-Humanoide nicht → Export-Profile (P5).
@@ -34,7 +34,7 @@ Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-11 (Commit/Push), O
 6. Realistische Verfahren: Delta-Morphs, RBF-Landmarks, Basismesh-gebundene Kleidung, nearest-surface Weight-Transfer, Pin-and-Drag per regularisiertem Least-Squares.
 
 ## Bekannte Risiken und Blocker
-`docs/06-planning/risks.md`. Top: R-03 Kleidungsfitting, R-01 speziesübergreifende Geometrie, R-05 Nichtdestruktivität vs. Expert-Edit, R-13 Content-Beschaffung. Blocker: OQ-02 blockiert die finale Lizenzbewertung.
+`docs/06-planning/risks.md`. Top: R-03 Kleidungsfitting, R-01 speziesübergreifende Geometrie, R-05 Nichtdestruktivität vs. Expert-Edit, R-13 Content-Beschaffung. OQ-02 (Produktlizenz) ist mit ADR-0009 entschieden; Lizenzbewertung der Abhängigkeiten ist entsperrt.
 
 ## Nicht erledigt von der Konzeptphase (Abschluss siehe Mandat 12)
 Feature-Katalog, User Journeys, UX-Konzept/Screens, Teststrategie, Spezifikationen (Formate/Schemas), Beispielpakete, Species-/Package-System-Detail, Geometrie/Rigging/Rendering/Asset-/Export-Detail, ADR-0002…0008. Plan: `docs/06-planning/roadmap.md` (K1 teilweise, K2–K8 offen).
