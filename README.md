@@ -22,6 +22,5 @@ Eigenständiges Desktop-Produkt zur Erstellung, Bearbeitung, Animation, Verwaltu
 | `examples/species/` | Beispielpakete (folgen in K3) |
 | `content/` | Testcandidate-Content (MPFB2-CC0-Daten), Provenienzregister `PROVENANCE.md` |
 | `tools/assets/` | Entwicklungsskripte zum Aufbereiten der Assets (bpy, nicht Teil des Produkts) |
-| `assets/` | Vorhandene Animationen (BVH/VRMA), **Herkunft/Lizenz ungeklärt**, nur interne Testdaten (OQ-03) |
 
-Lizenz des Repositories: siehe `LICENSE` (Apache-2.0; Lizenzmodell des Produkts ist offen, OQ-02).
+Lizenz: Apache-2.0 für Code (siehe `LICENSE`, ADR-0009); Content-Herkunft: `content/PROVENANCE.md`.

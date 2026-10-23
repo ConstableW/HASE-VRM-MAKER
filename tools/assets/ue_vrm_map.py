@@ -24,6 +24,7 @@ def apply_mapping(arm):
     hb = ext.vrm1.humanoid.human_bones
     missing = []
     for vrm_name, bone in MAP.items():
+        bone = next((b.name for b in arm.data.bones if b.name.lower() == bone.lower()), bone)
         if bone not in arm.data.bones:
             missing.append(bone)
             continue

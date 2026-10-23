@@ -18,3 +18,5 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - OD-019/-024: Arbeit ab jetzt direkt auf `main`. Owner-Upload der MakeHuman-/Quaternius-Packs ausgewertet (`content/PROVENANCE_downloads.csv`: 158 CC0, 3 CC-BY, 14 wegen AGPL-Header gesperrt).
 - Test-Avatar A: Quaternius Base Character + Haare → VRM 1.0 (`tools/assets/build_quaternius_vrm.py`; 52 Humanoid-Bones, Schema-Validierung 0 Fehler via `tools/validate/validate_vrm.py`, glTF-Validator 0 Fehler).
 - 84 CC0-Animationen (Quaternius UAL1/UAL2) → VRMA (`build_quaternius_vrma.py`), alle glTF-Validator-fehlerfrei.
+- Owner: „Tu was du für richtig hältst.“ → Mixamo-abgeleitete `assets/animation-*` und doppelte Quaternius-Ordner aus `assets/` entfernt (Git-Historie bleibt; ersetzt durch CC0-VRMA, OQ-03 erledigt).
+- Test-Avatar B (MakeHuman-CC0-Pipeline, `tools/assets/build_makehuman_vrm.py`): Macro-Morph → Rig aus Gelenk-Würfeln des gemorphten Körpers → Gewichte → `.mhclo`-Proxys (Augen, Brauen, Wimpern, Haar, Shirt, Hose) per Barycentric-Bindung → VRM 1.0. Validierung: Schema 0 Fehler, glTF-Validator 0 Fehler; Render-Vorschau `content/testcandidate/previews/`.
