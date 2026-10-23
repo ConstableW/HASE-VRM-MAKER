@@ -27,14 +27,31 @@ out = cand / "avatar_b_makehuman.vrm"
 
 MACRO = [("macrodetails/caucasian-female-young", 1.0)]
 DETAIL = []  # (gruppe/name, gewicht) – hier später Gesichts-/Körperanpassungen
-PROXIES = [  # (Ordner, mhclo-Name, Slot)
-    ("eyes/high-poly", "high-poly", "Eyes"),
-    ("eyebrows/mindfront_eyebrows_01", "mindfront_eyebrows_01", "Eyebrows"),
-    ("eyelashes/mindfront_eyelashes_01", "mindfront_eyelashes_01", "Eyelashes"),
-    ("hair/bob01", "bob01", "Hair"),
-    ("clothes/toigo_basic_tucked_t-shirt", "toigo_basic_tucked_t-shirt", "Shirt"),
-    ("clothes/toigo_wool_pants", "toigo_wool_pants", "Pants"),
+PROXIES = [  # (Ordner, mhclo-Name, Slot, Tönung RGB, morpht_mit_Gesicht)
+    ("eyes/high-poly", "high-poly", "Eyes", (1, 1, 1), False),
+    ("eyebrows/mindfront_eyebrows_01", "mindfront_eyebrows_01", "Eyebrows", (0.45, 0.38, 0.35), True),
+    ("eyelashes/mindfront_eyelashes_01", "mindfront_eyelashes_01", "Eyelashes", (0.35, 0.3, 0.3), True),
+    ("hair/short02", "short02", "Hair", (0.5, 0.3, 0.18), False),
+    ("clothes/toigo_basic_tucked_t-shirt", "toigo_basic_tucked_t-shirt", "Shirt", (0.95, 0.6, 0.68), False),
+    ("clothes/toigo_wool_pants", "toigo_wool_pants", "Pants", (0.3, 0.4, 0.65), False),
 ]
+# Gesichts-Morph-Zustände (MakeHuman-Targets, additiv zum Ruhezustand)
+STATES = {
+    "BlinkL": [("eyes/l-eye-height1-decr", 2.0), ("eyes/l-eye-height2-decr", 2.0), ("eyes/l-eye-height3-decr", 2.0)],
+    "BlinkR": [("eyes/r-eye-height1-decr", 2.0), ("eyes/r-eye-height2-decr", 2.0), ("eyes/r-eye-height3-decr", 2.0)],
+    "JawOpen": [("chin/chin-jaw-drop-incr", 2.0), ("mouth/mouth-lowerlip-middle-down", 2.0), ("mouth/mouth-upperlip-middle-up", 1.0)],
+    "MouthWide": [("mouth/mouth-scale-horiz-incr", 1.0)],
+    "MouthNarrow": [("mouth/mouth-scale-horiz-decr", 1.0)],
+    "SmileUp": [("mouth/mouth-angles-up", 1.0)],
+    "FrownDown": [("mouth/mouth-angles-down", 1.0)],
+}
+# VRM-1.0-Expression -> [(Zustand, Gewicht)]
+EXPRESSIONS = {
+    "blink": [("BlinkL", 1.0), ("BlinkR", 1.0)], "blink_left": [("BlinkL", 1.0)], "blink_right": [("BlinkR", 1.0)],
+    "aa": [("JawOpen", 1.0)], "oh": [("JawOpen", 0.6), ("MouthNarrow", 0.8)], "ou": [("MouthNarrow", 1.0), ("JawOpen", 0.2)],
+    "ee": [("MouthWide", 0.8), ("JawOpen", 0.2)], "ih": [("MouthWide", 0.5), ("JawOpen", 0.3)],
+    "happy": [("SmileUp", 1.0)], "relaxed": [("SmileUp", 0.3)], "sad": [("FrownDown", 1.0)], "surprised": [("JawOpen", 0.5)],
+}
 SKIN = dl / "skins/young_caucasian_female/young_lightskinned_female_diffuse.png"
 EYE_TEX = dl / "eyes/materials/brown_eye.png"
 
@@ -98,27 +115,32 @@ def make_object(name, verts, faces, uvs=None):
             for _, t in f:
                 layer.data[i].uv = uvs[t] if t >= 0 else (0, 0)
                 i += 1
+    me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
     me.update()
     ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
     return ob
 
 
-def material(name, tex=None, alpha=False, color=(0.8, 0.8, 0.8, 1.0)):
+def material(name, tex=None, alpha=False, tint=(1, 1, 1)):
+    """MToon-1.0-Material (VRM-Add-on). Tönung = base_color_factor, Schattenfarbe = abgedunkelte Tönung."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
-    bsdf = m.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs["Base Color"].default_value = color
-    bsdf.inputs["Roughness"].default_value = 0.8
+    mt = m.vrm_addon_extension.mtoon1
+    mt.enabled = True
+    mt.pbr_metallic_roughness.base_color_factor = (*tint, 1.0)
+    x = mt.extensions.vrmc_materials_mtoon
+    x.shade_color_factor = tuple(c * 0.72 for c in tint)
+    x.shading_toony_factor = 0.9
+    x.shading_shift_factor = -0.1
     if tex and Path(tex).exists():
         img = bpy.data.images.load(str(tex))
-        tn = m.node_tree.nodes.new("ShaderNodeTexImage")
-        tn.image = img
-        m.node_tree.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
-        if alpha:
-            m.node_tree.links.new(tn.outputs["Alpha"], bsdf.inputs["Alpha"])
+        mt.pbr_metallic_roughness.base_color_texture.index.source = img
+        x.shade_multiply_texture.index.source = img
     if alpha:
-        m.blend_method = "HASHED" if hasattr(m, "blend_method") else None
+        mt.alpha_mode = "MASK"
+        mt.alpha_cutoff = 0.5
+        mt.double_sided = True
     return m
 
 
@@ -133,6 +155,25 @@ for key, w in MACRO + DETAIL:
             i, x, y, z = line.split()[:4]
             if int(i) < nv:
                 base_v[int(i)] += w * np.array([float(x), float(y), float(z)])
+
+def load_delta(key):
+    d = np.zeros((nv, 3))
+    with gzip.open(mh / "targets" / f"{key}.target.gz", "rt") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            i, x, y, z = line.split()[:4]
+            if int(i) < nv:
+                d[int(i)] = (float(x), float(y), float(z))
+    return d
+
+
+state_v = {}
+for st, parts in STATES.items():
+    v = base_v.copy()
+    for key, w in parts:
+        v += w * load_delta(key)
+    state_v[st] = v
 
 groups = {}
 for f, g in zip(base_f, base_g):
@@ -189,7 +230,7 @@ for bone, lst in weights.items():
         vert_w[vi][bone] = w
 
 body_ob = make_object("Body", to_blender(base_v), base_f, base_vt)
-body_ob.data.materials.append(material("Skin", SKIN))
+body_ob.data.materials.append(material("Skin", SKIN, tint=(1.0, 0.97, 0.95)))
 
 
 def add_weights(ob, per_vertex_weights):
@@ -216,21 +257,43 @@ bm.verts.ensure_lookup_table()
 bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in body_set], context="VERTS")
 bm.to_mesh(body_ob.data)
 bm.free()
+body_idx_sorted = np.array(sorted(body_set))
+shape_owners = {st: [] for st in STATES}
+
+
+def add_state_keys(ob, positions_for):
+    """Legt Basis + je Zustand einen Shape Key an. positions_for(state_v | None) -> Blender-Koordinaten (n,3)."""
+    ob.shape_key_add(name="Basis", from_mesh=False) if False else ob.shape_key_add(name="Basis")
+    for st in STATES:
+        key = ob.shape_key_add(name=st)
+        pos = positions_for(state_v[st])
+        for i, c in enumerate(pos):
+            key.data[i].co = c
+        shape_owners[st].append(ob)
+
+
+add_state_keys(body_ob, lambda bv: to_blender(bv[body_idx_sorted]))
 
 # ---------- 4. Proxys ----------
 body_idx = np.array(sorted(body_set))
-for folder, stem, slot in PROXIES:
+for folder, stem, slot, tint, morphs in PROXIES:
     d = parse_mhclo(dl / folder / f"{stem}.mhclo")
     pv, pvt, pf, _ = parse_obj(dl / folder / d["obj_file"])
     sc = {}
     for ax, i in (("x", 0), ("y", 1), ("z", 2)):
         v1, v2, den = d["scale"][ax]
         sc[i] = abs(base_v[v1][i] - base_v[v2][i]) / den
-    fit = np.zeros((len(d["verts"]), 3))
+    rows = d["verts"]
+    ia = np.array([int(r[0]) for r in rows]); ib = np.array([int(r[1]) for r in rows]); ic = np.array([int(r[2]) for r in rows])
+    ww = np.array([r[3:6] for r in rows]); oo = np.array([r[6:9] for r in rows]) * np.array([sc[0], sc[1], sc[2]])
+
+    def fit_for(bv):
+        return ww[:, 0:1] * bv[ia] + ww[:, 1:2] * bv[ib] + ww[:, 2:3] * bv[ic] + oo
+
+    fit = fit_for(base_v)
     pw = []
-    for k, row in enumerate(d["verts"]):
+    for k, row in enumerate(rows):
         a, b, c, w0, w1, w2, o0, o1, o2 = row
-        fit[k] = w0 * base_v[a] + w1 * base_v[b] + w2 * base_v[c] + np.array([o0 * sc[0], o1 * sc[1], o2 * sc[2]])
         acc = {}
         for vi, w in ((a, w0), (b, w1), (c, w2)):
             for bone, bw in vert_w[vi].items():
@@ -247,9 +310,11 @@ for folder, stem, slot in PROXIES:
         tex = EYE_TEX
     elif "diffuseTexture" in mat_info:
         tex = (dl / folder / d["material"]).parent / mat_info["diffuseTexture"]
-    alpha = mat_info.get("transparent", "False").lower() == "true"
-    ob.data.materials.append(material(slot, tex, alpha=alpha, color=(0.9, 0.9, 0.9, 1.0) if tex else (0.8, 0.8, 0.8, 1.0)))
+    alpha = mat_info.get("transparent", "False").lower() == "true" 
+    ob.data.materials.append(material(slot, tex, alpha=alpha, tint=tint))
     add_weights(ob, pw)
+    if morphs:
+        add_state_keys(ob, lambda bv, fit_for=fit_for: to_blender(fit_for(bv)))
     print(slot, "Vertices", len(pv))
 
 # ---------- 5. VRM ----------
@@ -266,6 +331,16 @@ m.credit_notation = "unnecessary"
 m.modification = "allowModificationRedistribution"
 m.allow_redistribution = True
 m.copyright_information = "Basismesh, Targets, Rig, Haare, Augen, Kleidung: MakeHuman/MPFB2-Community-Assets, CC0 1.0"
+
+presets = ext.vrm1.expressions.preset
+for expr, parts in EXPRESSIONS.items():
+    e = getattr(presets, expr)
+    for st, w in parts:
+        for ob in shape_owners[st]:
+            bind = e.morph_target_binds.add()
+            bind.node.mesh_object_name = ob.name
+            bind.index = st
+            bind.weight = w
 
 bpy.ops.object.select_all(action="DESELECT")
 arm.select_set(True)
