@@ -1,43 +1,36 @@
 # CURRENT_STATE
 
-*Zuletzt aktualisiert: 2026-10-23 (Arbeitslauf 1)*
+*Zuletzt aktualisiert: 2026-10-23 (Arbeitslauf 1, spät)*
 
-## Aktuelle Projektphase
-Discovery & Architecture (Konzeptphase). **Kein Produktcode.** Owner-Abnahme nicht erfolgt.
+## Projektphase
+Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testcandidate-Aufbereitung (OD-023, OD-024). Produktcode: keiner. Alle Arbeit direkt auf `main` (kein Feature-Branch).
 
-## Zuletzt abgeschlossene Arbeiten (Arbeitslauf 1)
-- Mandat konsolidiert: Vision, Scope, Randbedingungen, Glossar (`docs/00-project/`).
-- Anforderungsmatrix mit IDs und Prioritäten (`requirements.md`, 146 Anforderungen).
-- Owner-Entscheidungen OD-001…018 (`owner-decisions.md`).
-- Funktionale Zerlegung F-01…F-24, Risikomatrix R-01…R-16, Untersuchungsübersicht AI-01…17, offene Fragen OQ, Konzeptplan K0…K8 und Spikes SP-01…09 (`docs/06-planning/`, `docs/02-architecture/investigations.md`).
-- Drei Recherchestränge (Technologie/Engine/UI; Formate/Bibliotheken/Geometrie; Referenzprodukte/Packages/Recht) → `docs/04-research/{technology-evaluation,feasibility,references}.md`.
-- Erster Architekturentwurf `docs/02-architecture/overview.md`, ADR-0001 (PROPOSED), ADR-Register.
+## Verifizierter Istzustand (alles auf `main`)
+- **Konzeptdokumente:** `docs/` vollständig gerüstet; ausgearbeitet: Anforderungen (146 IDs), Owner-Entscheidungen OD-001…024, Zerlegung, Risiken, offene Fragen, Roadmap, Architekturüberblick, drei Rechercheberichte + Asset-Recherche, ADR-0001/-0009/-0010.
+- **Testcandidate (`content/testcandidate/`):**
+  - `avatar_a_quaternius_female.vrm` (Quaternius-Basischarakter + Haare, VRM 1.0)
+  - `avatar_b_makehuman.vrm` (MakeHuman-CC0-Pipeline: Macro-Morph, Rig aus Gelenk-Würfeln, Gewichte, 6 Proxys; 73k Tris)
+  - `animations/UAL1`, `UAL2`: 84 CC0-Animationen als VRMA
+  - Prüfungen: VRM-Schema 0 Fehler, glTF-Validator 0 Fehler, Skinning-Render-Test mit VRMA (`previews/`)
+  - Herkunft: `content/PROVENANCE.md`, `content/PROVENANCE_downloads.csv` (158 CC0, 3 CC-BY, 14 wegen AGPL-Header gesperrt)
+- **Werkzeuge (`tools/`):** bpy-Build-Skripte (`assets/`), VRM-Schema-Validator (`validate/`). Benötigen PyPI `bpy` 5.2.3 und `bpy-vrm-format` 4.10.2 (nur lokal, GPL/MIT-or-GPL, nicht Teil des Produkts), Python 3.13.
+- **Entfernt:** Mixamo-abgeleitete `assets/animation-*` und Duplikate (Historie bleibt).
+- **Repo-Größe:** Klon ca. 770 MB (Owner-Upload der Rohpacks in `content/testcandidate/downloads/` inkl. Historie). Kein History-Rewrite vorgenommen.
 
-## Verifizierter Istzustand
-- Repo enthält: `LICENSE` (Apache-2.0), Stub-README (jetzt ersetzt), `assets/animation-BVH` (118 BVH) und `assets/animation-vrma` (118 VRMA) aus dem SillyTavern-Pack `test157t/VRM-Assets-Pack-For-Silly-Tavern`.
-- **Recherche ergab:** dieses Pack hat keine Lizenzdatei; Animationen stammen laut README von Mixamo (Weitergabe als Pack laut Adobe-FAQ nicht zulässig) → nicht redistributierbar, interne Testdaten (OQ-03, R-11).
-- **Git:** Freigabe durch Owner erteilt (OD-019). Stand ist auf Branch `claude/gifted-ptolemy-tdh9vc` committet und gepusht (kein PR).
-- Recherchequalität: Teile stützen sich auf Suchzusammenfassungen; Primärquellen einiger Anbieter (VRoid, Blender, Khronos, SPDX u. a.) waren nicht abrufbar. [R]/[A]-Markierungen in den Berichten beachten. Die Berichte wurden von Subagenten erstellt und von Claude nur gelesen/integriert, nicht quellenweise nachverifiziert.
+## Umgebung / Randbedingungen
+Container ohne GPU und ohne Windows. Netzwerk-Allowlist vom Owner erweitert (MakeHuman, Quaternius); `github.com`-Clone bleibt gesperrt, `raw.githubusercontent.com` und PyPI funktionieren (C-10).
 
-## Aktive Aufgaben
-Keine laufenden Hintergrundaufgaben.
+## Offene Punkte am Testcandidate
+MToon-Materialien (aktuell Standard-PBR), Expression-Blendshapes, Polygonreduktion (Brauen/Wimpern), echter Viewer-Test (Owner), Shirt/Hose-Texturqualität, gesperrte AGPL-Assets nicht verwendet.
 
-## Offene Entscheidungen
-Siehe `docs/06-planning/open-questions.md`. Dringlichste: OQ-27 (Basismesh-Erstellung), OQ-01 (Stack, nach weiterer Konzeptarbeit), OQ-04 (Spikes).
+## Offene Owner-Entscheidungen
+`docs/06-planning/open-questions.md`: OQ-01 (Stack, nach Konzeptarbeit), OQ-04 (Spikes SP-01…09 einzeln), OQ-06…10. Geschlossen heute: OQ-02, -03, -05, -11, -26, -27.
 
-## Wichtigste Erkenntnisse aus der Recherche (RESEARCHED/PROPOSED, siehe Berichte)
-1. VRM 1.0 verlangt 15 Humanoid-Pflicht-Bones und genau ein Humanoid-Mapping; Demi-Formen sind über Extra-Nodes/Spring-Chains konform, echte Nicht-Humanoide nicht → Export-Profile (P5).
-2. VRMA ist rein humanoid; Ohren/Schwanz nicht animierbar → Spring Bones.
-3. `import bpy` im Hauptprozess = GPL; Blender nur als optionaler externer Worker.
-4. Permissive Lib-Landschaft genügt (cgltf/fastgltf, ufbx, meshoptimizer, ozz, Basis Universal); FBX SDK und CGAL-GPL vermeiden; gltf-rs seit 2024-05 ohne Update.
-5. Kein belegter Rust-VRM-Exporter; Godot-VRM-Export ohne Spring Bones; UniVRM hat den reifsten Export, aber Unity-Lizenzrisiko.
-6. Realistische Verfahren: Delta-Morphs, RBF-Landmarks, Basismesh-gebundene Kleidung, nearest-surface Weight-Transfer, Pin-and-Drag per regularisiertem Least-Squares.
+## Recherchequalität
+Berichte stammen von Subagenten und wurden nur gelesen/integriert; [R]/[A]-Kennzeichnung beachten. Einzelne Primärquellen waren nicht abrufbar.
 
-## Bekannte Risiken und Blocker
-`docs/06-planning/risks.md`. Top: R-03 Kleidungsfitting, R-01 speziesübergreifende Geometrie, R-05 Nichtdestruktivität vs. Expert-Edit, R-13 Content-Beschaffung. OQ-02 (Produktlizenz) ist mit ADR-0009 entschieden; Lizenzbewertung der Abhängigkeiten ist entsperrt.
-
-## Nicht erledigt von der Konzeptphase (Abschluss siehe Mandat 12)
-Feature-Katalog, User Journeys, UX-Konzept/Screens, Teststrategie, Spezifikationen (Formate/Schemas), Beispielpakete, Species-/Package-System-Detail, Geometrie/Rigging/Rendering/Asset-/Export-Detail, ADR-0002…0008. Plan: `docs/06-planning/roadmap.md` (K1 teilweise, K2–K8 offen).
+## Risiken
+`docs/06-planning/risks.md` (Top: R-03 Kleidungsfitting, R-01 speziesübergreifende Geometrie, R-05 Nichtdestruktivität, R-13 Content-Aufwand). Hinweis: R-13 ist durch die CC0-Basis deutlich entschärft.
 
 ## Nächste Schritte
 `NEXT_ACTIONS.md`.

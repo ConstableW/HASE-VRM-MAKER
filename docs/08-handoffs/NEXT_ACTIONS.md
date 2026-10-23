@@ -1,10 +1,10 @@
 # NEXT_ACTIONS
 
-*Stand: 2026-10-23.* Status: offen / in Arbeit / erledigt / wartet auf Owner.
+*Stand: 2026-10-23.* Status: offen / in Arbeit / erledigt / wartet auf Owner. Entwicklungs-/Asset-Arbeit läuft seit OD-023/OD-024 auf `main`; Aktionen 2–11 sind Konzeptarbeit.
 
 | # | Aktion | Ziel | Voraussetzung | Erwartetes Ergebnis | Akzeptanzkriterien | Status | Agent |
 |---|---|---|---|---|---|---|---|
-| 1 | Owner-Review der Erstergebnisse inkl. ADR-0009 (Lizenz, delegiert entschieden) | Ergebnisse sichern, Lizenzbewertung entsperren | – | Freigabe/Entscheidung | Entscheidung in `owner-decisions.md` bzw. `DECISION_LOG.md` | erledigt (Hosts freigegeben 2026-10-23) | – |
+| 1 | Owner-Review der Erstergebnisse inkl. ADR-0009 (Lizenz, delegiert entschieden) | Ergebnisse sichern, Lizenzbewertung entsperren | – | Freigabe/Entscheidung | Entscheidung in `owner-decisions.md` bzw. `DECISION_LOG.md` | offen | – |
 | 2 | Species-/Package-System ausarbeiten (`species-system.md`, `package-system.md`) inkl. Kriterien „Topologie-Familie vs. Archetype“, Kompatibilitäts- und Versionsregeln | Kern von REQ-ARCH/PKG | Recherche `references.md` B, `feasibility.md` §4 | Zwei Architekturdokumente + ADR-0004/-0005 (PROPOSED) | Jede REQ-ARCH-*/PKG-* referenziert; Beispiele für Mensch, Elf, Katzen-Demi, Hunde-Demi; Konfliktfälle beschrieben | offen | – |
 | 3 | Spezifikationen: Projektformat, Package-Manifest, Species-/Asset-Schema, Kompatibilitätsregeln + Beispielpakete in `examples/species/` | REQ-PKG-005/-008 | Aktion 2 | `03-specifications/*`, Beispiel-Manifeste | Beispiele validieren gegen die Schemas (Prüfung auf Papierebene bzw. JSON-Schema-Dateien) | offen | – |
 | 4 | Geometrie/Morphing, Rigging/Animation, Fitting-Konzept | R-01/-03/-05/-06 | Aktion 2 | `geometry-morphing.md`, `rigging-animation.md`, ADR-0004/-0006 | Delta-Layer-Modell, Invalidierungsregeln, Fitting-Pipeline und Qualitätsmetriken definiert | offen | – |
@@ -15,7 +15,5 @@
 | 9 | ADR-0002 (Stack) als Entscheidungsvorlage an den Owner | OQ-01 | Aktionen 2–4, OQ-02 | ADR mit Alternativen/Empfehlung | Matrix mit belegten Kriterien; Spike-Plan SP-07/-08 bestätigt | offen | – |
 | 10 | Spike-Spezifikationen finalisieren und zur Freigabe vorlegen | OQ-04 | Aktion 9 | Spike-Briefs | Messbare Kriterien, Zeitbox, Hardware | offen | – |
 | 11 | Konsistenzreview (Traceability REQ ↔ F ↔ ADR ↔ Test), Abnahmepaket | Mandat 12 | Aktionen 2–10 | Abnahmedokument | Alle Abschlusskriterien aus Mandat 12 geprüft | offen | – |
-
-Hinweis: Aktionen mit Spike-Code, Commits, Käufen sind **nicht** ohne Owner-Freigabe auszuführen.
-| 12 | Testcandidate weiter vorbefüllen: Rig-Mapping MakeHuman → VRM-Humanoid, Dezimierung/LOD, Expression-Blendshapes (Blink, Viseme), prozedurale Augen/Haare/Kleidung als Eigen-Assets, eigene Idle-Animation (VRMA), Test-VRM-Export | OD-023, OQ-27 | Aktion nur mit Dev-Tools (`bpy` im Scratch-venv) | Lauffähiger Test-Avatar als VRM | VRM lädt fehlerfrei in Referenz-Loader (soweit im Container testbar) | teilweise erledigt (Avatar A+B als VRM, 84 VRMA; offen: MToon, Expression-Blendshapes, Polygonreduktion, Viewer-Test) | – |
-| 13 | Owner: Netzwerk-Allowlist erweitern für `static.makehumancommunity.org` (+Spiegel), `quaternius.itch.io`/`quaternius.com` (optional `download.blender.org`) | Haare/Augen/Kleidung/Animationen aus CC0-Packs | Owner-Aktion in Umgebungseinstellungen | Zugriff auf Packs | Hosts erreichbar | erledigt (Hosts freigegeben 2026-10-23) | – |
+| 12 | Testcandidate fertigstellen: MToon-Materialien, Expression-Blendshapes (Blink, Viseme) aus MakeHuman-Targets, Polygonreduktion (Brauen/Wimpern), Viewer-Test durch Owner | OD-023 | Avatar A/B vorhanden | Testcandidate als VRM mit Toon-Look und funktionierenden Ausdrücken | Lädt fehlerfrei in VRoid Hub/VSeeFace/three-vrm; Tris ≤ 40k | in Arbeit | Claude |
+| 13 | Owner: Testcandidate (`content/testcandidate/avatar_*.vrm`) in einem echten VRM-Viewer ansehen und Rückmeldung geben | Reale Kompatibilitätsprüfung (Container hat keine GPU) | – | Rückmeldung | Lädt, Pose/Blick/Materialien plausibel | wartet auf Owner | – |
