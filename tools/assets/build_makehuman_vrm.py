@@ -222,6 +222,44 @@ for name, b in rig.items():
         eb[name].parent = eb[b["parent"]]
 bpy.ops.object.mode_set(mode="OBJECT")
 
+
+# ---------- 3a. Von Kleidung verdeckte Körperflächen (gegen Durchschimmern der Haut) ----------
+def cloth_geometry(folder, stem):
+    d = parse_mhclo(dl / folder / f"{stem}.mhclo")
+    pv, _, pf, _ = parse_obj(dl / folder / d["obj_file"])
+    sc = [abs(base_v[d["scale"][a][0]][i] - base_v[d["scale"][a][1]][i]) / d["scale"][a][2] for i, a in enumerate("xyz")]
+    rows = d["verts"]
+    ia = np.array([int(r[0]) for r in rows]); ib = np.array([int(r[1]) for r in rows]); ic = np.array([int(r[2]) for r in rows])
+    ww = np.array([r[3:6] for r in rows]); oo = np.array([r[6:9] for r in rows]) * np.array(sc)
+    pos = ww[:, 0:1] * base_v[ia] + ww[:, 1:2] * base_v[ib] + ww[:, 2:3] * base_v[ic] + oo
+    nrm = np.zeros_like(pos)
+    for f in pf:
+        idx = [v for v, _ in f]
+        for k in range(1, len(idx) - 1):
+            a, b, c = pos[idx[0]], pos[idx[k]], pos[idx[k + 1]]
+            n = np.cross(b - a, c - a)
+            for i in (idx[0], idx[k], idx[k + 1]):
+                nrm[i] += n
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
+    return pos, nrm
+
+
+body_all = np.array(sorted(body_set))
+covered = np.zeros(nv, dtype=bool)
+for folder, stem, slot, _t, _m in PROXIES:
+    if slot not in ("Shirt", "Pants"):
+        continue
+    cp, cn = cloth_geometry(folder, stem)
+    B = base_v[body_all]
+    for lo in range(0, len(B), 2000):
+        chunk = B[lo:lo + 2000]
+        dist = np.linalg.norm(chunk[:, None, :] - cp[None, :, :], axis=2)
+        j = dist.argmin(axis=1)
+        near = dist[np.arange(len(chunk)), j]
+        signed = ((chunk - cp[j]) * cn[j]).sum(axis=1)
+        covered[body_all[lo:lo + 2000]] |= (near < 0.25) & (signed < 0.03)
+print("von Kleidung verdeckte Körper-Vertices:", int(covered.sum()))
+
 # ---------- 3. Körper + Gewichte ----------
 weights = json.load(open(mh / "rigs/weights.game_engine.json"))["weights"]
 vert_w = [dict() for _ in range(nv)]
@@ -254,10 +292,18 @@ import bmesh  # noqa: E402
 bm = bmesh.new()
 bm.from_mesh(body_ob.data)
 bm.verts.ensure_lookup_table()
+orig = bm.verts.layers.int.new("orig")
+for v in bm.verts:
+    v[orig] = v.index
 bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.index not in body_set], context="VERTS")
+bm.verts.ensure_lookup_table()
+hidden = [f for f in bm.faces if all(covered[v[orig]] for v in f.verts)]
+bmesh.ops.delete(bm, geom=hidden, context="FACES")
+bm.verts.ensure_lookup_table()
+body_idx_sorted = np.array([v[orig] for v in bm.verts])
+print("Körper nach Bereinigung:", len(bm.verts), "Vertices,", len(bm.faces), "Flächen (", len(hidden), "verdeckt entfernt )")
 bm.to_mesh(body_ob.data)
 bm.free()
-body_idx_sorted = np.array(sorted(body_set))
 shape_owners = {st: [] for st in STATES}
 
 
@@ -275,7 +321,7 @@ def add_state_keys(ob, positions_for):
 add_state_keys(body_ob, lambda bv: to_blender(bv[body_idx_sorted]))
 
 # ---------- 4. Proxys ----------
-body_idx = np.array(sorted(body_set))
+body_idx = body_all
 for folder, stem, slot, tint, morphs in PROXIES:
     d = parse_mhclo(dl / folder / f"{stem}.mhclo")
     pv, pvt, pf, _ = parse_obj(dl / folder / d["obj_file"])

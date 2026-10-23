@@ -12,6 +12,6 @@ sc=bpy.context.scene; sc.frame_set(int(sys.argv[4]))
 sc.render.engine="CYCLES"; sc.cycles.samples=24; sc.cycles.device="CPU"; sc.render.resolution_x,sc.render.resolution_y=700,900
 sc.world=bpy.data.worlds.new("w"); sc.world.color=(0.55,0.6,0.65)
 sun=bpy.data.objects.new("sun",bpy.data.lights.new("sun","SUN")); sun.data.energy=4; sun.rotation_euler=(math.radians(50),0,math.radians(-30)); sc.collection.objects.link(sun)
-cam=bpy.data.objects.new("cam",bpy.data.cameras.new("cam")); sc.collection.objects.link(cam); sc.camera=cam; cam.data.lens=80
-cam.location=(0,-5.0,0.9); cam.rotation_euler=(math.radians(90),0,0)
+cam=bpy.data.objects.new("cam",bpy.data.cameras.new("cam")); sc.collection.objects.link(cam); sc.camera=cam; cam.data.lens=60
+cam.location=(0,-3.4,0.55); cam.rotation_euler=(math.radians(90),0,0)
 sc.render.filepath=sys.argv[3]; bpy.ops.render.render(write_still=True); print('ok')
