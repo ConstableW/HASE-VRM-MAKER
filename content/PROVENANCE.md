@@ -11,5 +11,12 @@
 | `testcandidate/body_mpfb2_testcandidate.glb` | abgeleitet via `tools/assets/build_testcandidate_body.py` | CC0-1.0 (abgeleitet) | – | Build-Artefakt (45 MB), nicht versioniert (`.gitignore`) |
 | `assets/animation-*` | SillyTavern-Pack (Mixamo-Herkunft) | ungeklärt | – | nur interne Tests (OQ-03) |
 
+## MakeHuman-Asset-Packs (Owner-Upload 2026-10-23, `testcandidate/downloads/`)
+Quelle: https://static.makehumancommunity.org/assets/assetpacks.html (Packs `makehuman_system_assets`, `hair01`, `shirts01`, `pants01`, `shoes01`, `eyebrows01`, `eyelashes01`; Metadaten je Pack in `downloads/packs/*.json`). Pro-Asset-Liste mit Autor, Lizenz und Status: **`PROVENANCE_downloads.csv`** (175 Einträge).
+- Packliste: 174 × CC0, 1 × CC-BY (`culturalibre_heroine_boots_4`, Attribution nötig).
+- **Abweichung in Dateiheadern:** 14 `.mhclo`-Dateien (Haare `culturalibre_hair_01/02`, `elvs_*_braid*`, `learning_anime_hair`, `littleright_bobcut_hair`, `rehmanpolanski_hair_bun_brown`, `sonntag78_*`; Kleidung `grinsegold_female_pirate_boots`, `scailman_*_boots`, `skalldyrssuppe_tube_top_funky_colors`) tragen den Header `AGPL3`, obwohl die Packliste CC0 angibt (ältere Header, vermutlich nicht aktualisiert). Status in der CSV: **GESPERRT**. Der Testcandidate verwendet sie nicht, bis die Lizenz geklärt ist (OD-024: Prüfung nur bei tatsächlicher Verwendung). 2 Haare tragen CC-BY (`elvs_reverse_french_braid_bun`, `o4saken_long01`): Attribution nötig.
+- Alle übrigen Assets: CC0 laut Pack und Header (bzw. Header ohne Lizenzzeile → Packliste gilt).
+- Quaternius-Packs (`Universal Animation Library`, `…Library 2`, `Universal Base Characters`, je [Standard]): CC0 laut mitgelieferter `License.txt`. Liegen zusätzlich unter `assets/` (Duplikat, später bereinigen).
+
 ## Offen / noch nicht beschafft (Container-Netz, siehe C-10)
-Haare, Augen, Kleidung, Skins (MakeHuman System Assets, Host `static.makehumancommunity.org`), CC0-Animationen (Quaternius). Fallbacks: eigene prozedurale Assets. Details: `docs/04-research/assets-candidates.md`.
+Nichts Grundlegendes mehr. Offene technische Arbeit: Rig-Mapping, Reduzierung, VRM-Export. Details: `docs/04-research/assets-candidates.md`.
