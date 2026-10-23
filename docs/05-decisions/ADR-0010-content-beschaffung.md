@@ -19,7 +19,7 @@ und später aus der **Community** (über das Package-System).
 | Provenienzregister | Pflicht pro Asset: Quelle/URL, Urheber, Lizenz (SPDX), Abrufdatum, Hash, bei KI: Werkzeug+Version, Datum, Prompt/Eingaben, Nachbearbeitung durch Menschen |
 | Basismeshes | Selbst erstellt (z. B. in Blender, extern) – tragende Assets mit Topologie-/Morph-Anforderungen sollten **keine** direkte KI-Meshausgabe sein [ASSUMED: KI-Meshes liefern keine kontrollierte Topologie/Edge-Flow für Morphs und Rigging; per Spike prüfen] |
 | KI sinnvoll für | Texturen, Konzeptzeichnungen, Muster, Hauttöne, Augen-/Iris-Texturen, Kleidungsdesign-Vorlagen; Meshes nur als Ausgangsform mit Nachbearbeitung |
-| KI-Rechtsstatus | Urheberrechtlicher Schutz und Weitergabe KI-erzeugter Inhalte sind rechtlich unsicher und werkzeugabhängig [ASSUMED, keine Recherche in dieser Sitzung]. Nur Werkzeuge verwenden, deren Nutzungsbedingungen kommerzielle Nutzung und Weitergabe der Ausgabe erlauben; Bedingungen archivieren. Keine Modelle, die erkennbar auf geschützten Werken/Referenzprodukten beruhen (REQ-PROD-006) |
+| KI-Assets | Zulässig (OD-022/OD-024); keine weitere Rechtsdiskussion. Provenienz wird vermerkt. Keine Reproduktion geschützter Assets der Referenzprodukte (REQ-PROD-006) |
 | Kosten | Kostenfreie Werkzeuge bevorzugt; kostenpflichtige KI-/Cloud-Dienste weiterhin nur mit Freigabe (C-03) |
 | Community | Über Asset-/Species-Packages mit Lizenzpflichtfeld und Prüf-Validator; Community-Inhalte sind nicht Teil der Standardauslieferung ohne Lizenzcheck |
 | Standardspezies | Mensch, Elf, Katzen-Demi, Hunde-Demi als eigene Packages auf gemeinsamer humanoider Topologie-Familie (Details K2) |

@@ -37,6 +37,12 @@ Regeln daraus:
 ## Begründung
 Maximale Kompatibilität mit dem empfohlenen permissiven Stack und mit einem offenen Package-Ökosystem, ohne Vertriebs- oder Kommerzialisierungsoptionen zu verbauen. Keine Rechtsberatung; vor erstem Release juristisch prüfen (Patentklausel, Marken „HASE“, Asset-Lizenzen).
 
+## Änderung durch OD-024 (2026-10-23)
+Das Projekt ist Open Source und nicht kommerziell ausgerichtet; bestehende Open-Source-Projekte dürfen Grundlage sein. Daher:
+- Die Regeln 1–4 oben sind **Standardpräferenz, kein Verbot mehr**. Permissive Lizenzen bleiben erste Wahl, weil sie die Kombination am einfachsten machen.
+- Wird ein Fremdprojekt tatsächlich als Grundlage verwendet, wird die Lizenz **zu diesem Zeitpunkt** geprüft und im Provenienzregister vermerkt. Ist es Copyleft (z. B. GPL/AGPL bei MakeHuman/MPFB2, `import bpy`), darf das Produkt bzw. der betroffene Teil unter eine kompatible Copyleft-Lizenz gestellt werden; das entscheidet der Owner dann konkret für den Einzelfall (ADR-Ergänzung). Bis dahin bleibt Apache-2.0 der Default.
+- Nicht kommerzielle Ausrichtung entfällt als Argument gegen Slint/Qt-Lizenzbedingungen nicht automatisch; Prüfung erst bei tatsächlicher Wahl (ADR-0002).
+
 ## Konsequenzen
 - OQ-02 geschlossen; Lizenzbewertung der Abhängigkeiten (AI-14) entsperrt.
 - Slint (GPL/Royalty-free-Bedingungen) und Qt (LGPL-Pflichten) sind weiterhin nur mit Zusatzprüfung zulässig.

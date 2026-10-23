@@ -15,3 +15,4 @@ Chronologisches Register. Maßgeblich für Owner-Entscheidungen ist `../00-proje
 | D-009 | 2026-10-23 | Content-Beschaffung: frei nutzbar + selbst erstellt + KI-generiert, Community später (ADR-0010/OD-021) | Owner | Kostenfrei, C-03 | ja |
 | D-010 | 2026-10-23 | OQ-26 geschlossen (OD-022), OQ-27 teilweise entschieden (OD-023): Asset-Recherche beauftragt | Owner | Testcandidate vorbefüllt, Austausch bis RC | ja |
 | D-011 | 2026-10-23 | Container-Netz: nur raw.githubusercontent.com und PyPI erreichbar; github.com/Clone und Asset-Sites gesperrt | Befund | Beeinflusst Asset-Beschaffung (C-10) | – |
+| D-012 | 2026-10-23 | OD-024 Projektprinzipien eingearbeitet; ADR-0009-Lizenzregeln von Verbot auf Standardpräferenz gelockert, ADR-0010 KI-Zeile verkürzt, AGENTS.md ergänzt | Owner | Open Source, Wiederverwendung | ja |

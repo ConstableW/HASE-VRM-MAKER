@@ -22,6 +22,13 @@ Das Originalmandat liegt unter `docs/00-project/source/projektmandat-2026-10.doc
 - Keine eigenmächtige Reduzierung des Zielumfangs. Priorität ≠ Umfang.
 - Keine stillschweigenden Architekturentscheidungen bei Zielkonflikten: Alternativen + Empfehlung dem Owner vorlegen. Endgültige Architekturfreigabe nur durch den Product Owner.
 
+## Arbeitsprinzipien (OD-024)
+
+- Open Source, nicht kommerziell ausgerichtet. KI-generierter Code/Assets sind zulässig.
+- **Wiederverwenden vor Neuerfinden:** zuerst vorhandene Open-Source-Lösungen suchen, kombinieren, weiterentwickeln.
+- Lizenzprüfung nur im Umfang der tatsächlichen Verwendung eines Fremdprojekts; Ergebnis ins Provenienzregister.
+- Keine ungefragten Grundsatzdiskussionen über KI-Urheberrechte.
+
 ## Statuslabel (in allen Dokumenten konsequent verwenden)
 
 | Label | Bedeutung |
