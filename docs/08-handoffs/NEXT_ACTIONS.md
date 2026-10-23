@@ -17,3 +17,5 @@
 | 11 | Konsistenzreview (Traceability REQ ↔ F ↔ ADR ↔ Test), Abnahmepaket | Mandat 12 | Aktionen 2–10 | Abnahmedokument | Alle Abschlusskriterien aus Mandat 12 geprüft | offen | – |
 
 Hinweis: Aktionen mit Spike-Code, Commits, Käufen sind **nicht** ohne Owner-Freigabe auszuführen.
+| 12 | Testcandidate weiter vorbefüllen: Rig-Mapping MakeHuman → VRM-Humanoid, Dezimierung/LOD, Expression-Blendshapes (Blink, Viseme), prozedurale Augen/Haare/Kleidung als Eigen-Assets, eigene Idle-Animation (VRMA), Test-VRM-Export | OD-023, OQ-27 | Aktion nur mit Dev-Tools (`bpy` im Scratch-venv) | Lauffähiger Test-Avatar als VRM | VRM lädt fehlerfrei in Referenz-Loader (soweit im Container testbar) | offen | – |
+| 13 | Owner: Netzwerk-Allowlist erweitern für `static.makehumancommunity.org` (+Spiegel), `quaternius.itch.io`/`quaternius.com` (optional `download.blender.org`) | Haare/Augen/Kleidung/Animationen aus CC0-Packs | Owner-Aktion in Umgebungseinstellungen | Zugriff auf Packs | Hosts erreichbar | wartet auf Owner | – |

@@ -20,6 +20,8 @@ Eigenständiges Desktop-Produkt zur Erstellung, Bearbeitung, Animation, Verwaltu
 | `docs/07-quality/` | Qualitätsattribute, Test- und Validierungsstrategie |
 | `docs/08-handoffs/` | CURRENT_STATE, WORK_LOG, NEXT_ACTIONS, DECISION_LOG |
 | `examples/species/` | Beispielpakete (folgen in K3) |
+| `content/` | Testcandidate-Content (MPFB2-CC0-Daten), Provenienzregister `PROVENANCE.md` |
+| `tools/assets/` | Entwicklungsskripte zum Aufbereiten der Assets (bpy, nicht Teil des Produkts) |
 | `assets/` | Vorhandene Animationen (BVH/VRMA), **Herkunft/Lizenz ungeklärt**, nur interne Testdaten (OQ-03) |
 
 Lizenz des Repositories: siehe `LICENSE` (Apache-2.0; Lizenzmodell des Produkts ist offen, OQ-02).

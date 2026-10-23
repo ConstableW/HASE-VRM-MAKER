@@ -13,3 +13,5 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - Push erfolgreich nach Wiederherstellung des GitHub-Zugriffs (Branch `claude/gifted-ptolemy-tdh9vc`).
 - OQ-02 auf Owner-Delegation entschieden: ADR-0009 (Apache-2.0), OD-020.
 - OQ-05 per Owner-Vorgabe entschieden: ADR-0010, OD-021; neue Fragen OQ-26/-27.
+- Asset-Recherche (Subagent) → `docs/04-research/assets-candidates.md`. Ergebnis: MPFB2-Daten (CC0) per raw.githubusercontent.com erreichbar; MakeHuman-Packs (Haare/Augen/Kleidung) und Quaternius-Animationen nur nach Allowlist-Freigabe.
+- Testcandidate vorbefüllt: `content/testcandidate/mpfb2-cc0/` (base.obj, 609 Targets, 2 Rigs, Lizenztexte, SHA-256-Manifest), Provenienzregister `content/PROVENANCE.md`, Build-Skript `tools/assets/build_testcandidate_body.py` (bpy headless) erzeugt Body-GLB (13.380 Vertices, 548 Shape Keys, 1,67 m; Artefakt 45 MB, nicht versioniert).
