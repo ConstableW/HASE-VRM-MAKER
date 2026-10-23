@@ -15,3 +15,6 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - OQ-05 per Owner-Vorgabe entschieden: ADR-0010, OD-021; neue Fragen OQ-26/-27.
 - Asset-Recherche (Subagent) → `docs/04-research/assets-candidates.md`. Ergebnis: MPFB2-Daten (CC0) per raw.githubusercontent.com erreichbar; MakeHuman-Packs (Haare/Augen/Kleidung) und Quaternius-Animationen nur nach Allowlist-Freigabe.
 - Testcandidate vorbefüllt: `content/testcandidate/mpfb2-cc0/` (base.obj, 609 Targets, 2 Rigs, Lizenztexte, SHA-256-Manifest), Provenienzregister `content/PROVENANCE.md`, Build-Skript `tools/assets/build_testcandidate_body.py` (bpy headless) erzeugt Body-GLB (13.380 Vertices, 548 Shape Keys, 1,67 m; Artefakt 45 MB, nicht versioniert).
+- OD-019/-024: Arbeit ab jetzt direkt auf `main`. Owner-Upload der MakeHuman-/Quaternius-Packs ausgewertet (`content/PROVENANCE_downloads.csv`: 158 CC0, 3 CC-BY, 14 wegen AGPL-Header gesperrt).
+- Test-Avatar A: Quaternius Base Character + Haare → VRM 1.0 (`tools/assets/build_quaternius_vrm.py`; 52 Humanoid-Bones, Schema-Validierung 0 Fehler via `tools/validate/validate_vrm.py`, glTF-Validator 0 Fehler).
+- 84 CC0-Animationen (Quaternius UAL1/UAL2) → VRMA (`build_quaternius_vrma.py`), alle glTF-Validator-fehlerfrei.

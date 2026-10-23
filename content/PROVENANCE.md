@@ -9,6 +9,8 @@
 | `testcandidate/mpfb2-cc0/rigs/*.json` | `.../src/mpfb/data/rigs/standard/` | CC0-1.0 (§C „Rigs“) | 2026-10-23 | MakeHuman-Standardrig (163 Bones), Mapping auf VRM-Humanoid steht aus |
 | `testcandidate/mpfb2-cc0/LICENSE.md`, `LICENSE.ASSETS.md` | MPFB2-Repo | GPL-3.0 (Code) / CC0 (Assets) | 2026-10-23 | Lizenzbeleg. **MPFB2-Code wird nicht verwendet.** |
 | `testcandidate/body_mpfb2_testcandidate.glb` | abgeleitet via `tools/assets/build_testcandidate_body.py` | CC0-1.0 (abgeleitet) | – | Build-Artefakt (45 MB), nicht versioniert (`.gitignore`) |
+| `testcandidate/avatar_a_quaternius_female.vrm` | abgeleitet aus Quaternius „Universal Base Characters [Standard]“ (Superhero_Female + Hair_Buns) via `tools/assets/build_quaternius_vrm.py` | CC0-1.0 (abgeleitet; Quelle `License_Standard.txt`) | 2026-10-23 | Test-Avatar A (VRM 1.0, 52 Humanoid-Bones) |
+| `testcandidate/animations/UAL1`, `UAL2` (84 .vrma) | abgeleitet aus Quaternius „Universal Animation Library 1/2 [Standard]“ via `tools/assets/build_quaternius_vrma.py` | CC0-1.0 (abgeleitet; Quelle `License.txt`) | 2026-10-23 | CC0-Animationsbibliothek als VRMA, Ersatz für `assets/animation-*` |
 | `assets/animation-*` | SillyTavern-Pack (Mixamo-Herkunft) | ungeklärt | – | nur interne Tests (OQ-03) |
 
 ## MakeHuman-Asset-Packs (Owner-Upload 2026-10-23, `testcandidate/downloads/`)
