@@ -1,0 +1,9 @@
+{
+  "source": "C:\\USERDATA\\HASEC\\vrma-conversion\\source\\animation",
+  "destination": "C:\\USERDATA\\HASEC\\vrma-conversion\\output\\animation-vrma",
+  "scale": 0.1,
+  "inputFiles": 116,
+  "converted": 116,
+  "failed": 0,
+  "failures": []
+}
