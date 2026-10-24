@@ -87,6 +87,16 @@ impl Catalog {
                 }
             }
         }
+        // HASE-Anatomiemodell (Brust): signierte Parameter je Seite, links/rechts gekoppelt
+        for (grp, p) in crate::anatomy::BREAST_PARAMS.iter().map(|p| ("breast", p)).chain(crate::anatomy::GLUTE_PARAMS.iter().map(|p| ("buttocks", p))) {
+            let first = defs.len();
+            for (side, label) in [("l", "links"), ("r", "rechts")] {
+                let (pos, neg) = (morphs.index_of(&format!("hase/{}-{side}-pos", p.stem)), morphs.index_of(&format!("hase/{}-{side}-neg", p.stem)));
+                if pos.is_none() { continue; }
+                defs.push(ParamDef { id: format!("hase:{}-{side}", p.stem), label: format!("{} ({label})", p.label), group: grp.into(), kind: Kind::Signed, min: -1.0, max: 1.0, default: 0.0, neg, pos, mirror: None });
+            }
+            if defs.len() == first + 2 { defs[first].mirror = Some(first + 1); defs[first + 1].mirror = Some(first); }
+        }
         let index = defs.iter().enumerate().map(|(i, d)| (d.id.clone(), i)).collect();
         Catalog { defs, index, macro_targets, macro_idx: Some(macro_idx) }
     }

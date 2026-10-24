@@ -442,6 +442,7 @@ mod tests {
         if !glb.exists() { eprintln!("GLB fehlt – übersprungen"); return; }
         let mut s = Session::load(&repo).unwrap();
         let ref_id = s.packages.body.id.clone();
+        let ref_params = s.params.defs.len();
         let dir = hase_core::packages::write_body_draft(&repo, "Kettentest", &glb, &[("Importiert".into(), Some(true), "x".into())]).unwrap();
         let pk = hase_core::packages::Packages::load(&repo).unwrap();
         let pkg = pk.bodies.iter().find(|b| b.id == "user.body.kettentest").cloned().expect("Entwurf gelistet");
@@ -483,7 +484,7 @@ mod tests {
         // zurück zur Referenz
         let r = s.reference_body.clone();
         s.activate_body(&r).unwrap();
-        assert!(!s.generic && s.packages.body.id == ref_id && s.params.defs.len() == 294);
+        assert!(!s.generic && s.packages.body.id == ref_id && s.params.defs.len() == ref_params);
         std::fs::remove_dir_all(&dir).unwrap();
         let _ = std::fs::remove_file(repo.join(".hase-cache/fp-test.json"));
     }
@@ -497,6 +498,7 @@ mod tests {
         let mut s = Session::load(&repo).unwrap();
         let ref_body = s.packages.body.clone();
         let mh_verts = s.body.topo.vmap.len();
+        let ref_params = s.params.defs.len();
         let dir = hase_core::packages::write_body_draft(&repo, "ZweiteBasisTest", &glb, &[]).unwrap();
         let cleanup = |d: &std::path::Path| { let _ = std::fs::remove_dir_all(d); };
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -552,7 +554,7 @@ mod tests {
             let values = s.state.values.clone();
             // zurück zur Referenz; Laden verlangt Körperbasis-Wechsel
             s.activate_body(&ref_body).unwrap();
-            assert!(!s.generic && s.params.defs.len() == 294);
+            assert!(!s.generic && s.params.defs.len() == ref_params);
             match s.plan_load(&saved) { crate::session::LoadPlan::NeedsBody(b) => assert_eq!(b.id, pkg_b.id), _ => panic!("Wechsel erwartet") }
             s.activate_body(&pkg_b).unwrap();
             match s.plan_load(&saved) {

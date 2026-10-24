@@ -118,6 +118,12 @@ impl Body {
             Some(m) => (m, true),
             None => { let m = parse_targets(&troot, base_pos.len()); let _ = save_cache(&cache, &m, stamp); (m, false) }
         };
+        let mut morphs = morphs;
+        let mut nrm = Vec::new();
+        crate::eval::normals(&base_pos, &topo.base_tris, &mut nrm);
+        nrm.resize(base_pos.len(), [0.0, 1.0, 0.0]);
+        crate::anatomy::append_breast(&mut morphs, &base_pos, &nrm);
+        crate::anatomy::append_glutes(&mut morphs, &base_pos, &nrm);
         Ok(Body { base_pos, obj, topo, morphs, load_ms: t0.elapsed().as_secs_f64() * 1e3, from_cache })
     }
 }

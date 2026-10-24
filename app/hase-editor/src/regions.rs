@@ -51,15 +51,16 @@ pub fn region_of(d: &ParamDef) -> Option<usize> {
     REGIONS.iter().position(|r| r.label == d.group || r.groups.contains(&d.group.as_str()) || r.ids.iter().any(|s| d.id.contains(s)))
 }
 
-/// Unterabschnitt innerhalb einer Region: 0 Form, 1 Proportionen, 2 Position & Winkel, 3 Asymmetrie.
+/// Unterabschnitt innerhalb einer Region: 0 Anatomisches Modell (HASE), 1 Form, 2 Proportionen, 3 Position & Winkel, 4 Asymmetrie.
 pub fn tier(d: &ParamDef) -> usize {
     let id = d.id.as_str();
-    if id.contains("asym") { 3 }
-    else if ["trans", "angle", "rot", "push", "point-down"].iter().any(|k| id.contains(k)) { 2 }
-    else if ["scale", "measure", "height", "width", "dist", "length"].iter().any(|k| id.contains(k)) { 1 }
-    else { 0 }
+    if id.starts_with("hase:") { 0 }
+    else if id.contains("asym") { 4 }
+    else if ["trans", "angle", "rot", "push", "point-down"].iter().any(|k| id.contains(k)) { 3 }
+    else if ["scale", "measure", "height", "width", "dist", "length"].iter().any(|k| id.contains(k)) { 2 }
+    else { 1 }
 }
-pub const TIER_LABELS: [&str; 4] = ["Form", "Proportionen", "Position & Winkel", "Asymmetrie (links/rechts getrennt)"];
+pub const TIER_LABELS: [&str; 5] = ["Anatomisches Modell", "Form", "Proportionen", "Position & Winkel", "Asymmetrie (links/rechts getrennt)"];
 
 /// Kleidungs-Unterkategorie aus dem Asset-Namen (Heuristik, bis Package-Metadaten vorliegen).
 pub fn clothes_kind(name: &str) -> usize {

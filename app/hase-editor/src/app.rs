@@ -560,7 +560,7 @@ impl App {
                     ui.label("Wähle links einen Bereich. Die Kamera fokussiert automatisch; „Eigene Kamera“ stellt deine Ansicht wieder her.");
                     if self.main == Main::Koerper {
                         ui.add_space(8.0);
-                        ui.colored_label(egui::Color32::from_rgb(230, 190, 90), "Hinweis: Das anatomische Brustmodell (Volumen, Breite, Ansatzhöhe, Projektion, Form, Schwerkraft) ist noch nicht umgesetzt. Bereich „Brust“ zeigt derzeit nur die vorhandenen MakeHuman-Targets.");
+                        ui.colored_label(theme::TEXT2, "Brust und Gesäß besitzen ein anatomisches Modell (Abschnitt „Anatomisches Modell“): Volumen, Projektion, obere/untere Fülle, Breite, Ansatzhöhe, Hängen – links/rechts getrennt, mit glatten Übergängen zum Körper. Muskulatur/Hüfte nutzen weiterhin die MakeHuman-Parameter.");
                     }
                 } else {
                     ui.heading(REGIONS[self.region].label); ui.separator();

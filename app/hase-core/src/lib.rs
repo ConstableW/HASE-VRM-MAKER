@@ -21,3 +21,4 @@ pub fn find_repo_root(start: &Path) -> Option<PathBuf> {
 }
 pub mod validate;
 pub mod import;
+pub mod anatomy;
