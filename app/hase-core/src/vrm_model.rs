@@ -16,7 +16,7 @@ pub struct VrmPart {
 pub struct VrmModel {
     pub name: String, pub parts: Vec<VrmPart>, pub bones: Vec<ExBone>, pub humanoid: BTreeMap<String, usize>,
     pub expressions: Vec<(String, Vec<(usize, usize, f32)>)>, // (Name, [(Teil, Target, Gewicht)])
-    pub spring_bones: bool, pub identity_rest: bool, pub height: f32, pub rest_rot: Vec<[f32; 4]>, pub vrm_names: Vec<Option<String>>,
+    pub spring_bones: bool, pub rigless: bool, pub identity_rest: bool, pub height: f32, pub rest_rot: Vec<[f32; 4]>, pub vrm_names: Vec<Option<String>>,
 }
 
 fn mul(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] { let mut r = [[0f32; 4]; 4]; for c in 0..4 { for rw in 0..4 { for k in 0..4 { r[c][rw] += a[k][rw] * b[c][k]; } } } r }
@@ -42,8 +42,8 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let jl = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
     let j: Value = serde_json::from_slice(&data[20..20 + jl]).map_err(|e| e.to_string())?;
-    let skin = doc.skins().next().ok_or("Das Modell hat kein Skelett (Skin)")?;
-    let joints: Vec<usize> = skin.joints().map(|n| n.index()).collect();
+    let skin = doc.skins().next();
+    let joints: Vec<usize> = skin.as_ref().map(|s| s.joints().map(|n| n.index()).collect()).unwrap_or_default();
     let jidx: BTreeMap<usize, usize> = joints.iter().enumerate().map(|(i, &n)| (n, i)).collect();
     // Weltmatrizen aller Knoten
     let nn = doc.nodes().count();
@@ -64,7 +64,7 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
         bones.push(ExBone { name: node.name().unwrap_or("").to_string(), parent: par, pos: [world[n][3][0], world[n][3][1], world[n][3][2]] });
     }
     // Humanoid-Zuordnung (VRM 1.0 oder VRM 0.x)
-    let ibm: Vec<[[f32; 4]; 4]> = skin.reader(|_| Some(&blob[..])).read_inverse_bind_matrices().map(|i| i.collect()).unwrap_or_default();
+    let ibm: Vec<[[f32; 4]; 4]> = skin.as_ref().and_then(|sk| sk.reader(|_| Some(&blob[..])).read_inverse_bind_matrices().map(|i| i.collect())).unwrap_or_default();
     let mut humanoid = BTreeMap::new();
     if let Some(hb) = j["extensions"]["VRMC_vrm"]["humanoid"]["humanBones"].as_object() { for (k, v) in hb { if let Some(&b) = v["node"].as_u64().and_then(|x| jidx.get(&(x as usize))) { humanoid.insert(k.clone(), b); } } }
     else if let Some(hb) = j["extensions"]["VRM"]["humanoid"]["humanBones"].as_array() { for v in hb { if let (Some(k), Some(&b)) = (v["bone"].as_str(), v["node"].as_u64().and_then(|x| jidx.get(&(x as usize)))) { humanoid.insert(k.to_string(), b); } } }
@@ -107,7 +107,7 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
         }
     }
     // Ruhe-Positionen = Skinning mit Ruhepose (Netze liegen im Mesh-Raum; für Modelle mit Ruhe-Rotationen/Skalierung nötig)
-    if ibm.len() == joints.len() {
+    if !joints.is_empty() && ibm.len() == joints.len() {
         let sk: Vec<[[f32; 4]; 4]> = joints.iter().enumerate().map(|(i, &n)| mul(world[n], ibm[i])).collect();
         let tp = |m: &[[f32; 4]; 4], p: [f32; 3]| [m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2] + m[3][0], m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2] + m[3][1], m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2] + m[3][2]];
         let tn = |m: &[[f32; 4]; 4], p: [f32; 3]| [m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2], m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2], m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2]];
@@ -120,6 +120,15 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
             }
             for t in part.targets.iter_mut() { for (v, d) in t.1.iter_mut().enumerate() { let mut o = [0f32; 3]; for k in 0..4 { let w = part.weights[v][k]; if w > 0.0 { let q = tn(&sk[part.joints[v][k] as usize], *d); for c in 0..3 { o[c] += w * q[c]; } } } *d = o; } }
         }
+    }
+    // Ohne Skelett (rohe GLB): Knoten-Weltmatrizen auf die Vertices anwenden, cm → m, Skelett folgt später aus der abgebildeten Basis
+    let rigless = joints.is_empty();
+    if rigless {
+        let tp = |m: &[[f32; 4]; 4], p: [f32; 3]| [m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2] + m[3][0], m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2] + m[3][1], m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2] + m[3][2]];
+        let tn = |m: &[[f32; 4]; 4], p: [f32; 3]| { let q = [m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2], m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2], m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2]]; let l = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2]).sqrt().max(1e-9); [q[0] / l, q[1] / l, q[2] / l] };
+        for (ni, pis) in &node_parts { let w = &world[*ni]; for &pi in pis { let part = &mut parts[pi]; for k in 0..part.pos.len() { part.pos[k] = tp(w, part.pos[k]); part.nrm[k] = tn(w, part.nrm[k]); } for t in part.targets.iter_mut() { for d in t.1.iter_mut() { *d = tn(w, *d); } } } }
+        let top = parts.iter().flat_map(|p| p.pos.iter().map(|v| v[1])).fold(f32::MIN, f32::max);
+        if top > 8.0 { for part in parts.iter_mut() { for q in part.pos.iter_mut() { for c in 0..3 { q[c] *= 0.01; } } } }
     }
     // Expressions (VRM 1.0): morphTargetBinds → (Teil, Target, Gewicht)
     let mut expressions = Vec::new();
@@ -137,7 +146,7 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
     for (k, &b) in &humanoid { vrm_names[b] = Some(k.clone()); }
     let height = parts.iter().flat_map(|p| p.pos.iter().map(|v| v[1])).fold(0f32, f32::max);
     let name = j["extensions"]["VRMC_vrm"]["meta"]["name"].as_str().or_else(|| j["extensions"]["VRM"]["meta"]["title"].as_str()).unwrap_or("Modell").to_string();
-    Ok(VrmModel { name, parts, bones, humanoid, expressions, spring_bones: j["extensions"].get("VRMC_springBone").is_some() || j["extensions"]["VRM"].get("secondaryAnimation").is_some(), identity_rest, height, rest_rot, vrm_names })
+    Ok(VrmModel { name, parts, bones, humanoid, expressions, rigless, spring_bones: j["extensions"].get("VRMC_springBone").is_some() || j["extensions"]["VRM"].get("secondaryAnimation").is_some(), identity_rest, height, rest_rot, vrm_names })
 }
 
 #[cfg(test)]

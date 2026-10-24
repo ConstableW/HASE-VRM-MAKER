@@ -84,37 +84,79 @@ pub fn register(mh_pos: &[[f32; 3]], body_verts: &[u32], tris: &[[u32; 3]], mh_b
         for &(b, wt) in w { let q = tr(b as usize, p); for c in 0..3 { o[c] += wt * q[c]; } tot += wt; }
         cur.push([o[0] / tot, o[1] / tot, o[2] / tot]);
     }
-    // ICP-Verfeinerung
-    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); mh_pos.len()];
-    for tr in tris { for k in 0..3 { let (a, b) = (tr[k], tr[(k + 1) % 3]); if !adj[a as usize].contains(&b) { adj[a as usize].push(b); } if !adj[b as usize].contains(&a) { adj[b as usize].push(a); } } }
-    let ids: Vec<u32> = (0..t.skin_pos.len() as u32).collect();
-    let grid = BodyGrid::build(t.skin_pos, &ids, 0.02);
-    let dom_vrm: Vec<&str> = body_verts.iter().map(|&v| mh_weights[v as usize].iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).and_then(|(b, _)| { let mut a = *b as usize; loop { if let Some(n) = &vrm_of[a] { return Some(n.as_str()); } a = mh_bones[a].parent?; } }).unwrap_or("hips")).collect();
-    let mut rms = (0f32, 0f32);
-    let mut nrm = Vec::new();
-    for it in 0..10 {
-        crate::eval::normals(&cur, tris, &mut nrm);
-        let mut disp = vec![[0f32; 3]; cur.len()];
-        let mut fixed = vec![false; cur.len()];
-        let (mut e2, mut cnt) = (0f32, 0f32);
-        for (k, &v) in body_verts.iter().enumerate() {
-            if skip_icp(dom_vrm[k]) { continue; }
-            let (p, n) = (cur[v as usize], nrm[v as usize]);
-            let hit = grid.nearest_where(t.skin_pos, p, 4, |q| dot(t.skin_nrm[q as usize], n) > 0.3);
-            if let Some((q, d2)) = hit { if d2.sqrt() < 0.08 { let d = sub(t.skin_pos[q as usize], p); disp[v as usize] = [d[0] * 0.7, d[1] * 0.7, d[2] * 0.7]; fixed[v as usize] = true; e2 += d2; cnt += 1.0; } }
-        }
-        let r = (e2 / cnt.max(1.0)).sqrt(); if it == 0 { rms.0 = r; } rms.1 = r;
-        // Glätten (reliable Vertices: halb eigene Verschiebung, halb Nachbarmittel; sonst Nachbarmittel)
-        for _ in 0..30 {
-            let prev = disp.clone();
-            for &v in body_verts { let v = v as usize; if adj[v].is_empty() { continue; } let mut m = [0f32; 3]; for &j in &adj[v] { for c in 0..3 { m[c] += prev[j as usize][c]; } } let k = adj[v].len() as f32; for c in 0..3 { m[c] /= k; disp[v][c] = if fixed[v] { 0.6 * prev[v][c] + 0.4 * m[c] } else { m[c] }; } }
-        }
-        for &v in body_verts { let v = v as usize; for c in 0..3 { cur[v][c] += disp[v][c]; } }
-    }
-    Ok(Registered { base: cur, paired, icp_rms_before: rms.0, icp_rms_after: rms.1, ms: t0.elapsed().as_secs_f64() * 1e3 })
+    let dom = dominant_names(body_verts, mh_bones, mh_weights);
+    let skip: Vec<bool> = dom.iter().map(|n| skip_icp(n)).collect();
+    let (r0, r1) = refine(&mut cur, body_verts, tris, &skip, t.skin_pos, t.skin_nrm, 10);
+    Ok(Registered { base: cur, paired, icp_rms_before: r0, icp_rms_after: r1, ms: t0.elapsed().as_secs_f64() * 1e3 })
 }
 
 /// Skin-Gewichte für Kleidungs-Vertices: Gewichte des nächsten Hautvertex des Zielmodells.
 pub fn transfer_weights(cloth: &[[f32; 3]], skin_pos: &[[f32; 3]], skin_joints: &[[u16; 4]], skin_weights: &[[f32; 4]], grid: &BodyGrid) -> Vec<([u16; 4], [f32; 4])> {
     cloth.iter().map(|&p| match grid.nearest_where(skin_pos, p, 8, |_| true) { Some((v, _)) => (skin_joints[v as usize], skin_weights[v as usize]), None => ([0; 4], [1.0, 0.0, 0.0, 0.0]) }).collect()
+}
+
+/// Dominanter humanoider Name je Körper-Vertex (über die MH-Gewichte und Bone-Vorfahren), unabhängig vom Zielmodell.
+fn dominant_names(body_verts: &[u32], mh_bones: &[ExBone], mh_weights: &[Vec<(u16, f32)>]) -> Vec<String> {
+    let map = humanoid_map();
+    let name_of: Vec<Option<String>> = mh_bones.iter().map(|b| map.iter().find(|(_, ue)| ue.eq_ignore_ascii_case(&b.name)).map(|(v, _)| v.clone())).collect();
+    body_verts.iter().map(|&v| mh_weights[v as usize].iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).and_then(|(b, _)| { let mut a = *b as usize; loop { if let Some(n) = &name_of[a] { return Some(n.clone()); } a = mh_bones[a].parent?; } }).unwrap_or_else(|| "hips".into())).collect()
+}
+
+/// Nicht-rigide ICP-Verfeinerung der Basis auf die Zielhaut. `skip[k]` = Körper-Vertex k nimmt nicht teil (wird nur geglättet).
+fn refine(cur: &mut Vec<[f32; 3]>, body_verts: &[u32], tris: &[[u32; 3]], skip: &[bool], skin_pos: &[[f32; 3]], skin_nrm: &[[f32; 3]], iters: usize) -> (f32, f32) {
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); cur.len()];
+    for tr in tris { for k in 0..3 { let (a, b) = (tr[k], tr[(k + 1) % 3]); if !adj[a as usize].contains(&b) { adj[a as usize].push(b); } if !adj[b as usize].contains(&a) { adj[b as usize].push(a); } } }
+    let ids: Vec<u32> = (0..skin_pos.len() as u32).collect();
+    let grid = BodyGrid::build(skin_pos, &ids, 0.02);
+    let mut rms = (0f32, 0f32);
+    let mut nrm = Vec::new();
+    for it in 0..iters {
+        crate::eval::normals(cur, tris, &mut nrm);
+        let mut disp = vec![[0f32; 3]; cur.len()];
+        let mut fixed = vec![false; cur.len()];
+        let (mut e2, mut cnt) = (0f32, 0f32);
+        for (k, &v) in body_verts.iter().enumerate() {
+            if skip[k] { continue; }
+            let (p, n) = (cur[v as usize], nrm[v as usize]);
+            let hit = grid.nearest_where(skin_pos, p, 4, |q| dot(skin_nrm[q as usize], n) > 0.3);
+            if let Some((q, d2)) = hit { if d2.sqrt() < 0.08 { let d = sub(skin_pos[q as usize], p); let nq = skin_nrm[q as usize]; let along = dot(d, nq) * 0.8; disp[v as usize] = [nq[0] * along, nq[1] * along, nq[2] * along]; fixed[v as usize] = true; e2 += d2; cnt += 1.0; } }
+        }
+        let r = (e2 / cnt.max(1.0)).sqrt(); if it == 0 { rms.0 = r; } rms.1 = r;
+        // Nicht beteiligte Vertices: Mittel der Nachbarn (Dirichlet auf den beteiligten); beteiligte nur leicht glätten (Detail bleibt)
+        let first = disp.clone();
+        for _ in 0..40 {
+            let prev = disp.clone();
+            for &v in body_verts { let v = v as usize; if fixed[v] || adj[v].is_empty() { continue; } let mut m = [0f32; 3]; for &j in &adj[v] { for c in 0..3 { m[c] += prev[j as usize][c]; } } let k = adj[v].len() as f32; for c in 0..3 { disp[v][c] = m[c] / k; } }
+        }
+        for _ in 0..3 {
+            let prev = disp.clone();
+            for &v in body_verts { let v = v as usize; if !fixed[v] || adj[v].is_empty() { continue; } let mut m = [0f32; 3]; for &j in &adj[v] { for c in 0..3 { m[c] += prev[j as usize][c]; } } let k = adj[v].len() as f32; for c in 0..3 { disp[v][c] = 0.5 * prev[v][c] + 0.5 * m[c] / k; } }
+        }
+        let _ = &first;
+        for &v in body_verts { let v = v as usize; for c in 0..3 { cur[v][c] += disp[v][c]; } }
+    }
+    rms
+}
+
+/// Anpassung ohne Zielskelett (rohe Mesh-Datei): Ähnlichkeitstransformation (Höhe, Mitte) + ICP mit wachsender Reichweite.
+pub fn register_rigless(mh_pos: &[[f32; 3]], body_verts: &[u32], tris: &[[u32; 3]], mh_bones: &[ExBone], mh_weights: &[Vec<(u16, f32)>], skin_pos: &[[f32; 3]], skin_nrm: &[[f32; 3]]) -> Result<Registered, String> {
+    let t0 = std::time::Instant::now();
+    if skin_pos.is_empty() { return Err("keine Hautvertices".into()); }
+    let ext = |p: &mut dyn Iterator<Item = [f32; 3]>| p.fold(([f32::MAX; 3], [f32::MIN; 3]), |a, q| ([a.0[0].min(q[0]), a.0[1].min(q[1]), a.0[2].min(q[2])], [a.1[0].max(q[0]), a.1[1].max(q[1]), a.1[2].max(q[2])]));
+    let (slo, shi) = ext(&mut body_verts.iter().map(|&v| mh_pos[v as usize]));
+    let (tlo, thi) = ext(&mut skin_pos.iter().copied());
+    let sc = (thi[1] - tlo[1]) / (shi[1] - slo[1]).max(1e-3);
+    let (sc_x, tc_x) = ((slo[0] + shi[0]) * 0.5, (tlo[0] + thi[0]) * 0.5);
+    let (sc_z, tc_z) = ((slo[2] + shi[2]) * 0.5, (tlo[2] + thi[2]) * 0.5);
+    let mut cur: Vec<[f32; 3]> = mh_pos.iter().map(|p| [tc_x + (p[0] - sc_x) * sc, tlo[1] + (p[1] - slo[1]) * sc, tc_z + (p[2] - sc_z) * sc]).collect();
+    let dom = dominant_names(body_verts, mh_bones, mh_weights);
+    let skip: Vec<bool> = dom.iter().map(|n| skip_icp(n)).collect();
+    let (r0, r1) = refine(&mut cur, body_verts, tris, &skip, skin_pos, skin_nrm, 32);
+    if std::env::var("HASE_DBG").is_ok() {
+        let ids: Vec<u32> = (0..skin_pos.len() as u32).collect(); let grid = BodyGrid::build(skin_pos, &ids, 0.02);
+        let mut st: std::collections::BTreeMap<String, (f32, f32, f32, u32)> = Default::default();
+        for (k, &v) in body_verts.iter().enumerate() { if let Some((q, d2)) = grid.nearest_where(skin_pos, cur[v as usize], 6, |_| true) { let d = sub(cur[v as usize], skin_pos[q as usize]); let sg = dot(d, skin_nrm[q as usize]); let e = st.entry(dom[k].clone()).or_default(); e.0 += sg; e.1 = e.1.min(sg); e.2 = e.2.max(sg); e.3 += 1; let _ = d2; } }
+        for (n, e) in st { eprintln!("DBG {n}: mean {:.1} mm min {:.1} max {:.1} n={}", e.0 / e.3 as f32 * 1000.0, e.1 * 1000.0, e.2 * 1000.0, e.3); }
+    }
+    Ok(Registered { base: cur, paired: 0, icp_rms_before: r0, icp_rms_after: r1, ms: t0.elapsed().as_secs_f64() * 1e3 })
 }

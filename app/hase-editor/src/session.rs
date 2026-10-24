@@ -990,7 +990,9 @@ mod pose_perf {
 impl Session {
     pub fn open_vrm(&mut self, path: &Path) -> Result<String, String> {
         use hase_core::pose::PoseRig;
-        let model = hase_core::vrm_model::load(path)?;
+        let mut model = hase_core::vrm_model::load(path)?;
+        let mut rigless_info = String::new();
+        if model.rigless { rigless_info = self.rig_rigless(&mut model)?; }
         if model.bones.is_empty() { return Err("Das Modell hat kein Skelett.".into()); }
         let min_y = model.parts.iter().flat_map(|p| p.pos.iter().map(|v| v[1])).fold(f32::MAX, f32::min);
         let floor = -min_y;
@@ -1008,7 +1010,44 @@ impl Session {
         for rt in self.proxies.values_mut() { rt.created = false; }
         self.proxy_skin.clear(); self.assets_dirty = true;
         self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new() });
+        let info = if rigless_info.is_empty() { info } else { format!("{info} · {rigless_info}") };
         Ok(info)
+    }
+
+    /// Körper ohne Skelett: MakeHuman-Basis auf das Mesh abbilden, Skelett und Gewichte aus der abgebildeten Basis übernehmen.
+    fn rig_rigless(&mut self, model: &mut hase_core::vrm_model::VrmModel) -> Result<String, String> {
+        use hase_core::export::{humanoid_map, pack_weights, ExBone};
+        if self.dirty { self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired); self.eval.apply(&self.body, &self.desired); self.dirty = false; }
+        if self.rig.is_none() { self.rig = Some(hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj)?); }
+        if self.body_uniq.is_empty() { let mut uniq: Vec<u32> = self.body.topo.vmap.clone(); uniq.sort_unstable(); uniq.dedup(); self.body_uniq = uniq; }
+        let floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
+        let min_y = model.parts.iter().flat_map(|p| p.pos.iter().map(|v| v[1])).fold(f32::MAX, f32::min);
+        let floor = -min_y;
+        let (mut sp, mut sn) = (Vec::new(), Vec::new());
+        for p in model.parts.iter() { let (lo, hi) = p.pos.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q[1]), a.1.max(q[1]))); if hi - lo >= 0.5 * model.height { for k in 0..p.pos.len() { sp.push([p.pos[k][0], p.pos[k][1] + floor, p.pos[k][2]]); sn.push(p.nrm[k]); } } }
+        if sp.is_empty() { return Err("Kein Körperteil erkennbar (Teil mit mindestens halber Modellhöhe).".into()); }
+        let rig = self.rig.as_ref().unwrap();
+        let mh_bones = rig.bones(&self.eval.pos, floor_off);
+        let mh_pos: Vec<[f32; 3]> = self.eval.pos.iter().map(|p| [p[0], p[1] + floor_off, p[2]]).collect();
+        let reg = hase_core::dress::register_rigless(&mh_pos, &self.body_uniq, &self.body.topo.base_tris, &mh_bones, &rig.weights, &sp, &sn)?;
+        let fb = rig.bones(&reg.base, 0.0);
+        let bones: Vec<ExBone> = fb.iter().map(|b| ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] - floor, b.pos[2]] }).collect();
+        let mut humanoid = std::collections::BTreeMap::new();
+        for (vrm, ue) in humanoid_map() { if let Some(i) = bones.iter().position(|b| b.name.eq_ignore_ascii_case(&ue)) { humanoid.insert(vrm, i); } }
+        let pelvis = bones.iter().position(|b| b.name == "pelvis").unwrap_or(0) as u16;
+        let grid = hase_core::fit::BodyGrid::build(&reg.base, &self.body_uniq, 0.03);
+        for p in model.parts.iter_mut() {
+            for k in 0..p.pos.len() {
+                let q = [p.pos[k][0], p.pos[k][1] + floor, p.pos[k][2]];
+                let w = grid.nearest_where(&reg.base, q, 6, |_| true).map(|(v, _)| rig.weights[v as usize].clone()).unwrap_or_default();
+                let (j, x) = pack_weights(&w, pelvis); p.joints[k] = j; p.weights[k] = x;
+            }
+        }
+        let n = bones.len();
+        model.vrm_names = vec![None; n]; for (k, &b) in &humanoid { model.vrm_names[b] = Some(k.clone()); }
+        model.rest_rot = vec![[0.0, 0.0, 0.0, 1.0]; n];
+        model.bones = bones; model.humanoid = humanoid; model.identity_rest = true; model.rigless = false;
+        Ok(format!("Skelett aus abgebildeter MakeHuman-Basis abgeleitet (Abweichung {:.1} → {:.1} mm, {:.0} ms)", reg.icp_rms_before * 1000.0, reg.icp_rms_after * 1000.0, reg.ms))
     }
 
     pub fn close_vrm(&mut self) {
@@ -1103,6 +1142,7 @@ impl Session {
                     rt.proxy.fit(&d.base, &mut rt.fit);
                     hase_core::fit::push_out(&mut rt.fit, &rt.proxy.adj, &rt.proxy.topo.base_tris, &d.grid, &d.skin_pos, &d.skin_nrm, &d.skin_ids, 0.004, false);
                     normals(&rt.fit, &rt.proxy.topo.base_tris, &mut rt.nrm);
+                    if std::env::var("HASE_DBG").is_ok() { let (mut inside, mut tot, mut worst) = (0, 0, 0f32); for p in &rt.fit { if let Some((q, d2)) = d.grid.nearest(&d.skin_pos, *p) { if d2 < 0.05 * 0.05 { tot += 1; let n = d.skin_nrm[q as usize]; let sg = (p[0] - d.skin_pos[q as usize][0]) * n[0] + (p[1] - d.skin_pos[q as usize][1]) * n[1] + (p[2] - d.skin_pos[q as usize][2]) * n[2]; if sg < 0.0 { inside += 1; worst = worst.min(sg); } } } } eprintln!("DBGCLOTH {id}: {inside}/{tot} Vertices unter Hautnähe innen, schlimmster {:.1} mm", worst * 1000.0); }
                     self.proxy_skin.insert(id.clone(), hase_core::dress::transfer_weights(&rt.fit, &d.skin_pos, &d.skin_joints, &d.skin_weights, &d.grid));
                 }
                 let (pos, nrm) = if let Some(m) = &mats { let sk = &self.proxy_skin[&id]; let pp: Vec<[f32; 3]> = rt.fit.iter().enumerate().map(|(k, q)| skin_point(m, sk[k].0, sk[k].1, *q)).collect(); let mut nn = Vec::new(); normals(&pp, &rt.proxy.topo.base_tris, &mut nn); (pp, nn) } else { (rt.fit.clone(), rt.nrm.clone()) };

@@ -53,3 +53,8 @@ Ziel: nacktes importiertes VRM (z. B. VRoid-Basis) mit MakeHuman-Kleidung anzieh
 3. **Hautteile:** Standard = Teile mit ≥ 50 % Körperhöhe; in der Teileliste (Modell-Panel) änderbar, Teile lassen sich ausblenden.
 4. **Export:** Originalteile, Skelett (Rest-Rotationen in die Welt eingebacken → normalisiertes VRM-1.0-Rig), Humanoid, Ausdrücke bleiben; Kleidung kommt dazu. Verlust: Spring Bones und MToon-Einstellungen des Originals.
 5. **Grenzen:** Kopf-/Hand-/Fußkleidung (Hüte, Handschuhe) wird nicht angepasst; im Schritt ohne Skelett (rohe GLB) ist die Anprobe noch nicht möglich; dünne Spalte (Schritt) lassen die aufgemalte Unterwäsche durchscheinen.
+
+### Körper ohne Skelett (rohe GLB), Flächenprüfung (2026-10-24)
+- `register_rigless`: Ähnlichkeitstransformation (Höhe/Mitte) + Punkt-zu-Fläche-ICP (32 Iterationen, ~2,7 s einmalig beim Öffnen). Skelett = Bones der abgebildeten MakeHuman-Basis, Gewichte = nächster Basis-Vertex → das Modell ist danach posier- und exportierbar. Annahme: aufrechte Pose mit nach unten gestreckten Armen (T-Pose-Rohmeshes ohne Skelett: nicht getestet). Sketchfab-Knotenmatrizen werden angewendet, Zentimeter → Meter.
+- Messung `realistic_female_body.glb`: Rumpf/Beine ±1 cm, Hände/Finger nicht angepasst (ausgenommen von ICP).
+- `push_out`: zusätzliche Flächenprüfung (Dreiecksmitte/Kantenmitten), weil grobe Kleidungsdreiecke zwischen den Vertices durch den Körper stoßen (Löcher). Bekannt: an sehr grob modellierten Körpern (VRoid-Brust) bleibt die Kleidung am Ausschnitt/Saum leicht wellig.

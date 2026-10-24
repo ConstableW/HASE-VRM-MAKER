@@ -112,7 +112,7 @@ pub fn push_out(cloth: &mut [[f32; 3]], adj: &[Vec<u32>], tris: &[[u32; 3]], gri
     let n = cloth.len();
     let mut push = vec![0f32; n]; let mut dir = vec![[0f32; 3]; n];
     let mut cn = Vec::new(); crate::eval::normals(cloth, tris, &mut cn); cn.resize(n, [0.0, 1.0, 0.0]);
-    let reach2 = 0.045f32 * 0.045;
+    let reach2 = 0.07f32 * 0.07;
     for i in 0..n {
         let Some((b, d2)) = grid.nearest(body_pos, cloth[i]) else { continue };
         if d2 > reach2 { continue; }
@@ -142,5 +142,30 @@ pub fn push_out(cloth: &mut [[f32; 3]], adj: &[Vec<u32>], tris: &[[u32; 3]], gri
     }
     let mut changed = 0;
     for i in 0..n { if push[i] > 1e-6 && dir[i] != [0.0; 3] { for k in 0..3 { cloth[i][k] += dir[i][k] * push[i]; } changed += 1; } }
+    // Flächenprüfung: grobe Kleidungsdreiecke können zwischen den Vertices vom Körper durchstoßen werden (Mittelpunkt und Kantenmitten prüfen)
+    for _ in 0..8 {
+        let mut need = vec![0f32; n]; let mut nd = vec![[0f32; 3]; n];
+        for t in tris {
+            let (a, b, c) = (cloth[t[0] as usize], cloth[t[1] as usize], cloth[t[2] as usize]);
+            let mid = |p: [f32; 3], q: [f32; 3]| [(p[0] + q[0]) * 0.5, (p[1] + q[1]) * 0.5, (p[2] + q[2]) * 0.5];
+            let (e1, e2) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+            let tn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+            let tl = (tn[0] * tn[0] + tn[1] * tn[1] + tn[2] * tn[2]).sqrt().max(1e-12);
+            let pts = [[(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0], mid(a, b), mid(b, c), mid(c, a)];
+            for p in pts {
+                let Some((bi, d2)) = grid.nearest(body_pos, p) else { continue };
+                if d2 > reach2 { continue; }
+                let (bp, bn) = (body_pos[bi as usize], body_nrm[bi as usize]);
+                let d = (p[0] - bp[0]) * bn[0] + (p[1] - bp[1]) * bn[1] + (p[2] - bp[2]) * bn[2];
+                if d < gap && (tn[0] * bn[0] + tn[1] * bn[1] + tn[2] * bn[2]).abs() / tl > 0.5 { let nn = (gap - d).min(0.015); for &v in t { if nn > need[v as usize] { need[v as usize] = nn; nd[v as usize] = bn; } } }
+            }
+        }
+        // Spitzen vermeiden: Bedarf zur Hälfte mit dem Nachbarmittel mischen (Richtung vom Nachbarn übernehmen, falls selbst keine)
+        let raw = need.clone();
+        for i in 0..n { if adj[i].is_empty() { continue; } let m: f32 = adj[i].iter().map(|&j| raw[j as usize]).sum::<f32>() / adj[i].len() as f32; need[i] = 0.5 * raw[i] + 0.5 * m; if nd[i] == [0.0; 3] { if let Some(&j) = adj[i].iter().find(|&&j| nd[j as usize] != [0.0; 3]) { nd[i] = nd[j as usize]; } } }
+        let mut any = false;
+        for i in 0..n { if need[i] > 1e-6 && nd[i] != [0.0; 3] { any = true; for k in 0..3 { cloth[i][k] += nd[i][k] * need[i]; } } }
+        if !any { break; }
+    }
     changed
 }

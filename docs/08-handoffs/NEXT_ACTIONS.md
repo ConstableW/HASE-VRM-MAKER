@@ -34,3 +34,4 @@
 
 27. Anprobe für Körper OHNE Skelett (rohe GLB/OBJ, z. B. `realistic_female_body.glb`): MH-Basis per ICP auf das Mesh, Skelett + Gewichte aus der abgebildeten Basis ableiten (Sketchfab-Knotenskalierung beachten).
 28. Anprobe verfeinern: Schritt/Achsel-Lücken, Kopf-/Hand-/Fußkleidung, Haut-Teile-Auswahl testen unter Windows.
+29. Anprobe: Wellen am Ausschnitt/Saum bei grob modellierten Körpern glätten (Kleidungs-Relaxation statt reinem Herausschieben); Schritt-Lücken; Handschuhe/Schuhe/Hüte.
