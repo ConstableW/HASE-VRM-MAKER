@@ -1,5 +1,6 @@
 mod app;
 mod camera;
+mod export_ui;
 mod offscreen;
 mod regions;
 mod studios;
@@ -21,6 +22,10 @@ fn main() {
         eprintln!("Repository-Wurzel nicht gefunden (Ordner content/testcandidate). Bitte die exe innerhalb des Repository-Klons starten.");
         std::process::exit(2);
     };
+    if let Some(i) = args.iter().position(|a| a == "--export") {
+        let out = args.get(i + 1).cloned().unwrap_or_else(|| "export.vrm".into());
+        std::process::exit(offscreen::run_export(&repo, &out, &args));
+    }
     if let Some(i) = args.iter().position(|a| a == "--screenshot") {
         let out = args.get(i + 1).cloned().unwrap_or_else(|| "screenshot.png".into());
         std::process::exit(offscreen::run(&repo, &out, &args));

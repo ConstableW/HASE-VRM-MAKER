@@ -66,6 +66,8 @@ pub struct App {
     pub(crate) eye_side: usize,
     pub(crate) hair_tab: usize,
     pub(crate) lib: crate::library_ui::LibState,
+    pub(crate) export: crate::export_ui::ExportState,
+    pub(crate) ctx: egui::Context,
     pub(crate) tool: Tool,
     pub(crate) decal_shape: u8,
     pub(crate) decal_sel: Option<usize>,
@@ -99,7 +101,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), tool: Tool::Orbit, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -389,6 +391,8 @@ impl eframe::App for App {
         self.frame_ms = dt; self.frame_avg = if self.frame_avg == 0.0 { dt } else { self.frame_avg * 0.95 + dt * 0.05 };
         self.poll(&ctx);
         self.thumbs.poll(&ctx);
+        self.export_poll();
+        if let Some(s) = self.session.as_mut() { if s.play.playing { s.tick(ctx.input(|i| i.stable_dt).min(0.1)); ctx.request_repaint(); } }
         if self.session.is_none() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) { if let Some(s) = self.session.as_mut() { s.undo(); } }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) { if let Some(s) = self.session.as_mut() { s.redo(); } }
@@ -525,7 +529,7 @@ impl App {
                 for (i, l) in CLOTHES_KINDS.iter().enumerate() { if ui.selectable_label(self.sub == i, *l).clicked() { self.sub = i; } }
             }
             Workspace::Studio => self.studio_library(ui),
-            Workspace::Finalisieren => { ui.strong("Finalisieren"); ui.separator(); ui.label("Posen · Animation"); ui.label("Vorlagen · Varianten"); ui.label("Export"); }
+            Workspace::Finalisieren => { ui.strong("Finalisieren"); ui.separator(); for (i, l) in ["Posen & Animation", "Export (VRM 1.0)"].iter().enumerate() { if ui.selectable_label(self.export.sub == i, *l).clicked() { self.export.sub = i; } } if ui.button("Vorlagen & Varianten …").on_hover_text("Öffnet die Charakterbibliothek").clicked() { self.lib.open = true; } }
         }
         ui.separator();
         if let Some(c) = self.saved_cam { if ui.button("Eigene Kamera").on_hover_text("Zur manuell eingestellten Ansicht zurück").clicked() { self.camera = c; self.saved_cam = None; } }
@@ -643,8 +647,7 @@ impl App {
                 self.assets_panel(ui, ctx, &[Category::Clothes], Some(self.sub.min(4)));
             }
             Main::Animation => {
-                ui.heading("Finalisieren"); ui.separator();
-                ui.weak("Noch nicht implementiert: Animations-/Posenvorschau (VRMA), Charaktervorlagen-Bibliothek mit Varianten, VRM-Export (auch unbekleideter Basischarakter). Speichern/Laden: Menü Datei.");
+                if self.export.sub == 0 { self.anim_panel(ui); } else { self.export_panel(ui); }
             }
         }
     }

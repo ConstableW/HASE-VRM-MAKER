@@ -18,6 +18,7 @@ pub fn run(repo: &Path, out: &str, args: &[String]) -> i32 {
         for kv in sets.split(',') { if let Some((k, v)) = kv.split_once('=') { match (s.params.canonical(k), v.parse::<f32>()) { (Some(i), Ok(f)) => s.set_param(i, f), _ => eprintln!("Parameter unbekannt/ungültig: {kv}") } } }
     }
     if let Some(js) = arg(args, "--style") { match serde_json::from_str::<serde_json::Value>(js) { Ok(v) => { let st = hase_core::state::Style::from_json(&v); s.edit_style(0, |x| *x = st); } Err(e) => eprintln!("--style: {e}") } }
+    if let Some(p) = arg(args, "--pose") { match s.load_clip(std::path::Path::new(p)) { Ok(()) => { s.play.playing = false; s.play.t = arg(args, "--pose-t").and_then(|x| x.parse().ok()).unwrap_or(0.5); } Err(e) => eprintln!("--pose: {e}") } }
     let mut cam = Camera::default();
     if let Some(c) = arg(args, "--cam") { let v: Vec<f32> = c.split(',').filter_map(|x| x.parse().ok()).collect(); if v.len() == 4 { cam = Camera { yaw: v[0], pitch: 0.0, dist: v[1], target: [0.0, v[2] * s.body_height() / 1.75, 0.0], fov: 0.62 }; let _ = v[3]; } }
     if let Some(v) = arg(args, "--view") { if let Some((_, c)) = PRESETS.iter().find(|(n, _)| n.to_lowercase().starts_with(&v.to_lowercase())) { cam = *c; } }
@@ -80,4 +81,24 @@ impl Offscreen {
         for px in out.chunks_exact_mut(4) { px[3] = 255; }
         Ok(out)
     }
+}
+
+/// `--export datei.vrm [--outfit] [--assets …] [--set …] [--style …]`: Export ohne Fenster (Tests/CI).
+pub fn run_export(repo: &Path, out: &str, args: &[String]) -> i32 {
+    let mut s = match Session::load(repo) { Ok(s) => s, Err(e) => { eprintln!("{e}"); return 1; } };
+    let assets = arg(args, "--assets").unwrap_or("eyebrows/mindfront_eyebrows_01,eyelashes/mindfront_eyelashes_01,hair/short02");
+    let list: Vec<&str> = assets.split(',').filter(|x| !x.is_empty()).collect();
+    s.default_assets_blocking(&list);
+    if let Some(sets) = arg(args, "--set") { for kv in sets.split(',') { if let Some((k, v)) = kv.split_once('=') { if let (Some(i), Ok(f)) = (s.params.canonical(k), v.parse::<f32>()) { s.set_param(i, f); } } } }
+    if let Some(js) = arg(args, "--style") { if let Ok(v) = serde_json::from_str::<serde_json::Value>(js) { let st = hase_core::state::Style::from_json(&v); s.edit_style(0, |x| *x = st); } }
+    let _ = s.refresh();
+    let o = crate::session::ExportOptions { with_outfit: args.iter().any(|a| a == "--outfit"), expressions: true, name: "HASE Export-Test".into(), author: "HASE VRM MAKER".into(), license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: "personalNonProfit".into(), redistribution: true };
+    let t0 = std::time::Instant::now();
+    let (doc, report) = match s.build_export(&o) { Ok(r) => r, Err(e) => { eprintln!("Export: {e}"); return 1; } };
+    let t1 = t0.elapsed();
+    let glb = match hase_core::export::write_glb(&doc) { Ok(g) => g, Err(e) => { eprintln!("Export: {e}"); return 1; } };
+    if let Err(e) = std::fs::write(out, &glb) { eprintln!("{e}"); return 1; }
+    for r in &report { eprintln!("{r}"); }
+    eprintln!("VRM {out}: {:.1} MB, Zusammenstellung {:.0} ms, Schreiben {:.0} ms", glb.len() as f64 / 1048576.0, t1.as_secs_f64() * 1e3, (t0.elapsed() - t1).as_secs_f64() * 1e3);
+    0
 }

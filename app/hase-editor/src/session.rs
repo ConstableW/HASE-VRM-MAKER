@@ -14,6 +14,9 @@ use std::time::Instant;
 
 pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::packages::BodyPackage), MissingBody(String), Invalid }
 
+#[derive(Default)]
+pub struct Playback { pub clip: Option<hase_core::pose::Clip>, pub t: f32, pub playing: bool, pub looping: bool, pub speed: f32 }
+
 pub struct LoadedProxy { pub proxy: Proxy, pub texture: Option<Arc<ImageRgba>> }
 
 struct ProxyRt { proxy: Proxy, texture: Option<Arc<ImageRgba>>, fit: Vec<[f32; 3]>, nrm: Vec<[f32; 3]>, created: bool, yrange: (f32, f32) }
@@ -44,6 +47,12 @@ pub struct Session {
     assets_dirty: bool,
     style_dirty: bool,
     skin_dirty: bool,
+    pub play: Playback,
+    rig: Option<hase_core::export::RigData>,
+    pose_rig: Option<hase_core::pose::PoseRig>,
+    proxy_skin: HashMap<String, Vec<([u16; 4], [f32; 4])>>,
+    pose_active: bool,
+    resend_body: bool,
     masks: Option<crate::skin::Masks>,
     pub generic: bool,
     eyes_loaded: String,
@@ -145,7 +154,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -189,6 +198,7 @@ impl Session {
     pub fn remove_asset(&mut self, id: &str) {
         if let Some(i) = self.state.assets.iter().position(|a| a.id == id) { self.state.assets.remove(i); }
         if self.proxies.remove(id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); }
+        self.proxy_skin.remove(id);
     }
 
     pub fn toggle_asset_off(&mut self, id: &str) { let before = self.state.clone(); self.remove_asset(id); self.history.record(&before, None); }
@@ -351,12 +361,13 @@ impl Session {
         if self.hide_body && self.body_created { self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
         if self.dirty || self.assets_dirty || need_body {
             let t0 = Instant::now();
-            let mut morph_changed = need_body;
+            let mut morph_changed = need_body || std::mem::take(&mut self.resend_body);
             if self.dirty {
                 self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
                 if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
             }
             if morph_changed || self.assets_dirty {
+                if morph_changed { self.pose_rig = None; }
                 if morph_changed {
                     self.floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
                     normals(&self.eval.pos, &self.body.topo.base_tris, &mut self.body_nrm);
@@ -412,6 +423,7 @@ impl Session {
                 else if id.starts_with("hair/") { self.pending.push(MeshUpdate::Material { id: format!("proxy:{id}"), tint: [1.0; 3], mat: hair_mat(&self.state.style.hair, rt.yrange) }); }
             }
         }
+        if self.play.clip.is_some() { self.emit_pose(); }
         std::mem::take(&mut self.pending)
     }
 
@@ -645,5 +657,313 @@ mod skin_tests {
         s.edit_style(3, |st| { st.skin.lips.amount = 0.5; st.skin.freckles.amount = 0.3; });
         let j = s.state.style.to_json();
         assert_eq!(hase_core::state::Style::from_json(&j), s.state.style);
+    }
+}
+
+
+// ---------------------------------------------------------------------------------------------------------
+// VRM-Export: Zusammenstellung des Exportdokuments aus dem aktuellen Zustand (schnell, im UI-Thread); Schreiben im Hintergrund.
+// ---------------------------------------------------------------------------------------------------------
+pub struct ExportOptions { pub with_outfit: bool, pub expressions: bool, pub name: String, pub author: String, pub license_url: String, pub commercial: String, pub redistribution: bool }
+
+const EXPR_STATES: &[(&str, &[(&str, f32)])] = &[
+    ("BlinkL", &[("eyes/l-eye-height1-decr", 2.0), ("eyes/l-eye-height2-decr", 2.0), ("eyes/l-eye-height3-decr", 2.0)]),
+    ("BlinkR", &[("eyes/r-eye-height1-decr", 2.0), ("eyes/r-eye-height2-decr", 2.0), ("eyes/r-eye-height3-decr", 2.0)]),
+    ("JawOpen", &[("chin/chin-jaw-drop-incr", 2.0), ("mouth/mouth-lowerlip-middle-down", 2.0), ("mouth/mouth-upperlip-middle-up", 1.0)]),
+    ("MouthWide", &[("mouth/mouth-scale-horiz-incr", 1.0)]),
+    ("MouthNarrow", &[("mouth/mouth-scale-horiz-decr", 1.0)]),
+    ("SmileUp", &[("mouth/mouth-angles-up", 1.0)]),
+    ("FrownDown", &[("mouth/mouth-angles-down", 1.0)]),
+];
+const EXPRESSIONS: &[(&str, &[(&str, f32)])] = &[
+    ("blink", &[("BlinkL", 1.0), ("BlinkR", 1.0)]), ("blinkLeft", &[("BlinkL", 1.0)]), ("blinkRight", &[("BlinkR", 1.0)]),
+    ("aa", &[("JawOpen", 1.0)]), ("oh", &[("JawOpen", 0.6), ("MouthNarrow", 0.8)]), ("ou", &[("MouthNarrow", 1.0), ("JawOpen", 0.2)]),
+    ("ee", &[("MouthWide", 0.8), ("JawOpen", 0.2)]), ("ih", &[("MouthWide", 0.5), ("JawOpen", 0.3)]),
+    ("happy", &[("SmileUp", 1.0)]), ("relaxed", &[("SmileUp", 0.3)]), ("sad", &[("FrownDown", 1.0)]), ("surprised", &[("JawOpen", 0.5)]),
+];
+
+impl Session {
+    pub fn build_export(&mut self, o: &ExportOptions) -> Result<(hase_core::export::ExDoc, Vec<String>), String> {
+        use hase_core::export::*;
+        if self.generic { return Err("Export für importierte Körperbasen ist noch nicht unterstützt (Rig-/Gewichtsübernahme aus dem Import fehlt).".into()); }
+        let floor = self.floor_off;
+        let mut report: Vec<String> = Vec::new();
+        let (bones, vert_w) = load_rig(&self.packages.body.data_root, &self.body.obj, &self.eval.pos, floor)?;
+        let pelvis = bones.iter().position(|b| b.name == "pelvis").unwrap_or(0) as u16;
+        let mut nrm_body = Vec::new();
+        normals(&self.eval.pos, &self.body.topo.base_tris, &mut nrm_body);
+        let (mut meshes, mut materials, mut images): (Vec<ExMesh>, Vec<ExMaterial>, Vec<ExImage>) = (vec![], vec![], vec![]);
+
+        // Von Kleidung verdeckte Körper-Vertices (nur mit Outfit)
+        let topo = &self.body.topo;
+        let mut covered = vec![false; self.eval.pos.len()];
+        if o.with_outfit {
+            for (id, rt) in &self.proxies {
+                if !id.starts_with("clothes/") || !rt.created { continue; }
+                let cn = &rt.nrm;
+                let uniq: Vec<u32> = { let mut v: Vec<u32> = topo.vmap.clone(); v.sort_unstable(); v.dedup(); v };
+                for &bv in &uniq {
+                    let p = self.eval.pos[bv as usize];
+                    let (mut best, mut bj) = (f32::MAX, 0usize);
+                    for (j, c) in rt.fit.iter().enumerate() { let d = (c[0] - p[0]).powi(2) + (c[1] - p[1]).powi(2) + (c[2] - p[2]).powi(2); if d < best { best = d; bj = j; } }
+                    let c = rt.fit[bj]; let n = cn.get(bj).copied().unwrap_or([0.0, 1.0, 0.0]);
+                    let signed = (p[0] - c[0]) * n[0] + (p[1] - c[1]) * n[1] + (p[2] - c[2]) * n[2];
+                    if best.sqrt() < 0.025 && signed < 0.003 { covered[bv as usize] = true; }
+                }
+            }
+        }
+        // Körper-Mesh (Hilfsgeometrie ist nicht Teil von topo; verdeckte Flächen entfernen, Vertices kompaktieren)
+        let keep_tri: Vec<bool> = topo.indices.chunks_exact(3).map(|t| !t.iter().all(|&r| covered[topo.vmap[r as usize] as usize])).collect();
+        let mut remap = vec![u32::MAX; topo.vmap.len()]; let mut kept: Vec<u32> = Vec::new();
+        let mut idx = Vec::new();
+        for (ti, t) in topo.indices.chunks_exact(3).enumerate() { if !keep_tri[ti] { continue; } for &r in t { if remap[r as usize] == u32::MAX { remap[r as usize] = kept.len() as u32; kept.push(r); } idx.push(remap[r as usize]); } }
+        let removed = keep_tri.iter().filter(|k| !**k).count();
+        let mk_pos = |pos: &[[f32; 3]]| -> Vec<[f32; 3]> { kept.iter().map(|&r| { let p = pos[topo.vmap[r as usize] as usize]; [p[0], p[1] + floor, p[2]] }).collect() };
+        let body_pos = mk_pos(&self.eval.pos);
+        let (mut jo, mut we) = (Vec::new(), Vec::new());
+        for &r in &kept { let (j, w) = pack_weights(&vert_w[topo.vmap[r as usize] as usize], pelvis); jo.push(j); we.push(w); }
+        // Hauttextur
+        let skin_img: Option<ImageRgba2> = self.skin_tex.clone().map(|base| {
+            if self.state.style.skin.has_details() {
+                if self.masks.is_none() { self.masks = Some(crate::skin::build_masks(&self.body)); }
+                let c = crate::skin::compose(&base, self.masks.as_ref().unwrap(), &self.state.style.skin);
+                ImageRgba2 { w: c.w, h: c.h, rgba: c.levels[0].clone() }
+            } else { ImageRgba2 { w: base.w, h: base.h, rgba: base.levels[0].clone() } }
+        });
+        let skin_mat = { let im = skin_img.map(|i| { images.push(ExImage { name: "Skin".into(), w: i.w, h: i.h, rgba: i.rgba }); images.len() - 1 }); materials.push(ExMaterial { name: "Skin".into(), color: [1.0, 0.97, 0.95, 1.0], image: im, mask: false }); materials.len() - 1 };
+        let body_i = meshes.len();
+        meshes.push(ExMesh { name: "Body".into(), nrm: kept.iter().map(|&r| nrm_body[topo.vmap[r as usize] as usize]).collect(), uv: kept.iter().map(|&r| topo.uv[r as usize]).collect(), pos: body_pos, idx, joints: jo, weights: we, material: skin_mat, targets: vec![] });
+        report.push(format!("Körper: {} Vertices, {} Dreiecke{}", meshes[0].pos.len(), meshes[0].idx.len() / 3, if removed > 0 { format!(" ({removed} von Kleidung verdeckte Flächen entfernt)") } else { String::new() }));
+
+        // Proxys
+        let mut ids: Vec<&String> = self.proxies.keys().collect(); ids.sort();
+        let mut proxy_mesh: Vec<(usize, String)> = Vec::new(); // (Mesh-Index, Proxy-ID) für Expressions
+        for id in ids {
+            let rt = &self.proxies[id];
+            if !rt.created { continue; }
+            let clothes = id.starts_with("clothes/");
+            if clothes && !o.with_outfit { continue; }
+            let name = if id == EYES_ID { "Eyes".to_string() } else { let (cat, n) = id.split_once('/').unwrap_or(("", id)); format!("{}{}", match cat { "hair" => "Hair_", "eyebrows" => "Eyebrows_", "eyelashes" => "Eyelashes_", "clothes" => "Clothes_", _ => "" }, n) };
+            let t = &rt.proxy.topo;
+            let mut obj_w: HashMap<u32, Vec<(u16, f32)>> = HashMap::new();
+            let mut wv = |k: usize| -> Vec<(u16, f32)> {
+                let mut acc: HashMap<u16, f32> = HashMap::new();
+                for (vi, w) in [(rt.proxy.ia[k], rt.proxy.w[k][0]), (rt.proxy.ib[k], rt.proxy.w[k][1]), (rt.proxy.ic[k], rt.proxy.w[k][2])] { for (b, bw) in &vert_w[vi as usize] { *acc.entry(*b).or_default() += w * bw; } }
+                let mut v: Vec<(u16, f32)> = acc.into_iter().collect(); v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()); v.truncate(4);
+                let tot: f32 = v.iter().map(|x| x.1).sum(); if tot > 0.0 { for x in v.iter_mut() { x.1 /= tot; } } v
+            };
+            let (mut jo, mut we) = (Vec::new(), Vec::new());
+            for &ov in &t.vmap { let w = obj_w.entry(ov).or_insert_with(|| wv(ov as usize)).clone(); let (j, x) = pack_weights(&w, pelvis); jo.push(j); we.push(x); }
+            let pos: Vec<[f32; 3]> = t.vmap.iter().map(|&v| { let p = rt.fit[v as usize]; [p[0], p[1] + floor, p[2]] }).collect();
+            let nrm: Vec<[f32; 3]> = t.vmap.iter().map(|&v| rt.nrm.get(v as usize).copied().unwrap_or([0.0, 1.0, 0.0])).collect();
+            // Material/Textur
+            let tint = self.state.assets.iter().find(|a| a.id == *id).map(|a| a.tint).unwrap_or([1.0; 3]);
+            let mut color = [tint[0], tint[1], tint[2], 1.0];
+            let tex = rt.texture.clone();
+            let img_idx = if id == EYES_ID {
+                tex.map(|im| {
+                    // linkes Auge = Welt-x > 0: Mittelwert der UVs der Vertices mit x > 0 bestimmt die Textur-Insel
+                    let (mut su, mut sv, mut n) = (0f32, 0f32, 0f32);
+                    for (r, &ov) in t.vmap.iter().enumerate() { if rt.fit[ov as usize][0] > 0.0 { su += t.uv[r][0]; sv += t.uv[r][1]; n += 1.0; } }
+                    let (u, v) = (su / n.max(1.0), sv / n.max(1.0));
+                    let first = ((u - 0.705).powi(2) + (v - 0.296).powi(2)) < ((u - 0.290).powi(2) + (v - 0.710).powi(2));
+                    let baked = hase_core::export::bake_eye(&im.levels[0], im.w, im.h, &self.state.style.eyes, first);
+                    images.push(ExImage { name: "Eyes".into(), w: im.w, h: im.h, rgba: baked }); images.len() - 1
+                })
+            } else if id.starts_with("hair/") {
+                let h = &self.state.style.hair;
+                color = [(h.root[0] + h.tip[0]) * 0.5, (h.root[1] + h.tip[1]) * 0.5, (h.root[2] + h.tip[2]) * 0.5, 1.0];
+                tex.map(|im| { images.push(ExImage { name: name.clone(), w: im.w, h: im.h, rgba: im.levels[0].clone() }); images.len() - 1 })
+            } else { tex.map(|im| { images.push(ExImage { name: name.clone(), w: im.w, h: im.h, rgba: im.levels[0].clone() }); images.len() - 1 }) };
+            materials.push(ExMaterial { name: name.clone(), color, image: img_idx, mask: rt.proxy.alpha_mask });
+            meshes.push(ExMesh { name: name.clone(), pos, nrm, uv: t.uv.clone(), idx: t.indices.clone(), joints: jo, weights: we, material: materials.len() - 1, targets: vec![] });
+            if id.starts_with("eyebrows/") || id.starts_with("eyelashes/") { proxy_mesh.push((meshes.len() - 1, id.clone())); }
+            report.push(format!("{name}: {} Vertices", meshes.last().unwrap().pos.len()));
+        }
+
+        // Expressions (MakeHuman-Targets als Morph-Targets auf Körper, Brauen, Wimpern)
+        let mut expressions = Vec::new();
+        if o.expressions {
+            let m = &self.body.morphs;
+            let mut rest_fit: HashMap<usize, Vec<[f32; 3]>> = HashMap::new();
+            let mut state_names = Vec::new();
+            for (st, parts) in EXPR_STATES {
+                let mut p = self.eval.pos.clone();
+                let mut ok = true;
+                for (tn, w) in *parts { match m.index_of(tn) { Some(t) => { let (a, b) = (m.t_off[t] as usize, m.t_off[t + 1] as usize); for k in a..b { let v = m.t_idx[k] as usize; let d = m.t_delta[k]; for c in 0..3 { p[v][c] += w * d[c] * hase_core::body::SCALE; } } } None => ok = false } }
+                if !ok { continue; }
+                state_names.push(st.to_string());
+                // Körper
+                let dpos: Vec<[f32; 3]> = kept.iter().map(|&r| { let ov = topo.vmap[r as usize] as usize; [p[ov][0] - self.eval.pos[ov][0], p[ov][1] - self.eval.pos[ov][1], p[ov][2] - self.eval.pos[ov][2]] }).collect();
+                meshes[body_i].targets.push((st.to_string(), dpos));
+                for (mi, id) in &proxy_mesh {
+                    let rt = &self.proxies[id];
+                    let mut f1 = Vec::new(); rt.proxy.fit(&p, &mut f1);
+                    let r0 = rest_fit.entry(*mi).or_insert_with(|| rt.fit.clone()).clone();
+                    let d: Vec<[f32; 3]> = rt.proxy.topo.vmap.iter().map(|&v| { let (a, b) = (f1[v as usize], r0[v as usize]); [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }).collect();
+                    meshes[*mi].targets.push((st.to_string(), d));
+                }
+            }
+            for (name, parts) in EXPRESSIONS {
+                let mut binds = Vec::new();
+                for (st, w) in *parts { if let Some(ti) = state_names.iter().position(|s| s == st) { for (mi, mesh) in meshes.iter().enumerate() { if mesh.targets.get(ti).map(|t| t.0 == *st).unwrap_or(false) { binds.push((mi, ti, *w)); } } } }
+                if !binds.is_empty() { expressions.push((name.to_string(), binds)); }
+            }
+            report.push(format!("{} Expressions (aus MakeHuman-Targets; Mundöffnung begrenzt, da das Basismesh keinen Mundraum hat)", expressions.len()));
+        }
+        // Humanoid
+        let mut humanoid = std::collections::BTreeMap::new();
+        for (vrm, ue) in humanoid_map() { if let Some(i) = bones.iter().position(|b| b.name.eq_ignore_ascii_case(&ue)) { humanoid.insert(vrm, i); } }
+        for req in ["hips", "spine", "head", "leftUpperLeg", "rightUpperLeg", "leftLowerLeg", "rightLowerLeg", "leftFoot", "rightFoot", "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm", "leftHand", "rightHand"] { if !humanoid.contains_key(req) { return Err(format!("Pflicht-Bone {req} fehlt im Rig")); } }
+        report.push(format!("Skelett: {} Bones, {} Humanoid-Zuordnungen (alle 15 Pflicht-Bones)", bones.len(), humanoid.len()));
+        if self.state.style.hair.highlight_amt > 0.0 || self.state.style.hair.root != self.state.style.hair.tip { report.push("Verlust: Haar-Farbverlauf und Highlights werden als Mittelfarbe exportiert (MToon kennt keinen Höhenverlauf).".into()); }
+        if self.state.style.skin.has_details() { report.push("Hinweis: Make-up/Sommersprossen/Details sind in die Hauttextur eingerechnet (nicht mehr einzeln editierbar im VRM).".into()); }
+        report.push("Hinweis: Material-Glanz/Reflexion der Augen wird nicht exportiert; Pupillen-/Irisfarben sind in die Augentextur eingebacken.".into());
+        let meta = ExMeta { name: o.name.clone(), author: o.author.clone(), copyright: "Basismesh, Targets, Rig, Haare, Augen, Kleidung: MakeHuman/MPFB2-Community-Assets (CC0 1.0); Zusammenstellung mit HASE VRM MAKER".into(), license_url: o.license_url.clone(), commercial: o.commercial.clone(), redistribution: o.redistribution };
+        Ok((ExDoc { meshes, materials, images, bones, humanoid, expressions, meta }, report))
+    }
+}
+
+pub struct ImageRgba2 { pub w: u32, pub h: u32, pub rgba: Vec<u8> }
+
+
+// ---------------------------------------------------------------------------------------------------------
+// Pose/Animation-Vorschau (CPU-Skinning, nur Referenz-Körperbasis)
+// ---------------------------------------------------------------------------------------------------------
+impl Session {
+    pub fn load_clip(&mut self, path: &Path) -> Result<(), String> {
+        if self.generic { return Err("Animationsvorschau ist für importierte Körperbasen noch nicht unterstützt (kein Rig/Gewichte aus dem Import).".into()); }
+        let clip = hase_core::pose::Clip::load(path)?;
+        self.play = Playback { clip: Some(clip), t: 0.0, playing: true, looping: true, speed: 1.0 };
+        self.pose_active = true;
+        Ok(())
+    }
+    pub fn stop_pose(&mut self) {
+        self.play.clip = None; self.play.playing = false;
+        if self.pose_active { self.pose_active = false; self.dirty = true; self.assets_dirty = true; self.resend_body = true; }
+    }
+    pub fn tick(&mut self, dt: f32) {
+        if !self.play.playing { return; }
+        let Some(c) = self.play.clip.as_ref() else { return };
+        self.play.t += dt * self.play.speed;
+        if self.play.t > c.duration { if self.play.looping { self.play.t %= c.duration.max(1e-3); } else { self.play.t = c.duration; self.play.playing = false; } }
+    }
+
+    fn emit_pose(&mut self) {
+        use hase_core::pose::{skin_point, PoseRig};
+        let Some(clip) = self.play.clip.as_ref() else { return };
+        if self.rig.is_none() { match hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj) { Ok(r) => self.rig = Some(r), Err(_) => return } }
+        let floor = self.floor_off;
+        if self.pose_rig.is_none() { let bones = self.rig.as_ref().unwrap().bones(&self.eval.pos, floor); self.pose_rig = Some(PoseRig::new(bones)); }
+        let pr = self.pose_rig.as_ref().unwrap();
+        let hip_scale = pr.hips_rest_y() / clip_hip_height(clip);
+        let m = pr.skin_matrices(Some((clip, self.play.t)), hip_scale);
+        let rig = self.rig.as_ref().unwrap();
+        let pack = |w: &[(u16, f32)]| hase_core::export::pack_weights(w, 0);
+        // Körper
+        let topo = &self.body.topo;
+        let mut out = vec![[0f32; 3]; self.eval.pos.len()];
+        let mut done = vec![false; self.eval.pos.len()];
+        for &v in &topo.vmap { let v = v as usize; if done[v] { continue; } done[v] = true; let (j, w) = pack(&rig.weights[v]); let p = self.eval.pos[v]; out[v] = skin_point(&m, j, w, [p[0], p[1] + floor, p[2]]); }
+        let mut nrm = Vec::new(); normals(&out, &topo.base_tris, &mut nrm);
+        if !self.hide_body { self.pending.push(MeshUpdate::Positions { id: "body".into(), data: Self::interleave(&out, &nrm, &topo.vmap, 0.0) }); }
+        // Proxys
+        let ids: Vec<String> = self.proxies.keys().cloned().collect();
+        for id in ids {
+            let rt = &self.proxies[&id];
+            if !rt.created { continue; }
+            if !self.proxy_skin.contains_key(&id) {
+                let mut v = Vec::with_capacity(rt.proxy.ia.len());
+                for k in 0..rt.proxy.ia.len() {
+                    let mut acc: HashMap<u16, f32> = HashMap::new();
+                    for (vi, w) in [(rt.proxy.ia[k], rt.proxy.w[k][0]), (rt.proxy.ib[k], rt.proxy.w[k][1]), (rt.proxy.ic[k], rt.proxy.w[k][2])] { for (b, bw) in &rig.weights[vi as usize] { *acc.entry(*b).or_default() += w * bw; } }
+                    let mut l: Vec<(u16, f32)> = acc.into_iter().collect(); l.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()); l.truncate(4);
+                    v.push(pack(&l));
+                }
+                self.proxy_skin.insert(id.clone(), v);
+            }
+            let sk = &self.proxy_skin[&id];
+            let rt = &self.proxies[&id];
+            let pos: Vec<[f32; 3]> = rt.fit.iter().enumerate().map(|(k, p)| skin_point(&m, sk[k].0, sk[k].1, [p[0], p[1] + floor, p[2]])).collect();
+            let tris: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
+            let mut pn = Vec::new(); normals(&pos, &tris, &mut pn);
+            self.pending.push(MeshUpdate::Positions { id: format!("proxy:{id}"), data: Self::interleave(&pos, &pn, &rt.proxy.topo.vmap, 0.0) });
+        }
+    }
+}
+
+fn clip_hip_height(c: &hase_core::pose::Clip) -> f32 { c.hips_rest_height() }
+
+#[cfg(test)]
+mod export_pose_tests {
+    use super::*;
+
+    fn session_with_assets() -> Session {
+        let mut s = Session::load(&hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap()).unwrap();
+        s.default_assets_blocking(&["eyebrows/mindfront_eyebrows_01", "eyelashes/mindfront_eyelashes_01", "hair/short02", "clothes/toigo_basic_tucked_t-shirt", "clothes/toigo_wool_pants"]);
+        s.refresh();
+        s
+    }
+
+    #[test]
+    fn export_is_valid_glb_with_rig_and_expressions() {
+        let mut s = session_with_assets();
+        let o = ExportOptions { with_outfit: true, expressions: true, name: "T".into(), author: "A".into(), license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: "personalNonProfit".into(), redistribution: true };
+        let (doc, report) = s.build_export(&o).unwrap();
+        assert!(report.iter().any(|r| r.contains("Pflicht-Bones")));
+        assert!(doc.expressions.iter().any(|e| e.0 == "blink") && doc.humanoid.len() >= 15 && doc.bones.len() == 53);
+        for m in &doc.meshes {
+            for (w, j) in m.weights.iter().zip(&m.joints) {
+                let sum: f32 = w.iter().sum(); assert!((sum - 1.0).abs() < 1e-4 && w.iter().all(|x| *x >= 0.0), "{}: Gewichte", m.name);
+                for k in 0..4 { assert!(w[k] > 0.0 || j[k] == 0); }
+            }
+        }
+        let glb = hase_core::export::write_glb(&doc).unwrap();
+        let (meshes, mats, imgs, morphs) = hase_core::export::verify_glb(&glb).unwrap();
+        assert!(meshes >= 6 && mats == meshes && imgs >= 5 && morphs > 20, "{meshes} {mats} {imgs} {morphs}");
+        // Basisprofil: keine Kleidung
+        let o2 = ExportOptions { with_outfit: false, ..o };
+        let (d2, _) = s.build_export(&o2).unwrap();
+        assert!(!d2.meshes.iter().any(|m| m.name.starts_with("Clothes_")) && d2.meshes.iter().any(|m| m.name == "Body"));
+        assert!(d2.meshes[0].idx.len() > doc.meshes[0].idx.len(), "mit Outfit entfallen verdeckte Körperflächen");
+    }
+
+    #[test]
+    fn pose_playback_keeps_character_upright_and_moves_limbs() {
+        let mut s = session_with_assets();
+        let repo = s.repo.clone();
+        let rest_head_y = { let h = s.body_height(); h };
+        s.load_clip(&repo.join("content/testcandidate/animations/UAL1/Idle_Loop.vrma")).unwrap();
+        s.play.playing = false; s.play.t = 0.0;
+        let up = s.refresh();
+        let body = up.iter().rev().find_map(|u| match u { MeshUpdate::Positions { id, data } if id == "body" => Some(data.clone()), _ => None }).expect("Pose-Update für den Körper");
+        let max_y = body.chunks_exact(6).map(|v| v[1]).fold(f32::MIN, f32::max);
+        assert!((max_y - rest_head_y).abs() < 0.35, "Körper steht aufrecht: max y {max_y}, Ruhehöhe {rest_head_y}");
+        // anderer Zeitpunkt → andere Positionen
+        s.play.t = 0.5; let up2 = s.refresh();
+        let body2 = up2.iter().rev().find_map(|u| match u { MeshUpdate::Positions { id, data } if id == "body" => Some(data.clone()), _ => None }).unwrap();
+        assert!(body.iter().zip(&body2).any(|(a, b)| (a - b).abs() > 1e-4), "Animation verändert Positionen");
+        s.stop_pose();
+        let up3 = s.refresh();
+        assert!(up3.iter().any(|u| matches!(u, MeshUpdate::Positions { id, .. } if id == "body")), "Ruhepose wird wieder gesendet");
+    }
+}
+
+#[cfg(test)]
+mod pose_perf {
+    use super::*;
+    #[test]
+    fn pose_frame_cost() {
+        let mut s = Session::load(&hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap()).unwrap();
+        s.default_assets_blocking(&["eyebrows/mindfront_eyebrows_01", "eyelashes/mindfront_eyelashes_01", "hair/long01", "clothes/toigo_basic_tucked_t-shirt", "clothes/toigo_wool_pants"]);
+        s.refresh();
+        let repo = s.repo.clone();
+        s.load_clip(&repo.join("content/testcandidate/animations/UAL1/Dance_Loop.vrma")).unwrap();
+        s.play.playing = false;
+        s.refresh();
+        let t0 = std::time::Instant::now();
+        for i in 0..100 { s.play.t = i as f32 * 0.01; let _ = s.refresh(); }
+        let (v, t) = s.counts();
+        eprintln!("POSE_FRAME {:.2} ms pro Frame ({} Vertices, {} Dreiecke)", t0.elapsed().as_secs_f64() * 10.0, v, t);
     }
 }

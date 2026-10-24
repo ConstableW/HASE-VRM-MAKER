@@ -27,3 +27,5 @@ Navigation (präzisiert): kreative Phasen „1 Charakter · 2 Outfit · 3 Finali
 ## Umsetzungsstand Studios (2026-10-24, nach Windows-Verifikation der Kette)
 Umgesetzt (Details und Grenzen: `../02-architecture/character-studios.md`): Augenstudio (Form-Presets mit Vorschaubildern, Iris innen/außen je Auge, Pupille, Reflexion/Limbus), anatomisches Brust-/Gesäßmodell, Haarstudio (Auswahl-Kacheln, Form, Farbe/Verlauf/Highlights), Haut (Ton, Glanz), Make-up, Sommersprossen, Muttermale/Tattoos/Narben per Klick, Charakterbibliothek mit Vorlagen/Favoriten/Varianten/Snapshots/Vergleich, Preset-Leiste mit Vorschaubildern, Viewport-Werkzeuge (Bereichs-Pick, Fokus), Licht-/Hintergrund-Presets.
 Offen: Outfit-Studio-Vertiefung, Finalisieren (Posen, Animation, VRM-Export), Pupillenformen/Irismuster, Haar-Scheitel/Strähnen/Physik, Panel-Einklappen, Icons, Direktmanipulation per Griffe.
+
+Finalisieren (2026-10-24): „Posen & Animation“ (VRMA-Clips mit Skinning-Vorschau) und „Export (VRM 1.0)“ (Profile, Metadaten, Vorabinformationen, Bericht mit Verlustliste, Hintergrund-Schreiben) sind umgesetzt; Details und Grenzen in `../02-architecture/character-studios.md`.
