@@ -4,6 +4,7 @@ mod offscreen;
 mod regions;
 mod render;
 mod session;
+mod theme;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

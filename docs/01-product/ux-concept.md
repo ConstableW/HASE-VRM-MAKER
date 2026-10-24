@@ -14,3 +14,7 @@ Maßgebliche Quelle für die Bedienstruktur. Status: **OWNER DECIDED als gestalt
 ## Umsetzungsstand (2026-10-24)
 Erledigt: Arbeitsbereiche 1–3 (3 als Platzhalter), Bereichsliste Gesicht/Körper/Haare/Stil mit Kamerafokus, Region-Regler in Abschnitten, Erweitert-Ansicht, Outfit nach Kategorien, unbekleideter Standardcharakter.
 Offen (Reihenfolge): Augenstudio (Iris/Pupille/Material – braucht eigene Shader/Texturen), anatomisches Brustmodell (neue Morphs/Kombinationen; MakeHuman liefert nur 6 Targets), Haarstudio (Regionen/Verläufe), Material-/Stileditor, Charakterbibliothek/Vorlagen/Snapshots, Preset-Kacheln mit Vorschaubildern, Direktmanipulation, Animation/Export, neutrale Vorschau-Abdeckung für den unbekleideten Körper, deutsche Parameterbezeichnungen.
+
+## Designsystem (Schritt A, umgesetzt 2026-10-24)
+Tokens zentral in `app/hase-editor/src/theme.rs` (Hintergrund #080D15, Panel #101824, Sekundär #172231, Hover #233449, Aktiv #17477E, Akzent #58A6FF, Text #E9EFF7/#9BAABB, Linie #2B394A, Warnung #E5AA52, Fehler #E36C72). Deutsche Anzeigenamen für Parameter per Wortzuordnung (`label_de`), technische IDs nur in „Erweitert“. Shell: Kopfzeile (3 Arbeitsbereiche, Laden/Speichern, Bibliothek deaktiviert), linke Bereichsliste, Viewport, rechter Eigenschafteneditor, untere Presetleiste (Kacheln ohne Vorschaubilder). Navigationsstruktur und Regionen: `regions.rs`.
+Bekannte Einschränkungen: keine Icons/Thumbnails, Panels nicht einklappbar, Lichter/Hintergrund-Presets fehlen, nur auf Linux/Lavapipe headless geprüft (nicht auf Windows).
