@@ -34,6 +34,14 @@ impl Camera {
         for i in 0..3 { self.target[i] += (-r[i] * dx + u[i] * dy) * k; }
         self.target[1] = self.target[1].clamp(-0.5, 2.5);
     }
+    /// Strahl durch einen Bildschirmpunkt (ndc x,y in -1…1, y nach oben).
+    pub fn ray(&self, nx: f32, ny: f32, aspect: f32) -> ([f32; 3], [f32; 3]) {
+        let eye = self.eye();
+        let f = norm(sub(self.target, eye)); let s = norm(cross(f, [0.0, 1.0, 0.0])); let u = cross(s, f);
+        let t = (self.fov / 2.0).tan();
+        let d = norm([f[0] + s[0] * nx * t * aspect + u[0] * ny * t, f[1] + s[1] * nx * t * aspect + u[1] * ny * t, f[2] + s[2] * nx * t * aspect + u[2] * ny * t]);
+        (eye, d)
+    }
     pub fn globals(&self, aspect: f32) -> Globals {
         let eye = self.eye();
         let f = norm(sub(self.target, eye)); let s = norm(cross(f, [0.0, 1.0, 0.0])); let u = cross(s, f);

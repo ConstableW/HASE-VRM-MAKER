@@ -24,7 +24,7 @@ pub struct Catalog {
     pub defs: Vec<ParamDef>,
     pub index: HashMap<String, usize>,
     pub macro_targets: Vec<(usize, [usize; 3])>, // (Target-Index, [race, gender, age]-Kombination) – intern
-    macro_idx: [usize; 5],
+    macro_idx: Option<[usize; 5]>,
 }
 
 const RACES: [&str; 3] = ["african", "asian", "caucasian"];
@@ -88,7 +88,15 @@ impl Catalog {
             }
         }
         let index = defs.iter().enumerate().map(|(i, d)| (d.id.clone(), i)).collect();
-        Catalog { defs, index, macro_targets, macro_idx }
+        Catalog { defs, index, macro_targets, macro_idx: Some(macro_idx) }
+    }
+
+    /// Katalog für importierte Körperbasen: ein Parameter (0…1) je Morph-Target, Gruppe = zugeordnete Region.
+    pub fn from_morphs(names: &[String], region_of: &std::collections::BTreeMap<String, String>, mirror: &[(usize, usize)]) -> Catalog {
+        let mut defs: Vec<ParamDef> = names.iter().enumerate().map(|(t, n)| ParamDef { id: format!("morph:{n}"), label: n.replace(['_', '.'], " "), group: region_of.get(n).cloned().unwrap_or_else(|| "Unzugeordnet".into()), kind: Kind::Unit, min: 0.0, max: 1.0, default: 0.0, neg: None, pos: Some(t), mirror: None }).collect();
+        for &(a, b) in mirror { if a < defs.len() && b < defs.len() { defs[a].mirror = Some(b); defs[b].mirror = Some(a); } }
+        let index = defs.iter().enumerate().map(|(i, d)| (d.id.clone(), i)).collect();
+        Catalog { defs, index, macro_targets: vec![], macro_idx: None }
     }
 
     /// Löst eine Parameter-ID auf (auch ältere Kurzformen der Beispiel-Packages → kanonische Katalog-ID).
@@ -113,8 +121,9 @@ impl Catalog {
                 Kind::Macro => {}
             }
         }
-        let [g, a] = [values[self.macro_idx[0]], values[self.macro_idx[1]]];
-        let races = [values[self.macro_idx[2]], values[self.macro_idx[3]], values[self.macro_idx[4]]];
+        let Some(mi) = self.macro_idx else { return };
+        let [g, a] = [values[mi[0]], values[mi[1]]];
+        let races = [values[mi[2]], values[mi[3]], values[mi[4]]];
         let rs: f32 = races.iter().sum::<f32>().max(1e-6);
         let gw = [1.0 - g.clamp(0.0, 1.0), g.clamp(0.0, 1.0)];
         let aw = macro_age_weights(a);

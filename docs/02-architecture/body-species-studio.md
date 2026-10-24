@@ -14,7 +14,9 @@ Importiert → Geometrisch verwendbar (Indizes gültig, keine degenerierten Drei
 - SemVer-Regeln (PROPOSED): Patch = keine Wertänderung; Minor = Ergänzungen; Major = entfernte/umgedeutete Parameter oder geänderte Topologie → Migration nötig.
 - Parameter-IDs: kanonisches Schema `mh:<kategorie-name>`; ältere Kurzformen werden über `Catalog::canonical` (Suffix-Regeln + Alias-Tabelle) aufgelöst. Beispiel-Packages sind migriert, Lock neu erzeugt.
 - **Grenzen sind wirksam:** Spezies-`limits` begrenzen Regler und Setzvorgänge (Presets, Spezies-Defaults); Werte außerhalb (nach Spezieswechsel/Laden) werden gemeldet und können per Knopf in die Grenzen gebracht werden.
-- Offen: Migrations-Maps für Major-Änderungen, Side-by-side mehrerer Ressourcenversionen, Daten-Hash der Körperbasis (aktuell nur Manifest).
+- **Ressourcen-Fingerprint (Körperbasis):** SHA-256 über Manifest **und alle Dateiinhalte** (Mesh, Morph-Targets, Rig, Materialien); Dateihashes werden über Pfad/Größe/Zeit in `.hase-cache/fingerprints.json` gecacht. Austausch von Geometrie oder Morphs bei unverändertem Manifest wird erkannt (Test). Bei Inhaltsänderung warnt der Editor ausdrücklich, dass dieselben Parameterwerte eine andere Körperform erzeugen können; Abhilfe: Original-Ressource oder geprüfte Migration, niemals stilles Weiterverwenden.
+- Spezies-Fingerprint: bisher nur Manifest (Spezies enthalten keine Geometrie; Asset-Komponenten sind separate Pakete).
+- Offen: Migrations-Maps für Major-Änderungen, Side-by-side mehrerer Ressourcenversionen.
 
 ## Umsetzungsstand (2026-10-24)
 | Funktion | Stand |
@@ -22,6 +24,7 @@ Importiert → Geometrisch verwendbar (Indizes gültig, keine degenerierten Drei
 | Speziesbibliothek, Anwenden, Neu-aus-Charakter, Duplizieren, Werte/Grenzen/Presets, Version, Speichern/Laden als Paket | implementiert |
 | Prüfstufen Körperbasis, Spezies-Validierung | implementiert |
 | Import-Analyse OBJ **und glTF/GLB/VRM** (Geometrie, Skelett mit Zuordnung auf die 15 VRM-Pflicht-Bones, Morph-Targets, Materialien) | implementiert (an Avatar A/B getestet) |
-| Importiertes Modell als **Körperbasis-Entwurf** speichern (Paket, Status draft) | implementiert; Nutzung im Editor noch nicht |
-| Aufbereitung in der Oberfläche: Regionen/Links-Rechts/Morph-Kategorien zuordnen, Bone-Mapping bearbeiten, Skinning prüfen; allgemeiner Body-Loader (glTF-Morphs → sparse Targets); Entwurf → vollständige Körperbasis → Spezies → Charakter | **offen (nächster großer Schritt des Studios)** |
+| Importiertes Modell als **Körperbasis-Entwurf** speichern | implementiert |
+| **Aufbereitung in der GUI am 3D-Modell** (Reiter „Aufbereitung“): Primitive/Maßstab wählen, Landmarken per Klick auf den Körper setzen, Morph-Regionen automatisch (Schwerpunkt der Verformung, an MakeHuman ca. 64 % Treffer) und per Klick-Prüfung am Modell zuordnen (Morph-Regler wirken live), Bone-Mapping auf die 15 VRM-Pflicht-Bones mit Skelettansicht, Links/Rechts aus Namen, Prüfliste, Speichern als Entwurf/„konfiguriert“ | implementiert, Kern per Test an der 548-Morph-Körperbasis belegt, GUI headless geprüft |
+| Allgemeiner Body-Loader (glTF/GLB: Positionen verschweißt, UV-Nähte erhalten, Morph-Targets → sparse Deltas, Basisfarbtextur), Aktivieren einer konfigurierten Körperbasis, Rückkehr zur Referenz | implementiert (Assets/Haare/Kleidung der MakeHuman-Topologie sind für fremde Körperbasen deaktiviert – Fitting über Topologien hinweg ist R-03/offen) |
 | Nicht-humanoide Anatomien, mehrere aktive Körperbasen | offen |

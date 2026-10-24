@@ -40,19 +40,28 @@ pub struct Session {
     skin_tex: Option<Arc<ImageRgba>>,
     dirty: bool,
     assets_dirty: bool,
+    pub generic: bool,
+    pub hide_body: bool,
+    pub reference_body: hase_core::packages::BodyPackage,
+    pub markers: Vec<String>,
 }
+
+fn dist2(a: [f32; 3], b: [f32; 3]) -> f32 { (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2) }
 
 pub const EYES_ID: &str = "eyes/high-poly";
 
 pub fn load_image(path: &Path, max_dim: u32) -> Result<Arc<ImageRgba>, String> {
     let img = image::open(path).map_err(|e| format!("{}: {e}", path.display()))?.to_rgba8();
-    let (mut w, mut h) = img.dimensions();
-    let mut cur = img.into_raw();
+    let (w, h) = img.dimensions();
+    Ok(image_from_rgba(w, h, img.into_raw(), max_dim))
+}
+
+pub fn image_from_rgba(mut w: u32, mut h: u32, mut cur: Vec<u8>, max_dim: u32) -> Arc<ImageRgba> {
     while w > max_dim || h > max_dim { let (nw, nh) = (w / 2, h / 2); cur = downsample(&cur, w, h); w = nw; h = nh; }
     let mut levels = vec![cur.clone()];
     let (mut lw, mut lh) = (w, h);
     while lw > 1 || lh > 1 { let (nw, nh) = ((lw / 2).max(1), (lh / 2).max(1)); let next = if lw > 1 && lh > 1 { downsample(levels.last().unwrap(), lw, lh) } else { levels.last().unwrap()[..(nw * nh * 4) as usize].to_vec() }; levels.push(next); lw = nw; lh = nh; }
-    Ok(Arc::new(ImageRgba { w, h, levels }))
+    Arc::new(ImageRgba { w, h, levels })
 }
 fn downsample(src: &[u8], w: u32, h: u32) -> Vec<u8> {
     let (nw, nh) = (w / 2, h / 2);
@@ -94,9 +103,10 @@ impl Session {
         let mut state = CharacterState { body_ref: PkgRef::default(), species_ref: PkgRef::default(), species, values: params.defaults(), assets: vec![], skin, eyes };
         if let Some(sp) = sp0.as_ref() { for (k, v) in &sp.defaults { if let Some(i) = params.canonical(k) { state.values[i] = *v; } } }
         let n = body.morphs.names.len();
+        let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, generic: false, hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -142,6 +152,7 @@ impl Session {
     pub fn toggle_asset_off(&mut self, id: &str) { let before = self.state.clone(); self.remove_asset(id); self.history.record(&before, None); }
 
     pub fn insert_proxy(&mut self, id: String, lp: LoadedProxy) {
+        if self.generic { return; }
         let n = lp.proxy.obj_pos_len;
         self.proxies.insert(id, ProxyRt { proxy: lp.proxy, texture: lp.texture, fit: Vec::with_capacity(n), nrm: vec![], created: false });
         self.assets_dirty = true;
@@ -180,7 +191,7 @@ impl Session {
     pub fn ref_issues_of(&self, st: &CharacterState) -> Vec<String> {
         let mut v = Vec::new();
         let (b, sr) = (&st.body_ref, &st.species_ref);
-        if !b.version.is_empty() && (b.version != self.packages.body.version || (!b.digest.is_empty() && b.digest != self.packages.body.digest)) { v.push(format!("Körperbasis geändert (gespeichert v{}, installiert v{})", b.version, self.packages.body.version)); }
+        if !b.version.is_empty() && (b.version != self.packages.body.version || (!b.digest.is_empty() && b.digest != self.packages.body.digest)) { v.push(if b.version == self.packages.body.version { format!("Inhalt der Körperbasis v{} hat sich geändert (Geometrie, Morphs, Rig oder Konfiguration): dieselben Parameterwerte können eine andere Körperform ergeben – Original-Ressource oder geprüfte Migration nötig", b.version) } else { format!("Körperbasis geändert (gespeichert v{}, installiert v{}): Parameterwerte können eine andere Form ergeben", b.version, self.packages.body.version) }); }
         match self.packages.species.iter().find(|x| x.id == st.species) {
             None => v.push(format!("Spezies {} ist nicht installiert", st.species)),
             Some(sp) => if !sr.version.is_empty() && (sr.version != sp.version || (!sr.digest.is_empty() && sr.digest != sp.digest)) { v.push(format!("Spezies „{}“ geändert (gespeichert v{}, installiert v{}{})", sp.label, sr.version, sp.version, if sr.version == sp.version { ", gleiche Version, anderer Inhalt" } else { "" })); },
@@ -259,9 +270,11 @@ impl Session {
 
     /// Berechnet bei Bedarf Morphs/Fits neu und liefert die anstehenden Render-Updates.
     pub fn refresh(&mut self) -> Vec<MeshUpdate> {
-        if self.dirty || self.assets_dirty || !self.body_created {
+        let need_body = !self.body_created && !self.hide_body;
+        if self.hide_body && self.body_created { self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
+        if self.dirty || self.assets_dirty || need_body {
             let t0 = Instant::now();
-            let mut morph_changed = !self.body_created;
+            let mut morph_changed = need_body;
             if self.dirty {
                 self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
                 if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
@@ -271,7 +284,7 @@ impl Session {
                     self.floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
                     normals(&self.eval.pos, &self.body.topo.base_tris, &mut self.body_nrm);
                     let data = Self::interleave(&self.eval.pos, &self.body_nrm, &self.body.topo.vmap, self.floor_off);
-                    if !self.body_created {
+                    if self.hide_body { } else if !self.body_created {
                         self.pending.push(MeshUpdate::Create(MeshDesc { id: "body".into(), indices: self.body.topo.indices.clone(), uv: self.body.topo.uv.clone(), data, texture: self.skin_tex.clone(), tint: [1.0, 0.97, 0.95], mask: false, cull_back: true }));
                         self.body_created = true;
                     } else { self.pending.push(MeshUpdate::Positions { id: "body".into(), data }); }
@@ -301,6 +314,86 @@ impl Session {
 
     /// Körperhöhe (Scheitel über Boden) in m – für höhenrelative Kamerafokus-Punkte.
     pub fn body_height(&self) -> f32 { self.floor_off + self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MIN, f32::max) }
+
+    /// Wechselt die aktive Körperbasis (Assets/Proxys der alten Topologie werden entfernt, Parameterkatalog neu aufgebaut).
+    pub fn switch_body(&mut self, body: Body, params: Catalog, pkg: hase_core::packages::BodyPackage, tex: Option<Arc<ImageRgba>>, generic: bool) {
+        let ids: Vec<String> = self.proxies.keys().cloned().collect();
+        for id in ids { self.proxies.remove(&id); self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); }
+        self.pending.push(MeshUpdate::Remove("body".into()));
+        self.state.assets.clear();
+        self.eval = Evaluator::new(&body);
+        self.desired = vec![0.0; body.morphs.names.len()];
+        self.state.values = params.defaults();
+        self.state.body_ref = PkgRef { id: pkg.id.clone(), version: pkg.version.clone(), digest: pkg.digest.clone() };
+        self.body = body; self.params = params; self.packages.body = pkg;
+        self.skin_tex = if generic { tex } else { self.skin_path().and_then(|p| load_image(&p, 2048).ok()) };
+        self.generic = generic; self.body_created = false; self.hide_body = false; self.dirty = true; self.assets_dirty = true;
+        self.history = History::new();
+        self.floor_off = -self.body.topo.vmap.iter().map(|&v| self.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
+    }
+
+    /// Aktiviert eine Körperbasis aus einem Package (importierte, aufbereitete glTF-Basis oder die MakeHuman-Referenz).
+    pub fn activate_body(&mut self, pkg: &hase_core::packages::BodyPackage) -> Result<(), String> {
+        if let Some(cfgv) = &pkg.config {
+            let cfg: hase_core::import::ImportConfig = serde_json::from_value(cfgv.clone()).map_err(|e| e.to_string())?;
+            self.preview_import(&pkg.data_root.join(&cfg.source), &cfg, pkg.clone())
+        } else {
+            let body = Body::load(&pkg.data_root, &self.repo.join(".hase-cache"))?;
+            let params = Catalog::build(&body.morphs, &pkg.data_root.join("targets/target.json"));
+            self.switch_body(body, params, pkg.clone(), None, false);
+            self.clear_markers();
+            Ok(())
+        }
+    }
+
+    /// Lädt ein importiertes Modell gemäß Konfiguration als aktive Körperbasis (auch für die Vorschau während der Aufbereitung).
+    pub fn preview_import(&mut self, path: &Path, cfg: &hase_core::import::ImportConfig, pkg: hase_core::packages::BodyPackage) -> Result<(), String> {
+        let (body, img) = hase_core::import::build_body(path, cfg)?;
+        let mirror = hase_core::import::detect_mirror(&body.morphs.names);
+        let mir: Vec<(usize, usize)> = if cfg.mirror.is_empty() { mirror } else { cfg.mirror.iter().filter_map(|[a, b]| Some((body.morphs.index_of(a)?, body.morphs.index_of(b)?))).collect() };
+        let params = Catalog::from_morphs(&body.morphs.names, &cfg.regions, &mir);
+        let tex = img.map(|i| image_from_rgba(i.w, i.h, i.rgba, 2048));
+        self.switch_body(body, params, pkg, tex, true);
+        Ok(())
+    }
+
+    /// Zielt per Strahl auf den Körper: Trefferpunkt (Modellkoordinaten ohne Bodenversatz) und nächster Vertex.
+    pub fn pick(&self, o: [f32; 3], d: [f32; 3]) -> Option<([f32; 3], usize)> {
+        let (t, ti) = hase_core::import::raycast(&self.eval.pos, self.floor_off, &self.body.topo.base_tris, o, d)?;
+        let hit = [o[0] + d[0] * t, o[1] + d[1] * t - self.floor_off, o[2] + d[2] * t];
+        let tri = self.body.topo.base_tris[ti];
+        let v = tri.iter().copied().min_by(|&a, &b| { let da = dist2(self.eval.pos[a as usize], hit); let db = dist2(self.eval.pos[b as usize], hit); da.partial_cmp(&db).unwrap() })? as usize;
+        Some((hit, v))
+    }
+    /// Morph-Targets mit der größten Wirkung auf einen Vertex (Index, Betrag).
+    pub fn morphs_at_vertex(&self, v: usize, n: usize) -> Vec<(usize, f32)> {
+        let m = &self.body.morphs;
+        let mut out: Vec<(usize, f32)> = Vec::new();
+        for t in 0..m.names.len() {
+            if m.names[t].starts_with("macrodetails") { continue; }
+            let (a, b) = (m.t_off[t] as usize, m.t_off[t + 1] as usize);
+            if let Ok(k) = m.t_idx[a..b].binary_search(&(v as u32)) { let d = m.t_delta[a + k]; out.push((t, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())); }
+            else if let Some(k) = m.t_idx[a..b].iter().position(|&x| x as usize == v) { let d = m.t_delta[a + k]; out.push((t, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())); }
+        }
+        out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        out.truncate(n);
+        out
+    }
+
+    /// Kleine Oktaeder-Marker (Landmarken, Bones, Auswahl) in Weltkoordinaten (Modell + Bodenversatz).
+    pub fn set_marker(&mut self, id: &str, model_pos: [f32; 3], size: f32, tint: [f32; 3]) {
+        let c = [model_pos[0], model_pos[1] + self.floor_off, model_pos[2]];
+        let dirs: [[f32; 3]; 6] = [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, -1.0]];
+        let mut data = Vec::new();
+        for d in dirs { data.extend_from_slice(&[c[0] + d[0] * size, c[1] + d[1] * size, c[2] + d[2] * size, d[0], d[1], d[2]]); }
+        let indices = vec![0, 2, 4, 4, 2, 1, 1, 2, 5, 5, 2, 0, 0, 4, 3, 4, 1, 3, 1, 5, 3, 5, 0, 3];
+        let mid = format!("marker:{id}");
+        self.pending.push(MeshUpdate::Remove(mid.clone()));
+        self.pending.push(MeshUpdate::Create(MeshDesc { id: mid, indices, uv: vec![[0.0, 0.0]; 6], data, texture: None, tint, mask: false, cull_back: false }));
+        if !self.markers.iter().any(|m| m == id) { self.markers.push(id.into()); }
+    }
+    pub fn remove_marker(&mut self, id: &str) { self.pending.push(MeshUpdate::Remove(format!("marker:{id}"))); self.markers.retain(|m| m != id); }
+    pub fn clear_markers(&mut self) { for m in self.markers.clone() { self.remove_marker(&m); } }
 
     pub fn counts(&self) -> (usize, usize) {
         let v = self.body.topo.vmap.len() + self.proxies.values().map(|p| p.proxy.topo.vmap.len()).sum::<usize>();
@@ -351,5 +444,19 @@ mod tests {
         assert!(s.params.canonical("mh:head-age").is_some());
         assert!(s.params.canonical("mh:jaw-drop").is_some());
         assert!(s.params.canonical("mh:gibtsnicht").is_none());
+    }
+}
+
+#[cfg(test)]
+mod body_content_tests {
+    use super::*;
+    #[test]
+    fn body_content_change_is_flagged() {
+        let mut s = Session::load(&hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap()).unwrap();
+        assert!(s.ref_issues().is_empty());
+        s.packages.body.digest = "geaendert".into();
+        let i = s.ref_issues();
+        assert_eq!(i.len(), 1);
+        assert!(i[0].contains("Inhalt der Körperbasis"), "{i:?}");
     }
 }

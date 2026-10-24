@@ -1,10 +1,13 @@
 //! Körperbasis- und Speziesstudio: Bibliothek, Prüfstufen, Werte/Grenzen, Presets, Kompatibilität, Paket speichern.
 use crate::app::App;
-use crate::regions;
+use crate::regions::{self, Main};
 use crate::theme;
 use eframe::egui;
 use hase_core::packages::{bump_version, slug, Preset, Species};
+use hase_core::import::{self, ImportConfig, Model, LANDMARKS, REGION_NAMES, VRM_SLOTS};
 use hase_core::validate::{self, Stage};
+use crate::session::Session;
+use std::path::PathBuf;
 
 #[derive(Default)]
 pub struct StudioState {
@@ -18,9 +21,27 @@ pub struct StudioState {
     pub dirty: bool,
     pub body_name: String,
     pub import_path: Option<std::path::PathBuf>,
+    pub prep: Option<Prep>,
 }
 
-const TABS: [&str; 6] = ["Übersicht", "Körperbasis", "Werte & Grenzen", "Presets", "Kompatibilität", "Paket"];
+#[derive(PartialEq, Clone, Copy)]
+pub enum Pick { None, Landmark(usize), Morphs }
+impl Default for Pick { fn default() -> Self { Pick::None } }
+
+pub struct Hit { pub pos: [f32; 3], pub vertex: usize, pub morphs: Vec<(usize, f32)> }
+
+pub struct Prep {
+    pub pkg: hase_core::packages::BodyPackage,
+    pub model: Model,
+    pub cfg: ImportConfig,
+    pub pick: Pick,
+    pub hit: Option<Hit>,
+    pub bone_sel: Option<usize>,
+    pub show_bones: bool,
+    pub msg: String,
+}
+
+const TABS: [&str; 7] = ["Übersicht", "Körperbasis", "Aufbereitung", "Werte & Grenzen", "Presets", "Kompatibilität", "Paket"];
 
 fn stage_row(ui: &mut egui::Ui, s: &Stage) {
     let (sym, col) = match s.ok { Some(true) => ("OK", egui::Color32::from_rgb(0x6C, 0xC4, 0x7F)), Some(false) => ("FEHLT", theme::ERR), None => ("–", theme::TEXT2) };
@@ -77,6 +98,7 @@ impl App {
         let un = unassigned(self);
         ui.horizontal_wrapped(|ui| { for (i, t) in TABS.iter().enumerate() { if ui.selectable_label(self.studio.tab == i, *t).clicked() { self.studio.tab = i; } } });
         ui.separator();
+        self.workflow_bar(ui);
         let sel = self.studio.sel;
         let s = self.session.as_mut().unwrap();
         let sel = sel.min(s.packages.species.len() - 1);
@@ -102,7 +124,15 @@ impl App {
                 for st in validate::body_stages(&s.body, &s.params, &pkg, un) { stage_row(ui, &st); }
                 ui.separator();
                 ui.strong("Körperbasen");
-                for b in &s.packages.bodies { ui.label(format!("{}  v{}  · {}{}", b.label, b.version, if b.status.is_empty() { "fertig" } else { &b.status }, if b.user { " · eigene" } else { "" })); }
+                let bodies = s.packages.bodies.clone();
+                for b in &bodies {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{}  v{}  · {}{}", b.label, b.version, if b.status.is_empty() { "fertig" } else { &b.status }, if b.user { " · eigene" } else { "" }));
+                        if b.user && ui.small_button("Aufbereiten").clicked() { match start_prep(s, b) { Ok(p) => { self.studio.prep = Some(p); self.studio.tab = 2; } Err(e) => self.studio.msg = e } }
+                        if b.user && b.status == "configured" && ui.small_button("Aktivieren").clicked() { match s.activate_body(b) { Ok(()) => self.studio.msg = format!("{} aktiv", b.label), Err(e) => self.studio.msg = e } }
+                    });
+                }
+                if s.generic && ui.button("Zur Referenz-Körperbasis zurück").clicked() { let r = s.reference_body.clone(); match s.activate_body(&r) { Ok(()) => { self.studio.prep = None; } Err(e) => self.studio.msg = e } }
                 ui.separator();
                 ui.strong("Externes Modell importieren (glTF/GLB/VRM/OBJ)");
                 ui.weak("Analyse gegen die aktive Körperbasis. Ein Modell ohne Rig oder Morphs gilt nicht als editierbar; fehlende Voraussetzungen werden benannt. Mit „Als Entwurf anlegen“ wird das Modell als Körperbasis-Paket (Status: Entwurf) gespeichert.");
@@ -138,6 +168,13 @@ impl App {
                 }
             }
             2 => {
+                ui.heading("Aufbereitung");
+                match self.studio.prep.as_mut() {
+                    None => { ui.weak("Wähle unter „Körperbasis“ einen importierten Entwurf und starte „Aufbereiten“."); }
+                    Some(prep) => prep_ui(ui, s, prep),
+                }
+            }
+            3 => {
                 ui.heading("Werte & Grenzen");
                 if !editable { ui.colored_label(theme::WARN, "Schreibgeschützt – zum Bearbeiten duplizieren."); }
                 let sp = &mut s.packages.species[sel];
@@ -164,7 +201,7 @@ impl App {
                     ui.weak("Grenzen werden im Paket gespeichert; die Durchsetzung in den Reglern ist noch nicht implementiert.");
                 }
             }
-            3 => {
+            4 => {
                 ui.heading("Presets & Merkmale");
                 let sp = &mut s.packages.species[sel];
                 let mut rm = None; let mut apply = None;
@@ -183,7 +220,7 @@ impl App {
                     }
                 }
             }
-            4 => {
+            5 => {
                 ui.heading("Kompatibilität");
                 let sp = s.packages.species[sel].clone();
                 ui.label(format!("Körperbasis-Interface: {}", s.packages.body.interface));
@@ -211,5 +248,243 @@ impl App {
                 if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
             }
         });
+    }
+}
+
+fn load_model_cfg(pkg: &hase_core::packages::BodyPackage) -> Result<(Model, ImportConfig), String> {
+    let dir = pkg.dir.clone().ok_or("kein Paketverzeichnis")?;
+    let m: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("hase-package.json")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let src = m["dev"]["source"].as_str().ok_or("Quelle fehlt im Manifest")?.to_string();
+    let path = dir.join("data").join(&src);
+    let model = Model::open(&path)?;
+    let mut cfg: ImportConfig = pkg.config.clone().and_then(|c| serde_json::from_value(c).ok()).unwrap_or_default();
+    if cfg.source.is_empty() { cfg.source = src; cfg.scale = 1.0; cfg.primitive = model.prims.iter().enumerate().max_by_key(|(_, p)| (p.morphs, p.verts)).map(|(i, _)| i).unwrap_or(0); }
+    Ok((model, cfg))
+}
+
+fn reload(s: &mut Session, prep: &mut Prep) {
+    let path = prep.model.path.clone();
+    match s.preview_import(&path, &prep.cfg, prep.pkg.clone()) {
+        Ok(()) => {
+            if prep.cfg.landmarks.is_empty() { prep.cfg.landmarks = import::default_landmarks(&s.body.base_pos); }
+            for (n, r) in &prep.cfg.regions { if let Some(&i) = s.params.index.get(&format!("morph:{n}")) { s.params.defs[i].group = r.clone(); } }
+            refresh_markers(s, prep);
+            prep.msg = format!("{} Vertices, {} Morph-Targets geladen", s.body.base_pos.len(), s.body.morphs.names.len());
+        }
+        Err(e) => prep.msg = e,
+    }
+}
+
+fn start_prep(s: &mut Session, pkg: &hase_core::packages::BodyPackage) -> Result<Prep, String> {
+    let (model, cfg) = load_model_cfg(pkg)?;
+    let mut prep = Prep { pkg: pkg.clone(), model, cfg, pick: Pick::None, hit: None, bone_sel: None, show_bones: false, msg: String::new() };
+    reload(s, &mut prep);
+    Ok(prep)
+}
+
+fn refresh_markers(s: &mut Session, prep: &Prep) {
+    for (i, (k, _)) in LANDMARKS.iter().enumerate() {
+        match prep.cfg.landmarks.get(*k) { Some(p) => s.set_marker(&format!("lm:{k}"), *p, 0.012, [0.35, 0.65, 1.0]), None => s.remove_marker(&format!("lm:{k}")) }
+        let _ = i;
+    }
+    if prep.show_bones { for (i, j) in prep.model.joints.iter().enumerate() { let sel = prep.bone_sel == Some(i); s.set_marker(&format!("bone:{i}"), j.pos, if sel { 0.02 } else { 0.01 }, if sel { [1.0, 0.8, 0.2] } else { [0.7, 0.7, 0.75] }); } }
+    else { for i in 0..prep.model.joints.len() { s.remove_marker(&format!("bone:{i}")); } }
+}
+
+/// Klick im Viewport während eines Pick-Modus.
+pub fn on_pick(s: &mut Session, st: &mut StudioState, o: [f32; 3], d: [f32; 3]) {
+    let Some(prep) = st.prep.as_mut() else { return };
+    let Some((pos, vertex)) = s.pick(o, d) else { prep.msg = "Kein Treffer am Körper".into(); return };
+    match prep.pick {
+        Pick::Landmark(i) => { prep.cfg.landmarks.insert(LANDMARKS[i].0.to_string(), pos); prep.pick = Pick::None; refresh_markers(s, prep); prep.msg = format!("Landmarke „{}“ gesetzt", LANDMARKS[i].1); }
+        Pick::Morphs => { s.set_marker("pick", pos, 0.01, [1.0, 0.5, 0.2]); prep.hit = Some(Hit { pos, vertex, morphs: s.morphs_at_vertex(vertex, 12) }); }
+        Pick::None => {}
+    }
+}
+
+fn prep_ui(ui: &mut egui::Ui, s: &mut Session, prep: &mut Prep) {
+    ui.colored_label(theme::TEXT2, format!("{}  ·  {}", prep.pkg.label, prep.model.path.file_name().and_then(|f| f.to_str()).unwrap_or("")));
+    if !prep.msg.is_empty() { ui.colored_label(theme::TEXT2, &prep.msg); }
+    if prep.pick != Pick::None { ui.colored_label(theme::WARN, "Pick-Modus aktiv: Klick auf den Körper im Viewport (Orbit: ziehen)."); }
+    // 1 Quelle
+    ui.add_space(6.0); ui.strong("1  Quelle");
+    let cur = prep.cfg.primitive.min(prep.model.prims.len().saturating_sub(1));
+    let mut sel = cur;
+    egui::ComboBox::from_id_salt("prim").selected_text(prep.model.prims.get(cur).map(|p| format!("{} · {} V · {} Morphs", p.label, p.verts, p.morphs)).unwrap_or_default()).show_ui(ui, |ui| { for (i, p) in prep.model.prims.iter().enumerate() { ui.selectable_value(&mut sel, i, format!("{} · {} V · {} Morphs{}", p.label, p.verts, p.morphs, if p.skinned { " · Skin" } else { "" })); } });
+    let mut changed = sel != cur;
+    ui.horizontal(|ui| { ui.label("Maßstab"); if ui.add(egui::DragValue::new(&mut prep.cfg.scale).speed(0.001).range(0.0001..=100.0)).changed() { changed = true; } ui.weak("(1 = Meter, 0.01 = cm)"); });
+    if changed { prep.cfg.primitive = sel; prep.cfg.regions.clear(); prep.cfg.landmarks.clear(); reload(s, prep); }
+    // 2 Landmarken
+    ui.add_space(6.0); ui.strong("2  Landmarken am Modell");
+    ui.weak("Setze die Punkte per Klick auf den Körper; daraus leiten sich die Regionsgrenzen ab.");
+    for (i, (k, l)) in LANDMARKS.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(format!("{l}: {}", if prep.cfg.landmarks.contains_key(*k) { "gesetzt" } else { "–" }));
+            let on = prep.pick == Pick::Landmark(i);
+            if ui.selectable_label(on, "am Modell setzen").clicked() { prep.pick = if on { Pick::None } else { Pick::Landmark(i) }; }
+        });
+    }
+    if ui.button("Aus Proportionen vorschlagen").clicked() { prep.cfg.landmarks = import::default_landmarks(&s.body.base_pos); refresh_markers(s, prep); }
+    // 3 Regionen
+    ui.add_space(6.0); ui.strong("3  Anatomische Regionen der Morphs");
+    let n = s.params.defs.len();
+    let unassigned = s.params.defs.iter().filter(|d| d.group == "Unzugeordnet").count();
+    ui.label(format!("{} Morphs, davon {} ohne Region", n, unassigned));
+    ui.horizontal(|ui| {
+        if ui.button("Automatisch zuordnen (aus Verschiebungen)").on_hover_text("Ordnet jeden Morph anhand des Schwerpunkts seiner Verformung der nächstgelegenen Region zu – Trefferquote an MakeHuman ca. 64 %, bitte am Modell prüfen").clicked() {
+            let sug = import::suggest_regions(&s.body, &prep.cfg.landmarks);
+            for (name, r) in &sug { if let Some(&i) = s.params.index.get(&format!("morph:{name}")) { if s.params.defs[i].group == "Unzugeordnet" { s.params.defs[i].group = r.clone(); } } }
+            prep.msg = format!("{} Morphs automatisch zugeordnet", sug.len());
+        }
+        let on = prep.pick == Pick::Morphs;
+        if ui.selectable_label(on, "Am Modell prüfen").on_hover_text("Klick auf eine Körperstelle zeigt, welche Morphs dort wirken").clicked() { prep.pick = if on { Pick::None } else { Pick::Morphs }; }
+    });
+    if let Some(h) = &prep.hit {
+        ui.colored_label(theme::TEXT2, format!("Stelle: Vertex {} · Region (Heuristik): {}", h.vertex, import::region_for_point(h.pos, &prep.cfg.landmarks)));
+        let hits = h.morphs.clone();
+        let mut assign: Option<(usize, String)> = None;
+        let mut set: Option<(usize, f32)> = None;
+        for (t, mag) in hits {
+            let g = s.params.defs[t].group.clone();
+            ui.horizontal(|ui| {
+                let mut v = s.state.values[t];
+                if ui.add(egui::Slider::new(&mut v, 0.0..=1.0).text(format!("{} ({:.1} mm)", s.params.defs[t].label, mag * 1000.0))).changed() { set = Some((t, v)); }
+                let mut cur = g.clone();
+                egui::ComboBox::from_id_salt(("reg", t)).width(130.0).selected_text(&g).show_ui(ui, |ui| { ui.selectable_value(&mut cur, "Unzugeordnet".to_string(), "Unzugeordnet"); for r in REGION_NAMES { ui.selectable_value(&mut cur, r.to_string(), r); } });
+                if cur != g { assign = Some((t, cur)); }
+            });
+        }
+        if let Some((t, v)) = set { s.set_param(t, v); }
+        if let Some((t, r)) = assign { s.params.defs[t].group = r; }
+        ui.weak("Region je Morph per Auswahlfeld; Regler zeigen die Wirkung sofort im Viewport.");
+    }
+    // 4 Bones
+    ui.add_space(6.0); ui.strong("4  Skelett & Bone-Mapping (VRM-Humanoid)");
+    if prep.model.joints.is_empty() { ui.colored_label(theme::WARN, "Kein Skelett im Modell – Rig in Blender ergänzen (Skin, Joints) und neu importieren."); }
+    else {
+        if ui.button("Automatisch zuordnen").clicked() { prep.cfg.bones = import::auto_bones(&prep.model.joints); }
+        let before = prep.show_bones;
+        ui.checkbox(&mut prep.show_bones, "Skelett im Viewport zeigen (Körper ausgeblendet)");
+        if before != prep.show_bones { s.hide_body = prep.show_bones; refresh_markers(s, prep); }
+        let names: Vec<String> = prep.model.joints.iter().map(|j| j.name.clone()).collect();
+        let mut sel_bone = None;
+        for (slot, _) in VRM_SLOTS.iter() {
+            let mut cur = prep.cfg.bones.get(*slot).cloned().unwrap_or_default();
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(*slot).color(if cur.is_empty() { theme::ERR } else { theme::TEXT }));
+                let old = cur.clone();
+                egui::ComboBox::from_id_salt(("bone", *slot)).width(170.0).selected_text(if cur.is_empty() { "– nicht zugeordnet –" } else { cur.as_str() }).show_ui(ui, |ui| { for n in &names { ui.selectable_value(&mut cur, n.clone(), n); } });
+                if cur != old { prep.cfg.bones.insert(slot.to_string(), cur.clone()); sel_bone = names.iter().position(|n| *n == cur); }
+            });
+        }
+        if sel_bone.is_some() { prep.bone_sel = sel_bone; refresh_markers(s, prep); }
+        ui.weak(format!("{}/15 Pflicht-Bones zugeordnet · {} Joints", prep.cfg.bones.len(), names.len()));
+    }
+    // 5 Symmetrie
+    ui.add_space(6.0); ui.strong("5  Symmetrie (links/rechts)");
+    let pairs = import::detect_mirror(&s.body.morphs.names);
+    ui.label(format!("{} Links/Rechts-Paare aus Namen erkannt ({} aktiv)", pairs.len(), s.params.defs.iter().filter(|d| d.mirror.is_some()).count() / 2));
+    if ui.button("Erkannte Paare übernehmen").clicked() { prep.cfg.mirror = pairs.iter().map(|&(a, b)| [s.body.morphs.names[a].clone(), s.body.morphs.names[b].clone()]).collect(); for &(a, b) in &pairs { s.params.defs[a].mirror = Some(b); s.params.defs[b].mirror = Some(a); } }
+    // 6 Prüfung & Speichern
+    ui.add_space(6.0); ui.separator(); ui.strong("6  Prüfung");
+    let unassigned = s.params.defs.iter().filter(|d| d.group == "Unzugeordnet").count();
+    let lm_ok = LANDMARKS.iter().all(|(k, _)| prep.cfg.landmarks.contains_key(*k));
+    let bones_ok = prep.cfg.bones.len() == 15;
+    let checks = [
+        Stage { name: "Geometrie & Morphs geladen", ok: Some(!s.body.morphs.names.is_empty()), detail: format!("{} Morph-Targets", s.body.morphs.names.len()) },
+        Stage { name: "Landmarken", ok: Some(lm_ok), detail: "5 Landmarken am Modell gesetzt".into() },
+        Stage { name: "Regionen", ok: Some(unassigned == 0), detail: format!("{unassigned} Morphs ohne Region") },
+        Stage { name: "Rig / Bone-Mapping", ok: Some(bones_ok), detail: format!("{}/15 VRM-Pflicht-Bones", prep.cfg.bones.len()) },
+        Stage { name: "Symmetrie", ok: Some(!prep.cfg.mirror.is_empty()), detail: format!("{} Paare übernommen", prep.cfg.mirror.len()) },
+    ];
+    for c in &checks { stage_row(ui, c); }
+    let complete = checks.iter().all(|c| c.ok == Some(true));
+    if ui.button(if complete { "Als Körperbasis speichern (vollständig konfiguriert)" } else { "Zwischenstand speichern (Entwurf)" }).clicked() {
+        for d in &s.params.defs { if d.group != "Unzugeordnet" { prep.cfg.regions.insert(d.id.trim_start_matches("morph:").to_string(), d.group.clone()); } }
+        let caps = if bones_ok { vec!["humanoid:vrm1-complete".to_string(), "morph:generic".to_string()] } else { vec!["morph:generic".to_string()] };
+        let v = serde_json::to_value(&prep.cfg).unwrap();
+        prep.msg = match prep.pkg.dir.as_ref().map(|d| hase_core::packages::save_body_config(d, &v, if complete { "configured" } else { "draft" }, caps)) {
+            Some(Ok(())) => format!("Gespeichert ({})", if complete { "vollständig konfiguriert – als Körperbasis verwendbar" } else { "Entwurf" }),
+            Some(Err(e)) => e, None => "kein Paketverzeichnis".into(),
+        };
+        if let Ok(pk) = hase_core::packages::Packages::load(&s.repo) { s.packages.bodies = pk.bodies; }
+    }
+}
+
+impl App {
+    /// Zielworkflow Import → Körperbasis → Spezies → Charakter mit Status je Schritt.
+    fn workflow_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(s) = self.session.as_ref() else { return };
+        let imported = self.studio.import.is_some() || s.packages.bodies.iter().any(|b| b.user);
+        let prepping = self.studio.prep.is_some();
+        let body_ready = s.packages.bodies.iter().any(|b| b.user && b.status == "configured");
+        let species = s.packages.species.iter().any(|x| x.user);
+        let steps = [("Import", if imported { "erledigt" } else { "offen" }, imported, 1usize), ("Körperbasis", if body_ready { "konfiguriert" } else if prepping { "in Arbeit" } else { "offen" }, body_ready, 2), ("Spezies", if species { "vorhanden" } else { "offen" }, species, 0), ("Charakter", "gestalten", false, 99)];
+        ui.horizontal(|ui| {
+            for (i, (n, st, done, tab)) in steps.iter().enumerate() {
+                let col = if *done { egui::Color32::from_rgb(0x6C, 0xC4, 0x7F) } else { theme::TEXT2 };
+                if ui.add(egui::Button::new(egui::RichText::new(format!("{n}\n{st}")).color(col).small()).min_size(egui::vec2(78.0, 34.0))).clicked() { if *tab == 99 { self.ws = crate::app::Workspace::Charakter; self.main = Main::Charakter; } else { self.studio.tab = *tab; } }
+                if i < 3 { ui.weak(">"); }
+            }
+        });
+        ui.separator();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_prepare_activate_chain() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let glb = repo.join("content/testcandidate/body_mpfb2_testcandidate.glb");
+        if !glb.exists() { eprintln!("GLB fehlt – übersprungen"); return; }
+        let mut s = Session::load(&repo).unwrap();
+        let ref_id = s.packages.body.id.clone();
+        let dir = hase_core::packages::write_body_draft(&repo, "Kettentest", &glb, &[("Importiert".into(), Some(true), "x".into())]).unwrap();
+        let pk = hase_core::packages::Packages::load(&repo).unwrap();
+        let pkg = pk.bodies.iter().find(|b| b.id == "user.body.kettentest").cloned().expect("Entwurf gelistet");
+        assert_eq!(pkg.status, "draft");
+        let fp1 = pkg.digest.clone();
+
+        let mut prep = start_prep(&mut s, &pkg).unwrap();
+        assert!(s.generic && s.params.defs.len() == 548, "{}", s.params.defs.len());
+        assert_eq!(prep.cfg.landmarks.len(), 5);
+        // Strahl von vorn auf die Körpermitte trifft den Körper
+        s.refresh();
+        let (o, d) = ([0.0, s.body_height() * 0.6, 5.0], [0.0, 0.0, -1.0]);
+        let (hit, v) = s.pick(o, d).expect("Treffer");
+        assert!(hit[2] > 0.0, "Vorderseite getroffen, z={}", hit[2]);
+        assert!(!s.morphs_at_vertex(v, 5).is_empty());
+        // Auto-Zuordnung + Speichern
+        let sug = import::suggest_regions(&s.body, &prep.cfg.landmarks);
+        for (n, r) in &sug { if let Some(&i) = s.params.index.get(&format!("morph:{n}")) { s.params.defs[i].group = r.clone(); } }
+        for d in &s.params.defs { if d.group != "Unzugeordnet" { prep.cfg.regions.insert(d.id.trim_start_matches("morph:").to_string(), d.group.clone()); } }
+        let v = serde_json::to_value(&prep.cfg).unwrap();
+        hase_core::packages::save_body_config(&dir, &v, "configured", vec!["morph:generic".into()]).unwrap();
+        // Neu laden, aktivieren, Morph wirkt
+        let pk = hase_core::packages::Packages::load(&repo).unwrap();
+        let pkg2 = pk.bodies.iter().find(|b| b.id == "user.body.kettentest").cloned().unwrap();
+        assert_eq!(pkg2.status, "configured");
+        assert_ne!(pkg2.digest, fp1, "Konfigurationsänderung ändert den Fingerprint");
+        s.activate_body(&pkg2).unwrap();
+        assert!(s.params.defs.iter().any(|d| d.group == "Augen"));
+        let i = s.params.defs.iter().position(|d| d.group == "Nase").unwrap();
+        s.refresh();
+        s.set_param(i, 1.0);
+        let up = s.refresh();
+        assert!(up.iter().any(|u| matches!(u, crate::render::MeshUpdate::Positions { id, .. } if id == "body")));
+        // Fingerprint reagiert auf Austausch der Geometrie bei gleichem Manifest
+        let before = hase_core::packages::data_fingerprint(&dir.join("data"), &repo.join(".hase-cache/fp-test.json"));
+        std::fs::write(dir.join("data/extra.bin"), b"x").unwrap();
+        let after = hase_core::packages::data_fingerprint(&dir.join("data"), &repo.join(".hase-cache/fp-test.json"));
+        assert_ne!(before, after);
+        // zurück zur Referenz
+        let r = s.reference_body.clone();
+        s.activate_body(&r).unwrap();
+        assert!(!s.generic && s.packages.body.id == ref_id && s.params.defs.len() == 294);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_file(repo.join(".hase-cache/fp-test.json"));
     }
 }

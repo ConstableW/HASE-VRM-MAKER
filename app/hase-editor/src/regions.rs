@@ -30,6 +30,7 @@ pub const REGIONS: &[Region] = &[
     r!("Mund & Lippen", Main::Gesicht, ["mouth"], ["asym-mouth"], cam(0.0, 0.0, 0.42, 1.52)),
     r!("Kiefer & Kinn", Main::Gesicht, ["chin"], ["asym-jaw"], cam(0.6, 0.0, 0.55, 1.50)),
     r!("Ohren", Main::Gesicht, ["ears"], ["asym-ear"], cam(1.45, 0.0, 0.5, 1.60)),
+    r!("Gesamtkörper", Main::Koerper, [], [], CAM_BODY),
     r!("Brust", Main::Koerper, ["breast"], ["pectoral", "measure-bust", "underbust", "frontchest", "asymm-breast"], cam(0.35, 0.05, 1.3, 1.25)),
     r!("Hals", Main::Koerper, ["neck"], [], cam(0.3, 0.03, 0.9, 1.45)),
     r!("Schultern & Torso", Main::Koerper, ["torso"], ["asymm-trunk"], cam(0.35, 0.05, 1.8, 1.2)),
@@ -47,7 +48,7 @@ pub fn regions_of(main: Main) -> impl Iterator<Item = (usize, &'static Region)> 
 /// Region (Index in REGIONS), die den Parameter beansprucht; Makros und Unzugeordnetes → None.
 pub fn region_of(d: &ParamDef) -> Option<usize> {
     if d.group == "Makro" { return None; }
-    REGIONS.iter().position(|r| r.groups.contains(&d.group.as_str()) || r.ids.iter().any(|s| d.id.contains(s)))
+    REGIONS.iter().position(|r| r.label == d.group || r.groups.contains(&d.group.as_str()) || r.ids.iter().any(|s| d.id.contains(s)))
 }
 
 /// Unterabschnitt innerhalb einer Region: 0 Form, 1 Proportionen, 2 Position & Winkel, 3 Asymmetrie.

@@ -29,7 +29,7 @@ pub struct Species {
 }
 
 #[derive(Clone, Debug)]
-pub struct BodyPackage { pub id: String, pub version: String, pub label: String, pub data_root: PathBuf, pub interface: String, pub capabilities: Vec<String>, pub status: String, pub digest: String, pub user: bool, pub dir: Option<PathBuf> }
+pub struct BodyPackage { pub id: String, pub version: String, pub label: String, pub data_root: PathBuf, pub interface: String, pub capabilities: Vec<String>, pub status: String, pub digest: String, pub user: bool, pub dir: Option<PathBuf>, pub config: Option<Value> }
 
 pub struct Packages { pub body: BodyPackage, pub bodies: Vec<BodyPackage>, pub species: Vec<Species>, pub issues: Vec<String> }
 
@@ -57,10 +57,11 @@ impl Packages {
         for (_, v) in &manifests {
             match v["type"].as_str() {
                 Some("body") => {
-                    let root = v["dev"]["fileRoot"].as_str().map(|r| repo.join(r)).unwrap_or_else(|| dir.join(v["id"].as_str().unwrap_or("")).join("data"));
                     let id: String = v["id"].as_str().unwrap_or("").into();
-                    let digest = digests.get(&id).cloned().unwrap_or_default();
-                    bodies.push(BodyPackage { status: v["dev"]["status"].as_str().unwrap_or("").into(), digest, user: user_dirs.contains_key(&id), dir: user_dirs.get(&id).cloned(), id: v["id"].as_str().unwrap_or("").into(), version: v["version"].as_str().unwrap_or("").into(), label: label(&v["name"], "Body"), data_root: root, interface: v["body"]["provides"]["interface"].as_str().unwrap_or("").into(), capabilities: v["body"]["provides"]["capabilities"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() });
+                    let root = v["dev"]["fileRoot"].as_str().map(|r| repo.join(r)).or_else(|| user_dirs.get(&id).map(|d| d.join("data"))).unwrap_or_else(|| dir.join(&id).join("data"));
+                    let mdig = digests.get(&id).cloned().unwrap_or_default();
+                    let digest = sha256_hex(format!("{mdig}|{}", data_fingerprint(&root, &repo.join(".hase-cache/fingerprints.json"))).as_bytes());
+                    bodies.push(BodyPackage { config: v["body"].get("config").cloned(), status: v["dev"]["status"].as_str().unwrap_or("").into(), digest, user: user_dirs.contains_key(&id), dir: user_dirs.get(&id).cloned(), id: v["id"].as_str().unwrap_or("").into(), version: v["version"].as_str().unwrap_or("").into(), label: label(&v["name"], "Body"), data_root: root, interface: v["body"]["provides"]["interface"].as_str().unwrap_or("").into(), capabilities: v["body"]["provides"]["capabilities"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() });
                 }
                 Some("species") => {
                     let s = &v["species"];
@@ -89,6 +90,24 @@ impl Packages {
 }
 
 pub fn sha256_hex(b: &[u8]) -> String { use sha2::{Digest, Sha256}; Sha256::digest(b).iter().map(|x| format!("{x:02x}")).collect() }
+/// Inhalts-Fingerprint aller Dateien unter `root` (Geometrie, Morphs, Rig, Materialien). Dateihashes werden über (Pfad, Größe, Änderungszeit) gecacht.
+pub fn data_fingerprint(root: &Path, cache_file: &Path) -> String {
+    let mut cache: BTreeMap<String, String> = std::fs::read_to_string(cache_file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut files = Vec::new();
+    fn walk(d: &Path, out: &mut Vec<PathBuf>) { if let Ok(rd) = std::fs::read_dir(d) { for e in rd.flatten() { let p = e.path(); if p.is_dir() { walk(&p, out) } else { out.push(p) } } } }
+    walk(root, &mut files);
+    files.sort();
+    let mut all = String::new(); let mut dirty = false;
+    for f in &files {
+        let md = std::fs::metadata(f).ok();
+        let key = format!("{}|{}|{}", f.display(), md.as_ref().map(|m| m.len()).unwrap_or(0), md.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0));
+        let h = match cache.get(&key) { Some(h) => h.clone(), None => { let h = file_digest(f); cache.insert(key, h.clone()); dirty = true; h } };
+        all.push_str(&format!("{}:{}\n", f.strip_prefix(root).unwrap_or(f).display(), h));
+    }
+    if dirty { if let Some(d) = cache_file.parent() { let _ = std::fs::create_dir_all(d); } let _ = std::fs::write(cache_file, serde_json::to_string(&cache).unwrap_or_default()); }
+    sha256_hex(all.as_bytes())
+}
+
 pub fn file_digest(p: &Path) -> String { std::fs::read(p).map(|b| sha256_hex(&b)).unwrap_or_default() }
 
 pub fn user_dir(repo: &Path) -> PathBuf { repo.join("user-content/packages") }
@@ -174,4 +193,15 @@ pub fn write_body_draft(repo: &Path, label: &str, model: &Path, stages: &[(Strin
     });
     std::fs::write(dir.join("hase-package.json"), serde_json::to_string_pretty(&m).unwrap()).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+/// Schreibt Aufbereitungs-Konfiguration/Status einer Körperbasis ins Manifest.
+pub fn save_body_config(dir: &Path, cfg: &Value, status: &str, capabilities: Vec<String>) -> Result<(), String> {
+    let f = dir.join("hase-package.json");
+    let mut m: Value = serde_json::from_str(&std::fs::read_to_string(&f).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    m["dev"]["status"] = Value::String(status.into());
+    m["body"]["config"] = cfg.clone();
+    m["body"]["provides"]["capabilities"] = serde_json::json!(capabilities);
+    if status == "configured" { m["body"]["provides"]["interface"] = Value::String(format!("{}.iface", m["id"].as_str().unwrap_or("user.body"))); m["description"] = Value::String("Importierte, aufbereitete Körperbasis (Regionen, Bones, Symmetrie zugeordnet).".into()); }
+    std::fs::write(&f, serde_json::to_string_pretty(&m).unwrap()).map_err(|e| e.to_string())
 }

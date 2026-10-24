@@ -240,6 +240,14 @@ impl App {
         if resp.dragged_by(egui::PointerButton::Secondary) || resp.dragged_by(egui::PointerButton::Middle) { let d = resp.drag_delta(); self.camera.pan(d.x, d.y); }
         if resp.hovered() { let sc = ui.input(|i| i.smooth_scroll_delta.y); if sc != 0.0 { self.camera.zoom(sc); } }
         if resp.double_clicked() { self.camera = Camera::default(); }
+        let aspect_pick = (rect.width() / rect.height().max(1.0)).max(0.1);
+        if resp.clicked() && self.ws == Workspace::Studio && self.studio.prep.as_ref().map(|p| p.pick != crate::studio::Pick::None).unwrap_or(false) {
+            if let (Some(pp), Some(s)) = (resp.interact_pointer_pos(), self.session.as_mut()) {
+                let (nx, ny) = ((pp.x - rect.left()) / rect.width() * 2.0 - 1.0, 1.0 - (pp.y - rect.top()) / rect.height() * 2.0);
+                let (o, d) = self.camera.ray(nx, ny, aspect_pick);
+                crate::studio::on_pick(s, &mut self.studio, o, d);
+            }
+        }
         let updates = self.session.as_mut().map(|s| s.refresh()).unwrap_or_default();
         let aspect = (rect.width() / rect.height().max(1.0)).max(0.1);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals(aspect) }));
