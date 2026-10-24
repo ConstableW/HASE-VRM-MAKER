@@ -1,5 +1,6 @@
 //! egui-Anwendung: Parameterpanel, Asset-Bibliotheken, 3D-Viewport mit Orbit-Kamera, Profiling-Overlay.
 use crate::camera::{Camera, PRESETS};
+use crate::theme;
 use crate::regions::{self, Main, CLOTHES_KINDS, REGIONS, TIER_LABELS};
 use crate::render::{MeshUpdate, SceneRenderer};
 use crate::session::{load_proxy_blocking, LoadedProxy, Session, EYES_ID};
@@ -57,6 +58,7 @@ pub struct App {
     pub(crate) status: String,
     pub(crate) gpu_name: String,
     pub(crate) studio: crate::studio::StudioState,
+    pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
 }
 
 pub fn spawn_session_load(tx: Sender<Msg>, ctx: egui::Context, repo: std::path::PathBuf) {
@@ -82,7 +84,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo);
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default() }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), pending_load: None }
     }
 
     fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -168,7 +170,7 @@ impl App {
                     Row::Param(i) => {
                         let d = &s.params.defs[*i];
                         let mut v = s.state.values[*i];
-                        let (lo, hi) = (d.min, d.max);
+                        let (lo, hi) = s.range(*i);
                         let resp = ui.add(egui::Slider::new(&mut v, lo..=hi).text(d.label.as_str()).show_value(true).fixed_decimals(2));
                         if resp.changed() { set = Some((*i, v)); }
                         if resp.double_clicked() { set = Some((*i, d.default)); }
@@ -272,7 +274,13 @@ impl App {
             let r = std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|e| e.to_string()));
             match (r, self.session.as_mut()) {
                 (Ok(v), Some(s)) => match CharacterState::from_json(&v, &s.params) {
-                    Some(st) => { s.apply_state(st); self.status = format!("Geladen: {}", p.display()); }
+                    Some(st) => {
+                        let mut issues = s.ref_issues_of(&st);
+                        let unknown = CharacterState::unknown_params(&v, &s.params);
+                        if !unknown.is_empty() { issues.push(format!("{} gespeicherte Parameter sind im installierten Katalog unbekannt und gehen verloren: {}", unknown.len(), unknown.iter().take(4).cloned().collect::<Vec<_>>().join(", "))); }
+                        if issues.is_empty() { s.apply_state(st); self.status = format!("Geladen: {}", p.display()); }
+                        else { self.pending_load = Some((st, issues, p.display().to_string())); }
+                    }
                     None => self.status = "Datei hat kein passendes Format".into(),
                 },
                 (Err(e), _) => self.status = format!("Laden fehlgeschlagen: {e}"),
@@ -316,22 +324,19 @@ impl eframe::App for App {
             });
         });
         egui::Panel::bottom("status").show(ui, |ui| { ui.horizontal(|ui| { ui.label(&self.status); if let Some(e) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, e); } ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.weak("HASE VRM MAKER – Entwicklungsstand (Testcandidate)"); }); }); });
+        self.load_modal(&ctx);
         egui::Panel::top("nav").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("HASE VRM MAKER").strong().size(16.0)); ui.weak("Character Studio");
                 ui.add_space(16.0);
-                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB"), ("Körper & Spezies", Workspace::Studio, "Körperbasen und Spezies erstellen, importieren, prüfen, speichern")] {
-                    let on = self.ws == ws;
-                    if ui.add(egui::Button::new(egui::RichText::new(n).size(15.0)).selected(on)).on_hover_text(t).clicked() {
-                        self.ws = ws;
-                        self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation, Workspace::Studio => Main::Charakter };
-                        self.region = usize::MAX; self.sub = 0; self.asset_filter.clear();
-                    }
-                }
+                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB")] { self.ws_button(ui, n, ws, t); }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Laden").clicked() { self.load_dialog(); }
                     if ui.button("Speichern").clicked() { self.save_dialog(); }
                     ui.add_enabled(false, egui::Button::new("Bibliothek")).on_disabled_hover_text("Charakterbibliothek: noch nicht implementiert");
+                    ui.separator();
+                    self.ws_button(ui, "Körperbasen & Spezies", Workspace::Studio, "Authoring-Werkzeug: Körperbasen und Spezies erstellen, importieren, prüfen, speichern");
+                    ui.weak("Werkzeuge");
                 });
             });
         });
@@ -346,6 +351,32 @@ impl eframe::App for App {
 
 
 impl App {
+    fn ws_button(&mut self, ui: &mut egui::Ui, n: &str, ws: Workspace, tip: &str) {
+        if ui.add(egui::Button::new(egui::RichText::new(n).size(15.0)).selected(self.ws == ws)).on_hover_text(tip).clicked() {
+            self.ws = ws;
+            self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation, Workspace::Studio => Main::Charakter };
+            self.region = usize::MAX; self.sub = 0; self.asset_filter.clear();
+        }
+    }
+
+    /// Rückfrage beim Laden eines Charakters, dessen Ressourcen sich geändert haben – niemals stilles Umschalten.
+    fn load_modal(&mut self, ctx: &egui::Context) {
+        let Some((st, issues, path)) = self.pending_load.clone() else { return };
+        let mut done = false;
+        egui::Window::new("Charakter laden – Ressourcen haben sich geändert").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label(&path);
+            for i in &issues { ui.colored_label(theme::WARN, format!("• {i}")); }
+            ui.add_space(6.0);
+            ui.label("Die gespeicherten Parameterwerte bleiben unverändert; der Charakter sieht so aus wie gespeichert. Die Bindung an die installierten Versionen wird nur auf Wunsch aktualisiert.");
+            ui.horizontal(|ui| {
+                if ui.button("Laden (Werte & alte Bindung behalten)").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); } self.status = format!("Geladen mit Hinweisen: {path}"); done = true; }
+                if ui.button("Laden und an installierte Versionen binden").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); s.rebind_refs(); } self.status = format!("Geladen und gebunden: {path}"); done = true; }
+                if ui.button("Abbrechen").clicked() { done = true; }
+            });
+        });
+        if done { self.pending_load = None; }
+    }
+
     fn nav_button(&mut self, ui: &mut egui::Ui, m: Main) {
         if ui.selectable_label(self.main == m, egui::RichText::new(m.label()).size(15.0)).clicked() { self.main = m; self.region = usize::MAX; self.sub = 0; self.asset_filter.clear(); }
     }
@@ -426,6 +457,18 @@ impl App {
         if !sp.traits.is_empty() { ui.label("Merkmale"); ui.horizontal_wrapped(|ui| { for t in &sp.traits { if ui.button(&t.label).on_hover_text("Setzt die zugehörigen Parameter").clicked() { s.apply_map(&t.set); } } }); }
         if !sp.components.is_empty() { ui.label("Komponenten"); for c in &sp.components { ui.weak(format!("{}{}", c.asset.rsplit('.').next().unwrap_or(&c.asset), if c.stub { " (Stub: noch keine Geometrie)" } else { "" })); } }
         if ui.button("Alle Parameter zurücksetzen").clicked() { s.reset_params(); }
+        let issues = s.ref_issues();
+        if !issues.is_empty() {
+            ui.separator();
+            for i in &issues { ui.colored_label(theme::WARN, format!("• {i}")); }
+            ui.weak("Der Charakter bleibt unverändert, bis du ihn ausdrücklich an die installierte Version bindest.");
+            if ui.button("An installierte Version binden").clicked() { s.rebind_refs(); }
+        }
+        let out = s.out_of_limits();
+        if !out.is_empty() {
+            ui.colored_label(theme::WARN, format!("• {} Werte liegen außerhalb der Grenzen dieser Spezies", out.len()));
+            if ui.button("In Speziesgrenzen bringen").clicked() { s.clamp_all_to_species(); }
+        }
     }
 
     /// Regler einer Region/Auswahl in Unterabschnitten (Form / Proportionen / Position).
@@ -447,7 +490,7 @@ impl App {
                 let d = &s.params.defs[i];
                 if !macros { let t = regions::tier(d); if t != last { ui.add_space(6.0); ui.strong(TIER_LABELS[t]); last = t; } }
                 let mut v = s.state.values[i];
-                let resp = ui.add(egui::Slider::new(&mut v, d.min..=d.max).text(crate::theme::label_de(&d.label)).fixed_decimals(2));
+                let resp = ui.add(egui::Slider::new(&mut v, { let (lo, hi) = s.range(i); lo..=hi.max(lo + 1e-4) }).text(crate::theme::label_de(&d.label)).fixed_decimals(2));
                 if resp.changed() { set = Some((i, v)); }
                 if resp.double_clicked() { set = Some((i, d.default)); }
             }

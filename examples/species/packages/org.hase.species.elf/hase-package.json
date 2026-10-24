@@ -45,7 +45,7 @@
       "mh:macro-age": 0.35
     },
     "limits": {
-      "mh:head-scale-vert": [
+      "mh:head-scale-vert-decr-incr": [
         -0.2,
         1.0
       ]
@@ -56,7 +56,7 @@
           "de": "Schlank"
         },
         "set": {
-          "mh:head-scale-vert": 0.15
+          "mh:head-scale-vert-decr-incr": 0.15
         }
       }
     },

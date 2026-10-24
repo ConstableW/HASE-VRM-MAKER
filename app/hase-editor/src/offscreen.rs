@@ -15,7 +15,7 @@ pub fn run(repo: &Path, out: &str, args: &[String]) -> i32 {
     let list: Vec<&str> = assets.split(',').filter(|x| !x.is_empty()).collect();
     s.default_assets_blocking(&list);
     if let Some(sets) = arg(args, "--set") {
-        for kv in sets.split(',') { if let Some((k, v)) = kv.split_once('=') { match (s.params.index.get(k).copied(), v.parse::<f32>()) { (Some(i), Ok(f)) => s.set_param(i, f), _ => eprintln!("Parameter unbekannt/ungültig: {kv}") } } }
+        for kv in sets.split(',') { if let Some((k, v)) = kv.split_once('=') { match (s.params.canonical(k), v.parse::<f32>()) { (Some(i), Ok(f)) => s.set_param(i, f), _ => eprintln!("Parameter unbekannt/ungültig: {kv}") } } }
     }
     let mut cam = Camera::default();
     if let Some(v) = arg(args, "--view") { if let Some((_, c)) = PRESETS.iter().find(|(n, _)| n.to_lowercase().starts_with(&v.to_lowercase())) { cam = *c; } }

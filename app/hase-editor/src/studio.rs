@@ -16,6 +16,8 @@ pub struct StudioState {
     pub msg: String,
     pub import: Option<(String, Vec<Stage>)>,
     pub dirty: bool,
+    pub body_name: String,
+    pub import_path: Option<std::path::PathBuf>,
 }
 
 const TABS: [&str; 6] = ["Übersicht", "Körperbasis", "Werte & Grenzen", "Presets", "Kompatibilität", "Paket"];
@@ -51,9 +53,9 @@ impl App {
             else {
                 let cur = s.packages.species[s.species_index()].clone();
                 let defaults = s.params.defs.iter().enumerate().filter(|(i, d)| (s.state.values[*i] - d.default).abs() > 1e-4).map(|(i, d)| (d.id.clone(), s.state.values[i])).collect();
-                let sp = Species { id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.components.clone(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Basis-Spezies: {}).", cur.label), body_id: s.packages.body.id.clone(), dir: None };
+                let sp = Species { id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.components.clone(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Basis-Spezies: {}).", cur.label), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
                 match sp.write(&s.repo, &s.packages.body) {
-                    Ok(dir) => { let mut sp = sp; sp.dir = Some(dir.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = format!("Gespeichert: {}", dir.display()); self.studio.new_name.clear(); }
+                    Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = format!("Gespeichert: {}", dir.display()); self.studio.new_name.clear(); }
                     Err(e) => self.studio.msg = e,
                 }
             }
@@ -65,7 +67,7 @@ impl App {
             while s.packages.species.iter().any(|x| x.id == id) { k += 1; id = format!("user.species.{base}-kopie-{k}"); }
             sp.id = id; sp.label = format!("{} (Kopie)", sp.label); sp.version = "1.0.0".into(); sp.user = true; sp.stub = false; sp.dir = None;
             sp.description = format!("Kopie von {}. {}", s.packages.species[self.studio.sel].label, sp.description);
-            match sp.write(&s.repo, &s.packages.body) { Ok(dir) => { sp.dir = Some(dir); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = "Dupliziert".into(); } Err(e) => self.studio.msg = e }
+            match sp.write(&s.repo, &s.packages.body) { Ok(dir) => { sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = "Dupliziert".into(); } Err(e) => self.studio.msg = e }
         }
         if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
     }
@@ -99,18 +101,40 @@ impl App {
                 ui.add_space(6.0);
                 for st in validate::body_stages(&s.body, &s.params, &pkg, un) { stage_row(ui, &st); }
                 ui.separator();
-                ui.strong("Externes Modell importieren (OBJ)");
-                ui.weak("Analyse gegen die aktive Körperbasis. Ein Modell ohne Rig oder Morphs gilt nicht als editierbar; fehlende Voraussetzungen werden unten benannt.");
-                if ui.button("OBJ wählen und analysieren …").clicked() {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Wavefront OBJ", &["obj"]).pick_file() {
-                        self.studio.import = Some(match validate::analyze_obj(&p, &s.body) { Ok(r) => (p.display().to_string(), r), Err(e) => (p.display().to_string(), vec![Stage { name: "Import fehlgeschlagen", ok: Some(false), detail: e }]) });
+                ui.strong("Körperbasen");
+                for b in &s.packages.bodies { ui.label(format!("{}  v{}  · {}{}", b.label, b.version, if b.status.is_empty() { "fertig" } else { &b.status }, if b.user { " · eigene" } else { "" })); }
+                ui.separator();
+                ui.strong("Externes Modell importieren (glTF/GLB/VRM/OBJ)");
+                ui.weak("Analyse gegen die aktive Körperbasis. Ein Modell ohne Rig oder Morphs gilt nicht als editierbar; fehlende Voraussetzungen werden benannt. Mit „Als Entwurf anlegen“ wird das Modell als Körperbasis-Paket (Status: Entwurf) gespeichert.");
+                if ui.button("Modell wählen und analysieren …").clicked() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("3D-Modell", &["glb", "gltf", "vrm", "obj"]).pick_file() {
+                        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                        let r = if ext == "obj" { validate::analyze_obj(&p, &s.body) } else { validate::analyze_gltf(&p, &s.body) };
+                        self.studio.import = Some(match r { Ok(r) => (p.display().to_string(), r), Err(e) => (p.display().to_string(), vec![Stage { name: "Import fehlgeschlagen", ok: Some(false), detail: e }]) });
+                        self.studio.import_path = Some(p);
                     }
                 }
                 if let Some((path, rep)) = &self.studio.import {
                     ui.colored_label(theme::TEXT2, path);
                     for st in rep { stage_row(ui, st); }
+                    let usable = rep.first().map(|r| r.ok == Some(true)).unwrap_or(false) && rep.get(1).map(|r| r.ok == Some(true)).unwrap_or(false);
                     ui.add_space(4.0);
-                    ui.colored_label(theme::WARN, "Weg zur Aufbereitung: Modell in Blender mit Rig (Bone-Mapping auf VRM-Humanoid) und Shape Keys versehen, als glTF exportieren. Der glTF-Import mit Rig/Morph-Übernahme und das Speichern als Body-Package sind noch nicht implementiert.");
+                    ui.colored_label(theme::WARN, "Aufbereitung: fehlende Stufen (Rig mit Bone-Mapping auf VRM-Humanoid, Morph-Targets/Shape Keys, Regionen, Links/Rechts) müssen ergänzt werden, z. B. in Blender (glTF-Export mit Skin und Shape Keys). Das Zuordnen von Regionen/Morphs in der Oberfläche und die Nutzung einer importierten Körperbasis im Editor sind noch nicht implementiert.");
+                    if usable {
+                        ui.horizontal(|ui| {
+                            ui.text_edit_singleline(&mut self.studio.body_name);
+                            if ui.add_enabled(!self.studio.body_name.trim().is_empty(), egui::Button::new("Als Entwurf anlegen")).clicked() {
+                                if let Some(src) = self.studio.import_path.clone() {
+                                    let stages: Vec<(String, Option<bool>, String)> = rep.iter().map(|x| (x.name.to_string(), x.ok, x.detail.clone())).collect();
+                                    match hase_core::packages::write_body_draft(&s.repo, self.studio.body_name.trim(), &src, &stages) {
+                                        Ok(dir) => { self.studio.msg = format!("Entwurf gespeichert: {}", dir.display()); self.studio.body_name.clear(); if let Ok(pk) = hase_core::packages::Packages::load(&s.repo) { s.packages.bodies = pk.bodies; } }
+                                        Err(e) => self.studio.msg = e,
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
                 }
             }
             2 => {
@@ -182,7 +206,7 @@ impl App {
                 if self.studio.dirty { ui.colored_label(theme::WARN, "Ungespeicherte Änderungen"); }
                 if ui.button("Paket speichern").clicked() {
                     let sp = s.packages.species[sel].clone();
-                    self.studio.msg = match sp.write(&s.repo, &s.packages.body) { Ok(d) => { self.studio.dirty = false; format!("Gespeichert: {}", d.display()) } Err(e) => e };
+                    self.studio.msg = match sp.write(&s.repo, &s.packages.body) { Ok(d) => { s.packages.species[sel].digest = hase_core::packages::file_digest(&d.join("hase-package.json")); self.studio.dirty = false; format!("Gespeichert: {}", d.display()) } Err(e) => e };
                 }
                 if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
             }

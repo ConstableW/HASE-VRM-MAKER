@@ -25,12 +25,13 @@ pub struct Species {
     pub description: String,
     pub body_id: String,
     pub dir: Option<PathBuf>,
+    pub digest: String,
 }
 
 #[derive(Clone, Debug)]
-pub struct BodyPackage { pub id: String, pub version: String, pub label: String, pub data_root: PathBuf, pub interface: String, pub capabilities: Vec<String> }
+pub struct BodyPackage { pub id: String, pub version: String, pub label: String, pub data_root: PathBuf, pub interface: String, pub capabilities: Vec<String>, pub status: String, pub digest: String, pub user: bool, pub dir: Option<PathBuf> }
 
-pub struct Packages { pub body: BodyPackage, pub species: Vec<Species>, pub issues: Vec<String> }
+pub struct Packages { pub body: BodyPackage, pub bodies: Vec<BodyPackage>, pub species: Vec<Species>, pub issues: Vec<String> }
 
 fn label(v: &Value, fallback: &str) -> String {
     match v { Value::String(s) => s.clone(), Value::Object(o) => o.get("de").or_else(|| o.values().next()).and_then(|x| x.as_str()).unwrap_or(fallback).to_string(), _ => fallback.to_string() }
@@ -41,14 +42,15 @@ impl Packages {
     pub fn load(repo: &Path) -> Result<Packages, String> {
         let dir = repo.join("examples/species/packages");
         let udir = user_dir(repo);
-        let mut body = None; let mut species = Vec::new(); let mut issues = Vec::new();
+        let mut bodies: Vec<BodyPackage> = Vec::new(); let mut species = Vec::new(); let mut issues = Vec::new();
         let mut manifests: Vec<(String, Value)> = Vec::new();
         let mut entries: Vec<(std::fs::DirEntry, bool)> = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?.flatten().map(|e| (e, false)).collect();
         if let Ok(rd) = std::fs::read_dir(&udir) { entries.extend(rd.flatten().map(|e| (e, true))); }
         let mut user_dirs: BTreeMap<String, PathBuf> = BTreeMap::new();
+        let mut digests: BTreeMap<String, String> = BTreeMap::new();
         for (e, user) in entries {
             let mf = e.path().join("hase-package.json");
-            if let Ok(s) = std::fs::read_to_string(&mf) { match serde_json::from_str::<Value>(&s) { Ok(v) => { if user { user_dirs.insert(v["id"].as_str().unwrap_or("").into(), e.path()); } manifests.push((e.file_name().to_string_lossy().into(), v)) }, Err(err) => issues.push(format!("{}: {err}", mf.display())) } }
+            if let Ok(s) = std::fs::read_to_string(&mf) { match serde_json::from_str::<Value>(&s) { Ok(v) => { digests.insert(v["id"].as_str().unwrap_or("").into(), sha256_hex(s.as_bytes())); if user { user_dirs.insert(v["id"].as_str().unwrap_or("").into(), e.path()); } manifests.push((e.file_name().to_string_lossy().into(), v)) }, Err(err) => issues.push(format!("{}: {err}", mf.display())) } }
         }
         manifests.sort_by(|a, b| a.0.cmp(&b.0));
         let stub_assets: Vec<String> = manifests.iter().filter(|(_, v)| v["dev"]["status"] == "stub").map(|(_, v)| v["id"].as_str().unwrap_or("").to_string()).collect();
@@ -56,7 +58,9 @@ impl Packages {
             match v["type"].as_str() {
                 Some("body") => {
                     let root = v["dev"]["fileRoot"].as_str().map(|r| repo.join(r)).unwrap_or_else(|| dir.join(v["id"].as_str().unwrap_or("")).join("data"));
-                    body = Some(BodyPackage { id: v["id"].as_str().unwrap_or("").into(), version: v["version"].as_str().unwrap_or("").into(), label: label(&v["name"], "Body"), data_root: root, interface: v["body"]["provides"]["interface"].as_str().unwrap_or("").into(), capabilities: v["body"]["provides"]["capabilities"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() });
+                    let id: String = v["id"].as_str().unwrap_or("").into();
+                    let digest = digests.get(&id).cloned().unwrap_or_default();
+                    bodies.push(BodyPackage { status: v["dev"]["status"].as_str().unwrap_or("").into(), digest, user: user_dirs.contains_key(&id), dir: user_dirs.get(&id).cloned(), id: v["id"].as_str().unwrap_or("").into(), version: v["version"].as_str().unwrap_or("").into(), label: label(&v["name"], "Body"), data_root: root, interface: v["body"]["provides"]["interface"].as_str().unwrap_or("").into(), capabilities: v["body"]["provides"]["capabilities"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() });
                 }
                 Some("species") => {
                     let s = &v["species"];
@@ -72,16 +76,20 @@ impl Packages {
                         description: v["description"].as_str().unwrap_or("").into(),
                         body_id: v["requires"].as_array().and_then(|a| a.iter().filter_map(|r| r["id"].as_str()).find(|i| i.contains(".body."))).unwrap_or("").into(),
                         dir: user_dirs.get(v["id"].as_str().unwrap_or("")).cloned(),
+                        digest: digests.get(v["id"].as_str().unwrap_or("")).cloned().unwrap_or_default(),
                     });
                 }
                 _ => {}
             }
         }
-        let body = body.ok_or("kein Body-Package gefunden")?;
+        let body = bodies.iter().find(|b| b.status != "draft").cloned().ok_or("kein Body-Package gefunden")?;
         if species.is_empty() { issues.push("keine Spezies gefunden".into()); }
-        Ok(Packages { body, species, issues })
+        Ok(Packages { body, bodies, species, issues })
     }
 }
+
+pub fn sha256_hex(b: &[u8]) -> String { use sha2::{Digest, Sha256}; Sha256::digest(b).iter().map(|x| format!("{x:02x}")).collect() }
+pub fn file_digest(p: &Path) -> String { std::fs::read(p).map(|b| sha256_hex(&b)).unwrap_or_default() }
 
 pub fn user_dir(repo: &Path) -> PathBuf { repo.join("user-content/packages") }
 
@@ -135,7 +143,7 @@ mod tests {
         let repo = crate::find_repo_root(&std::env::current_dir().unwrap()).expect("repo root");
         let mut p = Packages::load(&repo).unwrap();
         let mut sp = p.species.iter().find(|s| s.id.ends_with(".human")).unwrap().clone();
-        sp.id = "user.species.test-roundtrip".into(); sp.label = "Test".into(); sp.user = true; sp.dir = None;
+        sp.id = "user.species.test-roundtrip".into(); sp.digest.clear(); sp.label = "Test".into(); sp.user = true; sp.dir = None;
         sp.defaults.insert("mh:macro-age".into(), 0.7);
         sp.presets.push(Preset { id: "x".into(), label: "X".into(), params: [("mh:macro-gender".to_string(), 1.0f32)].into_iter().collect() });
         let dir = sp.write(&repo, &p.body).unwrap();
@@ -147,4 +155,23 @@ mod tests {
         assert_eq!(bump_version("1.2.3", 1), "1.3.0");
         std::fs::remove_dir_all(dir).unwrap();
     }
+}
+
+/// Legt eine Körperbasis als **Entwurf** an (Modelldatei wird kopiert, Prüfstufen im Manifest vermerkt). Nutzbar im Editor erst nach Aufbereitung.
+pub fn write_body_draft(repo: &Path, label: &str, model: &Path, stages: &[(String, Option<bool>, String)]) -> Result<PathBuf, String> {
+    let id = format!("user.body.{}", slug(label));
+    let dir = user_dir(repo).join(&id);
+    if dir.exists() { return Err(format!("{id} existiert bereits")); }
+    std::fs::create_dir_all(dir.join("data")).map_err(|e| e.to_string())?;
+    let fname = model.file_name().and_then(|f| f.to_str()).ok_or("ungültiger Dateiname")?;
+    std::fs::copy(model, dir.join("data").join(fname)).map_err(|e| e.to_string())?;
+    let m = serde_json::json!({
+        "schemaVersion": "1.0", "id": id, "type": "body", "version": "0.1.0", "name": {"de": label},
+        "description": "Importierter Körperbasis-Entwurf: noch nicht aufbereitet (siehe Prüfstufen).", "authors": ["Benutzer"], "tags": ["user", "draft"],
+        "license": {"spdx": "LicenseRef-User", "attribution": null, "redistribution": false},
+        "files": [], "dev": {"status": "draft", "source": fname, "stages": stages.iter().map(|(n, ok, d)| serde_json::json!({"name": n, "ok": ok, "detail": d})).collect::<Vec<_>>()},
+        "body": {"provides": {"interface": "user.iface.unknown", "version": "0.1.0", "capabilities": []}}
+    });
+    std::fs::write(dir.join("hase-package.json"), serde_json::to_string_pretty(&m).unwrap()).map_err(|e| e.to_string())?;
+    Ok(dir)
 }

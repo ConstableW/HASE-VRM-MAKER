@@ -169,7 +169,7 @@ def selftest(pk, ch):
     expect("fehlende Capability wird erkannt", check_packages(p), "[capability]")
     p = copy.deepcopy(pk); p["org.hase.body.humanoid-mh08"]["body"]["provides"]["version"] = "2.0.0"
     expect("Interface-Major-Sprung bricht Spezies/Assets", check_packages(p), "[interface]")
-    p = copy.deepcopy(pk); p["org.hase.species.elf"]["species"]["limits"]["mh:head-scale-vert"] = [-3, 3]
+    p = copy.deepcopy(pk); p["org.hase.species.elf"]["species"]["limits"]["mh:head-scale-vert-decr-incr"] = [-3, 3]
     expect("Limits außerhalb Body-Bereich", check_packages(p), "[limits]")
     p = copy.deepcopy(pk); p["org.hase.species.cat-demi"]["species"]["defaults"]["mh:gibtsnicht"] = 1
     expect("unbekannter Parameter in Species", check_packages(p), "[parameter]")

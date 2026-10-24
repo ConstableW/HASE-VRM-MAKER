@@ -187,7 +187,7 @@
           "default": 0.33
         },
         {
-          "id": "mh:head-age",
+          "id": "mh:head-age-decr-incr",
           "kind": "signed-pair",
           "label": "Kopf: Alter",
           "group": "head",
@@ -202,7 +202,7 @@
           "default": 0
         },
         {
-          "id": "mh:head-scale-vert",
+          "id": "mh:head-scale-vert-decr-incr",
           "kind": "signed-pair",
           "label": "Kopf: Höhe",
           "group": "head",
@@ -217,7 +217,7 @@
           "default": 0
         },
         {
-          "id": "mh:jaw-drop",
+          "id": "mh:chin-jaw-drop-decr-incr",
           "kind": "signed-pair",
           "label": "Kiefer",
           "group": "mouth",
@@ -232,7 +232,7 @@
           "default": 0
         },
         {
-          "id": "mh:l-eye-height1",
+          "id": "mh:l-eye-height1-decr-incr",
           "kind": "signed-pair",
           "label": "Auge links: Höhe 1",
           "group": "eyes",
@@ -246,12 +246,12 @@
           ],
           "default": 0,
           "symmetry": {
-            "mirrorOf": "mh:r-eye-height1",
+            "mirrorOf": "mh:r-eye-height1-decr-incr",
             "side": "left"
           }
         },
         {
-          "id": "mh:r-eye-height1",
+          "id": "mh:r-eye-height1-decr-incr",
           "kind": "signed-pair",
           "label": "Auge rechts: Höhe 1",
           "group": "eyes",
@@ -265,12 +265,12 @@
           ],
           "default": 0,
           "symmetry": {
-            "mirrorOf": "mh:l-eye-height1",
+            "mirrorOf": "mh:l-eye-height1-decr-incr",
             "side": "right"
           }
         },
         {
-          "id": "mh:mouth-angles",
+          "id": "mh:mouth-angles-down-up",
           "kind": "signed-pair",
           "label": "Mundwinkel",
           "group": "mouth",
@@ -285,7 +285,7 @@
           "default": 0
         },
         {
-          "id": "mh:mouth-scale-horiz",
+          "id": "mh:mouth-scale-horiz-decr-incr",
           "kind": "signed-pair",
           "label": "Mund: Breite",
           "group": "mouth",

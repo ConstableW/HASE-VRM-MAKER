@@ -21,3 +21,5 @@ Bekannte Einschränkungen: keine Icons/Thumbnails, Panels nicht einklappbar, Lic
 
 ## Körperbasis- und Speziesstudio (OD-027)
 Vierter, übergeordneter Arbeitsbereich „Körper & Spezies“ (Authoring) neben den drei Charakterphasen. Links Speziesbibliothek (neu aus Charakter, duplizieren), rechts Reiter Übersicht · Körperbasis (Prüfstufen, OBJ-Importanalyse) · Werte & Grenzen · Presets · Kompatibilität · Paket (Version, Speichern). Architektur, Prüfstufen, Versionsstrategie und Stand: `../02-architecture/body-species-studio.md`.
+
+Navigation (präzisiert): kreative Phasen „1 Charakter · 2 Outfit · 3 Finalisieren“ links; rechts getrennt unter „Werkzeuge“ der Authoring-Bereich „Körperbasen & Spezies“, daneben Bibliothek, Speichern, Laden.

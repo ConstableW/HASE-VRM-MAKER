@@ -55,8 +55,8 @@
           "de": "Katzenaugen"
         },
         "set": {
-          "mh:l-eye-height1": -0.3,
-          "mh:r-eye-height1": -0.3
+          "mh:l-eye-height1-decr-incr": -0.3,
+          "mh:r-eye-height1-decr-incr": -0.3
         }
       }
     },

@@ -91,6 +91,15 @@ impl Catalog {
         Catalog { defs, index, macro_targets, macro_idx }
     }
 
+    /// Löst eine Parameter-ID auf (auch ältere Kurzformen der Beispiel-Packages → kanonische Katalog-ID).
+    pub fn canonical(&self, id: &str) -> Option<usize> {
+        if let Some(&i) = self.index.get(id) { return Some(i); }
+        const ALIAS: &[(&str, &str)] = &[("mh:jaw-drop", "mh:chin-jaw-drop-decr-incr")];
+        if let Some((_, to)) = ALIAS.iter().find(|(k, _)| *k == id) { return self.index.get(*to).copied(); }
+        for suf in ["-decr-incr", "-down-up", "-in-out", "-backward-forward", "-square-round"] { if let Some(&i) = self.index.get(&format!("{id}{suf}")) { return Some(i); } }
+        None
+    }
+
     pub fn defaults(&self) -> Vec<f32> { self.defs.iter().map(|d| d.default).collect() }
 
     /// Wertevektor (aligned zu `defs`) -> Zielgewichte je Target.

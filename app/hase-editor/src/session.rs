@@ -6,7 +6,7 @@ use hase_core::eval::{normals, Evaluator};
 use hase_core::fit::Proxy;
 use hase_core::packages::Packages;
 use hase_core::params::Catalog;
-use hase_core::state::{AssetSel, CharacterState, History};
+use hase_core::state::{AssetSel, CharacterState, History, PkgRef};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -91,9 +91,11 @@ impl Session {
         let eyes = assets.eye_colors.iter().find(|(n, _)| n == "brown").or(assets.eye_colors.first()).map(|x| x.0.clone()).unwrap_or_default();
         let sp0 = packages.species.iter().find(|s| s.id.ends_with(".human")).or(packages.species.first()).cloned();
         let species = sp0.as_ref().map(|s| s.id.clone()).unwrap_or_default();
-        let mut state = CharacterState { species, values: params.defaults(), assets: vec![], skin, eyes };
-        if let Some(sp) = sp0.as_ref() { for (k, v) in &sp.defaults { if let Some(&i) = params.index.get(k) { state.values[i] = *v; } } }
+        let mut state = CharacterState { body_ref: PkgRef::default(), species_ref: PkgRef::default(), species, values: params.defaults(), assets: vec![], skin, eyes };
+        if let Some(sp) = sp0.as_ref() { for (k, v) in &sp.defaults { if let Some(i) = params.canonical(k) { state.values[i] = *v; } } }
         let n = body.morphs.names.len();
+        let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
+        state.body_ref = br; state.species_ref = sr;
         let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
@@ -147,7 +149,7 @@ impl Session {
 
     pub fn set_param(&mut self, idx: usize, v: f32) {
         let before = self.state.clone();
-        let v = v.clamp(self.params.defs[idx].min, self.params.defs[idx].max);
+        let v = self.clamp_to_species(idx, v);
         if (self.state.values[idx] - v).abs() < 1e-7 { return; }
         self.state.values[idx] = v;
         if self.symmetric { if let Some(m) = self.params.defs[idx].mirror { self.state.values[m] = v; } }
@@ -163,6 +165,42 @@ impl Session {
         self.dirty = true;
     }
 
+    /// Wirksamer Wertebereich: Parameterbereich geschnitten mit den Grenzen der aktuellen Spezies.
+    pub fn range(&self, idx: usize) -> (f32, f32) {
+        let d = &self.params.defs[idx];
+        let lim = self.packages.species.iter().find(|s| s.id == self.state.species).and_then(|sp| sp.limits.iter().find(|(k, _)| self.params.canonical(k) == Some(idx)).map(|(_, l)| *l));
+        match lim { Some(l) => (l[0].max(d.min), l[1].min(d.max)), None => (d.min, d.max) }
+    }
+    pub fn clamp_to_species(&self, idx: usize, v: f32) -> f32 { let (lo, hi) = self.range(idx); v.clamp(lo.min(hi), hi.max(lo)) }
+    /// Parameter, deren aktueller Wert außerhalb der Speziesgrenzen liegt (z. B. nach Spezieswechsel oder Laden).
+    pub fn out_of_limits(&self) -> Vec<usize> { (0..self.params.defs.len()).filter(|&i| { let (lo, hi) = self.range(i); let v = self.state.values[i]; v < lo - 1e-4 || v > hi + 1e-4 }).collect() }
+
+    /// Abweichungen zwischen den im Charakter gespeicherten Ressourcenversionen und den installierten.
+    pub fn ref_issues(&self) -> Vec<String> { self.ref_issues_of(&self.state) }
+    pub fn ref_issues_of(&self, st: &CharacterState) -> Vec<String> {
+        let mut v = Vec::new();
+        let (b, sr) = (&st.body_ref, &st.species_ref);
+        if !b.version.is_empty() && (b.version != self.packages.body.version || (!b.digest.is_empty() && b.digest != self.packages.body.digest)) { v.push(format!("Körperbasis geändert (gespeichert v{}, installiert v{})", b.version, self.packages.body.version)); }
+        match self.packages.species.iter().find(|x| x.id == st.species) {
+            None => v.push(format!("Spezies {} ist nicht installiert", st.species)),
+            Some(sp) => if !sr.version.is_empty() && (sr.version != sp.version || (!sr.digest.is_empty() && sr.digest != sp.digest)) { v.push(format!("Spezies „{}“ geändert (gespeichert v{}, installiert v{}{})", sp.label, sr.version, sp.version, if sr.version == sp.version { ", gleiche Version, anderer Inhalt" } else { "" })); },
+        }
+        v
+    }
+    /// Bindet den Charakter ausdrücklich an die installierten Versionen (Werte bleiben unverändert).
+    pub fn rebind_refs(&mut self) {
+        let before = self.state.clone();
+        self.state.body_ref = PkgRef { id: self.packages.body.id.clone(), version: self.packages.body.version.clone(), digest: self.packages.body.digest.clone() };
+        if let Some(sp) = self.packages.species.iter().find(|x| x.id == self.state.species) { self.state.species_ref = PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() }; }
+        self.history.record(&before, None);
+    }
+
+    pub fn clamp_all_to_species(&mut self) {
+        let before = self.state.clone();
+        for i in 0..self.params.defs.len() { self.state.values[i] = self.clamp_to_species(i, self.state.values[i]); }
+        self.history.record(&before, None); self.dirty = true;
+    }
+
     pub fn reset_params(&mut self) { let before = self.state.clone(); self.state.values = self.params.defaults(); self.history.record(&before, None); self.dirty = true; }
 
     pub fn apply_species(&mut self, idx: usize) {
@@ -170,14 +208,15 @@ impl Session {
         let before = self.state.clone();
         self.state.species = sp.id.clone();
         self.state.values = self.params.defaults();
-        for (k, v) in &sp.defaults { if let Some(&i) = self.params.index.get(k) { self.state.values[i] = *v; } }
+        for (k, v) in &sp.defaults { if let Some(i) = self.params.canonical(k) { self.state.values[i] = self.clamp_to_species(i, *v); } }
+        self.state.species_ref = PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() };
         self.history.record(&before, None);
         self.dirty = true;
     }
 
     pub fn apply_map(&mut self, m: &std::collections::BTreeMap<String, f32>) {
         let before = self.state.clone();
-        for (k, v) in m { if let Some(&i) = self.params.index.get(k) { self.state.values[i] = *v; if self.symmetric { if let Some(mi) = self.params.defs[i].mirror { self.state.values[mi] = *v; } } } }
+        for (k, v) in m { if let Some(i) = self.params.canonical(k) { let v = self.clamp_to_species(i, *v); self.state.values[i] = v; if self.symmetric { if let Some(mi) = self.params.defs[i].mirror { self.state.values[mi] = v; } } } }
         self.history.record(&before, None);
         self.dirty = true;
     }
@@ -269,4 +308,48 @@ impl Session {
         (v, t)
     }
     pub fn active_asset_count(&self) -> usize { self.proxies.len() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session() -> Session { Session::load(&hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap()).unwrap() }
+
+    #[test]
+    fn species_limits_are_enforced() {
+        let mut s = session();
+        let elf = s.packages.species.iter().position(|x| x.id.ends_with(".elf")).unwrap();
+        s.apply_species(elf);
+        let i = s.params.canonical("mh:head-scale-vert").unwrap();
+        s.set_param(i, -1.0);
+        assert!((s.state.values[i] - (-0.2)).abs() < 1e-5, "Wert {}", s.state.values[i]);
+        s.set_param(i, 1.0);
+        assert!((s.state.values[i] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn version_binding_detects_changes_without_changing_values() {
+        let mut s = session();
+        assert!(s.ref_issues().is_empty());
+        let before = s.state.values.clone();
+        let id = s.state.species.clone();
+        s.packages.species.iter_mut().find(|x| x.id == id).unwrap().version = "2.0.0".into();
+        let issues = s.ref_issues();
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(s.state.values, before);
+        s.rebind_refs();
+        assert!(s.ref_issues().is_empty());
+        // Digest-Änderung bei gleicher Version
+        s.packages.species.iter_mut().find(|x| x.id == id).unwrap().digest = "abc".into();
+        assert!(s.ref_issues()[0].contains("anderer Inhalt"));
+    }
+
+    #[test]
+    fn old_param_ids_resolve() {
+        let s = session();
+        assert!(s.params.canonical("mh:head-age").is_some());
+        assert!(s.params.canonical("mh:jaw-drop").is_some());
+        assert!(s.params.canonical("mh:gibtsnicht").is_none());
+    }
 }
