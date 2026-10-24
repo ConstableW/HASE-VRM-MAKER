@@ -208,7 +208,15 @@ pub fn detect_mirror(names: &[String]) -> Vec<(usize, usize)> {
     let pairs = [("_l", "_r"), (".l", ".r"), ("_L", "_R"), (".L", ".R"), ("Left", "Right"), ("left", "right"), ("-l-", "-r-"), ("_left", "_right")];
     let mut out = Vec::new();
     for (i, n) in names.iter().enumerate() {
-        for (l, r) in pairs { if n.contains(l) { let m = n.replacen(l, r, 1); if let Some(j) = names.iter().position(|x| *x == m) { if i < j { out.push((i, j)); } } break; } }
+        'p: for (l, r) in pairs {
+            for (pos, _) in n.match_indices(l) {
+                // Treffer muss an einer Wortgrenze enden (nicht „_l“ in „_longer“)
+                let end = pos + l.len();
+                if n[end..].chars().next().map(|c| c.is_alphanumeric()).unwrap_or(false) && !l.starts_with(char::is_alphabetic) { continue; }
+                let m = format!("{}{}{}", &n[..pos], r, &n[end..]);
+                if let Some(j) = names.iter().position(|x| *x == m) { if i < j { out.push((i, j)); } break 'p; }
+            }
+        }
     }
     out
 }

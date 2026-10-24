@@ -59,6 +59,7 @@ pub struct App {
     pub(crate) gpu_name: String,
     pub(crate) studio: crate::studio::StudioState,
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
+    pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
 }
 
 pub fn spawn_session_load(tx: Sender<Msg>, ctx: egui::Context, repo: std::path::PathBuf) {
@@ -84,7 +85,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo);
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), pending_load: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), pending_load: None, pending_body: None }
     }
 
     fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -133,14 +134,16 @@ impl App {
         let Some(s) = self.session.as_mut() else { return };
         ui.horizontal(|ui| {
             ui.label("Spezies:");
-            let cur = s.species_index();
+            let compat = s.species_indices();
+            let cur = s.species_opt().unwrap_or(usize::MAX);
             let mut sel = cur;
-            egui::ComboBox::from_id_salt("species").selected_text(s.packages.species[cur].label.clone()).show_ui(ui, |ui| {
-                for (i, sp) in s.packages.species.iter().enumerate() { ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
+            egui::ComboBox::from_id_salt("species").selected_text(s.species_opt().map(|i| s.packages.species[i].label.clone()).unwrap_or_else(|| "(keine Spezies)".into())).show_ui(ui, |ui| {
+                for &i in &compat { let sp = &s.packages.species[i]; ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
             });
-            if sel != cur { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
+            if sel != cur && sel != usize::MAX { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
         });
-        let sp = s.packages.species[s.species_index()].clone();
+        let Some(spi) = s.species_opt() else { ui.colored_label(theme::WARN, "Für diese Körperbasis gibt es noch keine Spezies – im Werkzeug „Körperbasen & Spezies“ eine erstellen. Der Charakter kann auch ohne Spezies gestaltet werden."); return; };
+        let sp = s.packages.species[spi].clone();
         if !sp.presets.is_empty() || !sp.traits.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 for p in &sp.presets { if ui.small_button(format!("Preset: {}", p.label)).clicked() { s.apply_map(&p.params); } }
@@ -277,20 +280,24 @@ impl App {
             self.status = match std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap()) { Ok(_) => format!("Gespeichert: {}", p.display()), Err(e) => format!("Speichern fehlgeschlagen: {e}") };
         }
     }
+    pub(crate) fn continue_load(&mut self, v: serde_json::Value, path: String) {
+        let Some(s) = self.session.as_mut() else { return };
+        match s.plan_load(&v) {
+            crate::session::LoadPlan::Ready(st, issues) => {
+                if issues.is_empty() { s.apply_state(st); self.status = format!("Geladen: {path}"); }
+                else { self.pending_load = Some((st, issues, path)); }
+            }
+            crate::session::LoadPlan::NeedsBody(b) => { self.pending_body = Some((v, b, path)); }
+            crate::session::LoadPlan::MissingBody(id) => self.status = format!("Körperbasis {id} ist nicht installiert oder nicht fertig konfiguriert – Charakter nicht geladen"),
+            crate::session::LoadPlan::Invalid => self.status = "Datei hat kein passendes Format".into(),
+        }
+    }
+
     fn load_dialog(&mut self) {
         if let Some(p) = rfd::FileDialog::new().add_filter("HASE Charakter", &["json"]).pick_file() {
             let r = std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|e| e.to_string()));
             match (r, self.session.as_mut()) {
-                (Ok(v), Some(s)) => match CharacterState::from_json(&v, &s.params) {
-                    Some(st) => {
-                        let mut issues = s.ref_issues_of(&st);
-                        let unknown = CharacterState::unknown_params(&v, &s.params);
-                        if !unknown.is_empty() { issues.push(format!("{} gespeicherte Parameter sind im installierten Katalog unbekannt und gehen verloren: {}", unknown.len(), unknown.iter().take(4).cloned().collect::<Vec<_>>().join(", "))); }
-                        if issues.is_empty() { s.apply_state(st); self.status = format!("Geladen: {}", p.display()); }
-                        else { self.pending_load = Some((st, issues, p.display().to_string())); }
-                    }
-                    None => self.status = "Datei hat kein passendes Format".into(),
-                },
+                (Ok(v), Some(s)) => self.continue_load(v, p.display().to_string()),
                 (Err(e), _) => self.status = format!("Laden fehlgeschlagen: {e}"),
                 _ => {}
             }
@@ -369,6 +376,24 @@ impl App {
 
     /// Rückfrage beim Laden eines Charakters, dessen Ressourcen sich geändert haben – niemals stilles Umschalten.
     fn load_modal(&mut self, ctx: &egui::Context) {
+        if let Some((v, b, path)) = self.pending_body.clone() {
+            let mut done = false;
+            egui::Window::new("Charakter benötigt eine andere Körperbasis").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+                ui.label(&path);
+                ui.label(format!("Der Charakter wurde mit der Körperbasis „{}“ (v{}) gestaltet. Aktive Körperbasis: „{}“.", b.label, b.version, self.session.as_ref().map(|s| s.packages.body.label.clone()).unwrap_or_default()));
+                ui.weak("Ein Wechsel ersetzt die aktuelle Bearbeitung (nicht gespeicherte Änderungen gehen verloren).");
+                ui.horizontal(|ui| {
+                    if ui.button("Körperbasis wechseln und laden").clicked() {
+                        let r = self.session.as_mut().map(|s| s.activate_body(&b));
+                        done = true;
+                        match r { Some(Ok(())) => self.continue_load(v.clone(), path.clone()), Some(Err(e)) => self.status = e, None => {} }
+                    }
+                    if ui.button("Abbrechen").clicked() { done = true; }
+                });
+            });
+            if done { self.pending_body = None; }
+            return;
+        }
         let Some((st, issues, path)) = self.pending_load.clone() else { return };
         let mut done = false;
         egui::Window::new("Charakter laden – Ressourcen haben sich geändert").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
@@ -437,7 +462,8 @@ impl App {
     /// Untere Leiste: Spezies-Presets (Kacheln ohne Vorschaubild, bis die Thumbnail-Erzeugung existiert).
     fn preset_bar(&mut self, ui: &mut egui::Ui) {
         let Some(s) = self.session.as_mut() else { return };
-        let sp = s.packages.species[s.species_index()].clone();
+        let Some(spi) = s.species_opt() else { return };
+        let sp = s.packages.species[spi].clone();
         ui.horizontal(|ui| {
             ui.strong("Presets");
             ui.weak("(Vorschaubilder: noch nicht implementiert)");
@@ -453,14 +479,16 @@ impl App {
         let Some(s) = self.session.as_mut() else { return };
         ui.horizontal(|ui| {
             ui.label("Spezies:");
-            let cur = s.species_index();
+            let compat = s.species_indices();
+            let cur = s.species_opt().unwrap_or(usize::MAX);
             let mut sel = cur;
-            egui::ComboBox::from_id_salt("species").selected_text(s.packages.species[cur].label.clone()).show_ui(ui, |ui| {
-                for (i, sp) in s.packages.species.iter().enumerate() { ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
+            egui::ComboBox::from_id_salt("species").selected_text(s.species_opt().map(|i| s.packages.species[i].label.clone()).unwrap_or_else(|| "(keine Spezies)".into())).show_ui(ui, |ui| {
+                for &i in &compat { let sp = &s.packages.species[i]; ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
             });
-            if sel != cur { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
+            if sel != cur && sel != usize::MAX { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
         });
-        let sp = s.packages.species[s.species_index()].clone();
+        let Some(spi) = s.species_opt() else { ui.colored_label(theme::WARN, "Für diese Körperbasis gibt es noch keine Spezies – im Werkzeug „Körperbasen & Spezies“ eine erstellen. Der Charakter kann auch ohne Spezies gestaltet werden."); return; };
+        let sp = s.packages.species[spi].clone();
         if !sp.presets.is_empty() { ui.label("Presets"); ui.horizontal_wrapped(|ui| { for p in &sp.presets { if ui.button(&p.label).clicked() { s.apply_map(&p.params); } } }); }
         if !sp.traits.is_empty() { ui.label("Merkmale"); ui.horizontal_wrapped(|ui| { for t in &sp.traits { if ui.button(&t.label).on_hover_text("Setzt die zugehörigen Parameter").clicked() { s.apply_map(&t.set); } } }); }
         if !sp.components.is_empty() { ui.label("Komponenten"); for c in &sp.components { ui.weak(format!("{}{}", c.asset.rsplit('.').next().unwrap_or(&c.asset), if c.stub { " (Stub: noch keine Geometrie)" } else { "" })); } }

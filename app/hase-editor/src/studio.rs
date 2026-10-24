@@ -60,7 +60,7 @@ impl App {
         egui::ScrollArea::vertical().max_height(ui.available_height() - 190.0).show(ui, |ui| {
             for i in 0..n {
                 let sp = &s.packages.species[i];
-                let label = format!("{}{}{}", sp.label, if sp.user { "  · eigene" } else { "" }, if sp.stub { "  · Stub" } else { "" });
+                let label = format!("{}{}{}{}", sp.label, if sp.user { "  · eigene" } else { "" }, if sp.stub { "  · Stub" } else { "" }, if !sp.body_id.is_empty() && sp.body_id != s.packages.body.id { "  · andere Körperbasis" } else { "" });
                 if ui.selectable_label(self.studio.sel == i, label).clicked() { self.studio.sel = i; }
             }
         });
@@ -72,11 +72,11 @@ impl App {
             let id = format!("user.species.{}", slug(&name));
             if s.packages.species.iter().any(|x| x.id == id) { self.studio.msg = format!("ID {id} existiert bereits"); }
             else {
-                let cur = s.packages.species[s.species_index()].clone();
+                let cur = s.species_opt().map(|i| s.packages.species[i].clone());
                 let defaults = s.params.defs.iter().enumerate().filter(|(i, d)| (s.state.values[*i] - d.default).abs() > 1e-4).map(|(i, d)| (d.id.clone(), s.state.values[i])).collect();
-                let sp = Species { id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.components.clone(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Basis-Spezies: {}).", cur.label), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
+                let sp = Species { id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.as_ref().map(|c| c.components.clone()).unwrap_or_default(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Körperbasis: {}{}).", s.packages.body.label, cur.as_ref().map(|c| format!(", Basis-Spezies: {}", c.label)).unwrap_or_default()), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
                 match sp.write(&s.repo, &s.packages.body) {
-                    Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = format!("Gespeichert: {}", dir.display()); self.studio.new_name.clear(); }
+                    Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir.clone()); let (nid, nver, ndig) = (sp.id.clone(), sp.version.clone(), sp.digest.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; s.state.species = nid.clone(); s.state.species_ref = hase_core::state::PkgRef { id: nid, version: nver, digest: ndig }; self.studio.msg = format!("Gespeichert: {} – der aktuelle Charakter nutzt sie jetzt", dir.display()); self.studio.new_name.clear(); }
                     Err(e) => self.studio.msg = e,
                 }
             }
@@ -486,5 +486,93 @@ mod tests {
         assert!(!s.generic && s.packages.body.id == ref_id && s.params.defs.len() == 294);
         std::fs::remove_dir_all(&dir).unwrap();
         let _ = std::fs::remove_file(repo.join(".hase-cache/fp-test.json"));
+    }
+
+    /// Speziesunabhängigkeit: zweite, topologisch andere Körperbasis (Quaternius, 15 synthetische Morphs, Skelett) durch die ganze Kette.
+    #[test]
+    fn second_body_full_chain_import_species_character_save_load() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let glb = repo.join("content/testcandidate/body_b_quaternius_synthetic.glb");
+        if !glb.exists() { eprintln!("body_b GLB fehlt – übersprungen"); return; }
+        let mut s = Session::load(&repo).unwrap();
+        let ref_body = s.packages.body.clone();
+        let mh_verts = s.body.topo.vmap.len();
+        let dir = hase_core::packages::write_body_draft(&repo, "ZweiteBasisTest", &glb, &[]).unwrap();
+        let cleanup = |d: &std::path::Path| { let _ = std::fs::remove_dir_all(d); };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let pk = hase_core::packages::Packages::load(&repo).unwrap();
+            let pkg = pk.bodies.iter().find(|b| b.id == "user.body.zweitebasistest").cloned().unwrap();
+            let mut prep = start_prep(&mut s, &pkg).unwrap();
+            // andere Topologie, 15 Morphs
+            assert!(s.generic);
+            assert_ne!(s.body.topo.vmap.len(), mh_verts);
+            assert_eq!(s.params.defs.len(), 15, "{:?}", s.params.defs.iter().map(|d| &d.id).collect::<Vec<_>>());
+            // Aufbereitung: Regionen, Bones, Symmetrie
+            let sug = import::suggest_regions(&s.body, &prep.cfg.landmarks);
+            for (n, r) in &sug { let i = s.params.index[&format!("morph:{n}")]; s.params.defs[i].group = r.clone(); }
+            for d in &s.params.defs { prep.cfg.regions.insert(d.id.trim_start_matches("morph:").to_string(), d.group.clone()); }
+            prep.cfg.bones = import::auto_bones(&prep.model.joints);
+            assert_eq!(prep.cfg.bones.len(), 15, "Bone-Mapping {:?}", prep.cfg.bones.keys().collect::<Vec<_>>());
+            let mir = import::detect_mirror(&s.body.morphs.names);
+            assert_eq!(mir.len(), 3, "{mir:?}");
+            prep.cfg.mirror = mir.iter().map(|&(a, b)| [s.body.morphs.names[a].clone(), s.body.morphs.names[b].clone()]).collect();
+            let v = serde_json::to_value(&prep.cfg).unwrap();
+            hase_core::packages::save_body_config(&dir, &v, "configured", vec!["humanoid:vrm1-complete".into(), "morph:generic".into()]).unwrap();
+            let pk = hase_core::packages::Packages::load(&repo).unwrap();
+            let pkg_b = pk.bodies.iter().find(|b| b.id == pkg.id).cloned().unwrap();
+            assert_eq!(pkg_b.status, "configured");
+            s.packages.bodies = pk.bodies.clone();
+            // aktivieren; Morph wirkt (größer)
+            s.activate_body(&pkg_b).unwrap();
+            s.refresh();
+            let h0 = s.body_height();
+            let i = s.params.index["morph:height_taller"];
+            s.set_param(i, 1.0); s.refresh();
+            assert!(s.body_height() > h0 * 1.08, "{} -> {}", h0, s.body_height());
+            // Symmetrie: Schreiben auf links setzt rechts mit
+            let l = s.params.index["morph:arm_longer_l"]; let r = s.params.index["morph:arm_longer_r"];
+            s.symmetric = true; s.set_param(l, 0.5);
+            assert_eq!(s.state.values[r], 0.5);
+            // keine MakeHuman-Spezies sichtbar; Spezies auf Basis B erstellen
+            assert!(s.species_indices().is_empty());
+            let sp = Species { id: "user.species.testwesen-b".into(), label: "Testwesen B".into(), version: "1.0.0".into(), defaults: [("morph:head_larger".to_string(), 0.4f32)].into_iter().collect(), limits: [("morph:head_larger".to_string(), [0.0f32, 0.8f32])].into_iter().collect(), traits: vec![], presets: vec![], components: vec![], stub: false, user: true, description: "Test".into(), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
+            let sdir = sp.write(&repo, &s.packages.body).unwrap();
+            let mut sp = sp; sp.digest = hase_core::packages::file_digest(&sdir.join("hase-package.json")); sp.dir = Some(sdir.clone());
+            s.packages.species.push(sp);
+            let idx = s.packages.species.len() - 1;
+            assert_eq!(s.species_indices(), vec![idx]);
+            s.apply_species(idx);
+            let hl = s.params.index["morph:head_larger"];
+            assert!((s.state.values[hl] - 0.4).abs() < 1e-5);
+            s.set_param(hl, 5.0);
+            assert!((s.state.values[hl] - 0.8).abs() < 1e-5, "Grenze wirksam");
+            // Charakter gestalten, speichern
+            s.set_param(i, 0.7);
+            let saved = s.state.to_json(&s.params, &s.packages.body.id);
+            let values = s.state.values.clone();
+            // zurück zur Referenz; Laden verlangt Körperbasis-Wechsel
+            s.activate_body(&ref_body).unwrap();
+            assert!(!s.generic && s.params.defs.len() == 294);
+            match s.plan_load(&saved) { crate::session::LoadPlan::NeedsBody(b) => assert_eq!(b.id, pkg_b.id), _ => panic!("Wechsel erwartet") }
+            s.activate_body(&pkg_b).unwrap();
+            match s.plan_load(&saved) {
+                crate::session::LoadPlan::Ready(st, issues) => { assert!(issues.is_empty(), "{issues:?}"); s.apply_state(st); }
+                _ => panic!("bereit erwartet"),
+            }
+            assert_eq!(s.state.values, values);
+            assert_eq!(s.state.species, "user.species.testwesen-b");
+            // MakeHuman-Charakter bei aktiver Basis B: Wechsel nötig
+            let mh_json = serde_json::json!({"formatVersion": "0.1-editor", "body": {"id": ref_body.id}, "species": {"id": "org.hase.species.human"}, "parameters": {}, "assets": []});
+            assert!(matches!(s.plan_load(&mh_json), crate::session::LoadPlan::NeedsBody(_)));
+            // Inhaltsänderung der Basis wird erkannt (Bindung des gespeicherten Charakters ist alt)
+            std::fs::write(dir.join("data/austausch.bin"), b"neu").unwrap();
+            let pk = hase_core::packages::Packages::load(&repo).unwrap();
+            s.packages.body = pk.bodies.iter().find(|b| b.id == pkg.id).cloned().unwrap();
+            match s.plan_load(&saved) { crate::session::LoadPlan::Ready(_, issues) => assert!(issues.iter().any(|i| i.contains("Inhalt der Körperbasis")), "{issues:?}"), _ => panic!() }
+            cleanup(&sdir);
+        }));
+        cleanup(&dir);
+        let _ = std::fs::remove_dir_all(repo.join("user-content/packages/user.species.testwesen-b"));
+        if let Err(e) = result { std::panic::resume_unwind(e); }
     }
 }

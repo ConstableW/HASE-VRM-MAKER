@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::packages::BodyPackage), MissingBody(String), Invalid }
+
 pub struct LoadedProxy { pub proxy: Proxy, pub texture: Option<Arc<ImageRgba>> }
 
 struct ProxyRt { proxy: Proxy, texture: Option<Arc<ImageRgba>>, fit: Vec<[f32; 3]>, nrm: Vec<[f32; 3]>, created: bool }
@@ -117,6 +119,9 @@ impl Session {
     pub fn asset_entry(&self, id: &str) -> Option<&AssetEntry> { self.assets.assets.iter().find(|a| a.id == id) }
     pub fn is_selected(&self, id: &str) -> bool { self.state.assets.iter().any(|a| a.id == id) }
     pub fn species_index(&self) -> usize { self.packages.species.iter().position(|s| s.id == self.state.species).unwrap_or(0) }
+    pub fn species_opt(&self) -> Option<usize> { self.packages.species.iter().position(|s| s.id == self.state.species) }
+    /// Spezies, die zur aktiven Körperbasis passen.
+    pub fn species_indices(&self) -> Vec<usize> { self.packages.species.iter().enumerate().filter(|(_, s)| s.body_id.is_empty() || s.body_id == self.packages.body.id).map(|(i, _)| i).collect() }
 
     /// Standard-Ausstattung (synchron) – für Start und Screenshot-Modus.
     pub fn default_assets_blocking(&mut self, names: &[&str]) {
@@ -192,6 +197,7 @@ impl Session {
         let mut v = Vec::new();
         let (b, sr) = (&st.body_ref, &st.species_ref);
         if !b.version.is_empty() && (b.version != self.packages.body.version || (!b.digest.is_empty() && b.digest != self.packages.body.digest)) { v.push(if b.version == self.packages.body.version { format!("Inhalt der Körperbasis v{} hat sich geändert (Geometrie, Morphs, Rig oder Konfiguration): dieselben Parameterwerte können eine andere Körperform ergeben – Original-Ressource oder geprüfte Migration nötig", b.version) } else { format!("Körperbasis geändert (gespeichert v{}, installiert v{}): Parameterwerte können eine andere Form ergeben", b.version, self.packages.body.version) }); }
+        if st.species.is_empty() { return v; }
         match self.packages.species.iter().find(|x| x.id == st.species) {
             None => v.push(format!("Spezies {} ist nicht installiert", st.species)),
             Some(sp) => if !sr.version.is_empty() && (sr.version != sp.version || (!sr.digest.is_empty() && sr.digest != sp.digest)) { v.push(format!("Spezies „{}“ geändert (gespeichert v{}, installiert v{}{})", sp.label, sr.version, sp.version, if sr.version == sp.version { ", gleiche Version, anderer Inhalt" } else { "" })); },
@@ -329,6 +335,11 @@ impl Session {
         self.skin_tex = if generic { tex } else { self.skin_path().and_then(|p| load_image(&p, 2048).ok()) };
         self.generic = generic; self.body_created = false; self.hide_body = false; self.dirty = true; self.assets_dirty = true;
         self.history = History::new();
+        let compat = self.species_indices();
+        match compat.iter().find(|&&i| self.packages.species[i].id.ends_with(".human")).or(compat.first()).copied() {
+            Some(i) => { let sp = self.packages.species[i].clone(); self.state.species = sp.id.clone(); for (k, v) in &sp.defaults { if let Some(j) = self.params.canonical(k) { self.state.values[j] = *v; } } self.state.species_ref = PkgRef { id: sp.id, version: sp.version, digest: sp.digest }; }
+            None => { self.state.species = String::new(); self.state.species_ref = PkgRef::default(); }
+        }
         self.floor_off = -self.body.topo.vmap.iter().map(|&v| self.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
     }
 
@@ -343,6 +354,18 @@ impl Session {
             self.switch_body(body, params, pkg.clone(), None, false);
             self.clear_markers();
             Ok(())
+        }
+    }
+
+    /// Plant das Laden einer Charakterdatei: passende Körperbasis aktiv? Sonst ist ein (bestätigter) Wechsel nötig.
+    pub fn plan_load(&self, v: &serde_json::Value) -> LoadPlan {
+        let bid = v["body"]["id"].as_str().unwrap_or("");
+        if !bid.is_empty() && bid != self.packages.body.id {
+            return match self.packages.bodies.iter().find(|b| b.id == bid && b.status != "draft") { Some(b) => LoadPlan::NeedsBody(b.clone()), None => LoadPlan::MissingBody(bid.to_string()) };
+        }
+        match CharacterState::from_json(v, &self.params) {
+            Some(st) => { let mut issues = self.ref_issues_of(&st); let unknown = CharacterState::unknown_params(v, &self.params); if !unknown.is_empty() { issues.push(format!("{} gespeicherte Parameter sind im installierten Katalog unbekannt und gehen verloren: {}", unknown.len(), unknown.iter().take(4).cloned().collect::<Vec<_>>().join(", "))); } LoadPlan::Ready(st, issues) }
+            None => LoadPlan::Invalid,
         }
     }
 
