@@ -3,7 +3,7 @@
 *Zuletzt aktualisiert: 2026-10-24*
 
 ## Projektphase
-Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testcandidate-Aufbereitung (OD-023, OD-024). Produktcode: keiner. Alle Arbeit direkt auf `main` (kein Feature-Branch).
+Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testcandidate-Aufbereitung (OD-023, OD-024). **Erste lauffähige Editor-Version vorhanden** (`app/`, Rust/wgpu/egui: 3D-Viewport, Orbit-Kamera, ~294 Morph-Regler, Spezies/Presets, Haare/Kleidung, Haut/Augenfarbe, Undo/Redo, Save/Load, F3-Profiling). Windows-exe `app/win/` (Start: `Starten.bat`) **nicht auf echter Windows-GPU getestet**. Nicht enthalten: Skinning/Animation, VRM-Export aus dem Editor. Alle Arbeit direkt auf `main` (kein Feature-Branch).
 
 ## Verifizierter Istzustand (alles auf `main`)
 - **Konzeptdokumente:** `docs/` vollständig gerüstet; ausgearbeitet: Anforderungen (146 IDs), Owner-Entscheidungen OD-001…024, Zerlegung, Risiken, offene Fragen, Roadmap, Architekturüberblick, drei Rechercheberichte + Asset-Recherche, ADR-0001/-0004/-0005/-0009/-0010; **Species-/Package-System-Erstfassung** (Architektur, Schemas, Beispiele, Validator, 2026-10-24).

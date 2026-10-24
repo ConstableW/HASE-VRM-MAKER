@@ -39,3 +39,6 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - `docs/02-architecture/performance-architecture.md` (10 Bereiche), ADR-0002 (PROPOSED, Stack-Vergleich, Abnahmebedingung Windows-Lauf), R-17, OQ-31.
 - Korrektur: Anzahl Morph-Targets ist **610**, nicht 609.
 - Windows-Benchmark als fertige exe (`bench/win/morph-spike.exe`, 10 MB, Cross-Build mit cargo-zigbuild/Zig) + Doppelklick-Starter (`Benchmark-starten.bat`, DX12 und Vulkan) für den Owner; Backend-Wahl via `WGPU_BACKEND`; **nicht unter Windows getestet**.
+
+## 2026-10-24 – Erster lauffähiger Editor
+- Workspace `app/` (hase-core: OBJ/Morph/Parameter/Evaluator/Fit/Packages/Assets/State; hase-editor: wgpu-Renderer, Orbit-Kamera, egui-UI, Offscreen-Screenshot). Offscreen-Rendering via SwiftShader verifiziert (Morph-Varianten Geschlecht/Alter/Kopf/Kleidung plausibel). Windows-exe per cargo-zigbuild (`app/win/`). GUI-Interaktion im Container nicht testbar. Doku: `docs/02-architecture/geometry-morphing.md`.
