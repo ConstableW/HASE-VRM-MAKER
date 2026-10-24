@@ -1,3 +1,4 @@
 content/testcandidate/*.glb
 tools/validate/.schema-cache/
 bench/morph-spike/target/
+app/target/

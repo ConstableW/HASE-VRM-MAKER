@@ -1,0 +1,5 @@
+HASE VRM MAKER - erste lauffaehige Version (ungetestet unter Windows/GPU!)
+Start: Starten.bat doppelklicken (im Repo-Klon, Ordner app\win).
+Bedienung: Linke Maustaste = Orbit, Mittel/Rechts = Pan, Mausrad = Zoom, Doppelklick = Reset, F3 = Profiling.
+Links: Spezies, Presets, ~294 Morph-Regler (Suche, Symmetrie, Undo/Redo). Rechts: Haare, Kleidung, Brauen/Wimpern, Haut, Augenfarbe.
+Bei Fehlern bitte Konsolentext oder Screenshot schicken.

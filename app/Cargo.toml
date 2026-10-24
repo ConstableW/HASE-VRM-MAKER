@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["hase-core", "hase-editor"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 2
