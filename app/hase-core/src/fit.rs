@@ -94,6 +94,15 @@ impl BodyGrid {
         } } }
         best
     }
+    /// Nächster Vertex innerhalb von `ring` Zellen, der `ok` erfüllt (z. B. passende Normalenrichtung).
+    pub fn nearest_where(&self, pos: &[[f32; 3]], p: [f32; 3], ring: i32, ok: impl Fn(u32) -> bool) -> Option<(u32, f32)> {
+        let c = ((p[0] / self.cell).floor() as i32, (p[1] / self.cell).floor() as i32, (p[2] / self.cell).floor() as i32);
+        let mut best: Option<(u32, f32)> = None;
+        for dx in -ring..=ring { for dy in -ring..=ring { for dz in -ring..=ring {
+            if let Some(l) = self.map.get(&(c.0 + dx, c.1 + dy, c.2 + dz)) { for &v in l { if !ok(v) { continue; } let q = pos[v as usize]; let d = (q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2) + (q[2] - p[2]).powi(2); if best.map(|b| d < b.1).unwrap_or(true) { best = Some((v, d)); } } }
+        } } }
+        best
+    }
 }
 
 /// Kollisionskorrektur nach dem Fitting: Kleidungs-Vertices, die im Körper stecken (oder weniger als `gap` davor liegen), werden entlang der

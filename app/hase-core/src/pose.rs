@@ -21,13 +21,13 @@ pub fn qslerp(a: Q, mut b: Q, t: f32) -> Q {
     let th = d.acos(); let (s0, s1) = (((1.0 - t) * th).sin() / th.sin(), (t * th).sin() / th.sin());
     [a[0] * s0 + b[0] * s1, a[1] * s0 + b[1] * s1, a[2] * s0 + b[2] * s1, a[3] * s0 + b[3] * s1]
 }
-fn qrot(q: Q, v: [f32; 3]) -> [f32; 3] {
+pub fn qrot(q: Q, v: [f32; 3]) -> [f32; 3] {
     let (x, y, z, w) = (q[0], q[1], q[2], q[3]);
     let t = [2.0 * (y * v[2] - z * v[1]), 2.0 * (z * v[0] - x * v[2]), 2.0 * (x * v[1] - y * v[0])];
     [v[0] + w * t[0] + (y * t[2] - z * t[1]), v[1] + w * t[1] + (z * t[0] - x * t[2]), v[2] + w * t[2] + (x * t[1] - y * t[0])]
 }
 /// Minimale Rotation, die Richtung a auf b dreht.
-fn q_from_to(a: [f32; 3], b: [f32; 3]) -> Q {
+pub fn q_from_to(a: [f32; 3], b: [f32; 3]) -> Q {
     let n = |v: [f32; 3]| { let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-9); [v[0] / l, v[1] / l, v[2] / l] };
     let (a, b) = (n(a), n(b));
     let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];

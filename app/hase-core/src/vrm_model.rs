@@ -9,7 +9,7 @@ pub struct VrmImage { pub w: u32, pub h: u32, pub rgba: Vec<u8> }
 
 pub struct VrmPart {
     pub name: String, pub pos: Vec<[f32; 3]>, pub nrm: Vec<[f32; 3]>, pub uv: Vec<[f32; 2]>, pub idx: Vec<u32>,
-    pub joints: Vec<[u16; 4]>, pub weights: Vec<[f32; 4]>, pub image: Option<VrmImage>, pub color: [f32; 4], pub mask: bool, pub double_sided: bool,
+    pub joints: Vec<[u16; 4]>, pub weights: Vec<[f32; 4]>, pub image: Option<VrmImage>, pub color: [f32; 4], pub mask: bool, pub double_sided: bool, pub mat_name: String,
     pub targets: Vec<(String, Vec<[f32; 3]>)>,
 }
 
@@ -85,6 +85,16 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
             let we: Vec<[f32; 4]> = r.read_weights(0).map(|x| x.into_f32().collect()).unwrap_or_else(|| vec![[1.0, 0.0, 0.0, 0.0]; n]);
             let mut targets = Vec::new();
             for (ti, (dp, _, _)) in r.read_morph_targets().enumerate() { if let Some(it) = dp { targets.push((tnames.get(ti).cloned().unwrap_or_else(|| format!("target_{ti}")), it.collect::<Vec<[f32; 3]>>())); } }
+            // VRoid & Co.: mehrere Primitive teilen sich einen Vertexpuffer → je Primitiv nur die benutzten Vertices behalten
+            let (pos, nrm, uv, idx, jo, we, targets) = {
+                let mut map = vec![u32::MAX; n]; let mut keep: Vec<usize> = Vec::new();
+                for &i in &idx { if map[i as usize] == u32::MAX { map[i as usize] = keep.len() as u32; keep.push(i as usize); } }
+                if keep.len() == n { (pos, nrm, uv, idx, jo, we, targets) } else {
+                    let sel = |v: &Vec<[f32; 3]>| keep.iter().map(|&k| v[k]).collect::<Vec<_>>();
+                    (sel(&pos), sel(&nrm), keep.iter().map(|&k| uv[k]).collect(), idx.iter().map(|&i| map[i as usize]).collect(), keep.iter().map(|&k| jo[k]).collect(), keep.iter().map(|&k| we[k]).collect(),
+                     targets.into_iter().map(|(nm, d)| (nm, keep.iter().map(|&k| d.get(k).copied().unwrap_or([0.0; 3])).collect())).collect())
+                }
+            };
             let mat = prim.material(); let pbr = mat.pbr_metallic_roughness();
             let image = pbr.base_color_texture().and_then(|t| {
                 let img = t.texture().source();
@@ -93,7 +103,7 @@ pub fn load(path: &Path) -> Result<VrmModel, String> {
                 Some(VrmImage { w: d.width(), h: d.height(), rgba: d.into_raw() })
             });
             node_parts.entry(node.index()).or_default().push(parts.len());
-            parts.push(VrmPart { name: mesh.name().unwrap_or("Teil").to_string(), pos, nrm, uv, idx, joints: jo, weights: we, image, color: pbr.base_color_factor(), mask: !matches!(mat.alpha_mode(), gltf::material::AlphaMode::Opaque), double_sided: mat.double_sided(), targets });
+            parts.push(VrmPart { name: mesh.name().unwrap_or("Teil").to_string(), pos, nrm, uv, idx, joints: jo, weights: we, image, color: pbr.base_color_factor(), mask: !matches!(mat.alpha_mode(), gltf::material::AlphaMode::Opaque), double_sided: mat.double_sided(), mat_name: mat.name().unwrap_or("").to_string(), targets });
         }
     }
     // Ruhe-Positionen = Skinning mit Ruhepose (Netze liegen im Mesh-Raum; für Modelle mit Ruhe-Rotationen/Skalierung nötig)
@@ -154,5 +164,18 @@ mod lylia {
         let t = std::time::Instant::now();
         let m = load(p).unwrap();
         eprintln!("LYLIA {} Teile {:?}, {} Bones, humanoid {}, Expressions {}, Höhe {:.2}, identity_rest {}, spring {}, Laden {:?}", m.parts.len(), m.parts.iter().map(|x| (x.name.clone(), x.pos.len(), x.targets.len(), x.image.as_ref().map(|i| (i.w, i.h)))).collect::<Vec<_>>(), m.bones.len(), m.humanoid.len(), m.expressions.len(), m.height, m.identity_rest, m.spring_bones, t.elapsed());
+    }
+}
+
+#[cfg(test)]
+mod testvrm {
+    use super::*;
+    #[test]
+    fn list_test_vrm() {
+        let p = std::path::Path::new("/root/.claude/uploads/c759dbf5-f338-59fd-9a78-b4266d05211b/618946e3-test.vrm");
+        if !p.exists() { return; }
+        let m = load(p).unwrap();
+        for (i, x) in m.parts.iter().enumerate() { let (lo, hi) = x.pos.iter().fold(([9f32; 3], [-9f32; 3]), |a, q| ([a.0[0].min(q[0]), a.0[1].min(q[1]), a.0[2].min(q[2])], [a.1[0].max(q[0]), a.1[1].max(q[1]), a.1[2].max(q[2])])); eprintln!("PART {i} {} v={} tex={:?} mask={} lo={:?} hi={:?}", x.name, x.pos.len(), x.image.as_ref().map(|i| (i.w, i.h)), x.mask, lo, hi); }
+        eprintln!("HUM {:?}", m.humanoid.iter().map(|(k, v)| format!("{k}={}", m.bones[*v].name)).collect::<Vec<_>>());
     }
 }
