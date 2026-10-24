@@ -22,7 +22,7 @@ pub struct MeshDesc {
 #[derive(Clone, Copy, Default, PartialEq)]
 pub struct MatParams { pub kind: u32, pub gloss: f32, pub p: [[f32; 4]; 6] }
 
-pub enum MeshUpdate { Create(MeshDesc), Positions { id: String, data: Vec<f32> }, Tint { id: String, tint: [f32; 3] }, Material { id: String, tint: [f32; 3], mat: MatParams }, Remove(String) }
+pub enum MeshUpdate { Create(MeshDesc), Positions { id: String, data: Vec<f32> }, Tint { id: String, tint: [f32; 3] }, Material { id: String, tint: [f32; 3], mat: MatParams }, Texture { id: String, img: Arc<ImageRgba> }, Remove(String) }
 
 #[repr(C)] #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct Globals { pub vp: [[f32; 4]; 4], pub eye: [f32; 4], pub key_dir: [f32; 4], pub fill_dir: [f32; 4], pub sky: [f32; 4], pub ground: [f32; 4], pub flags: [f32; 4], pub key_col: [f32; 4], pub bg_top: [f32; 4], pub bg_bot: [f32; 4] }
@@ -109,6 +109,15 @@ impl SceneRenderer {
                 MeshUpdate::Positions { id, data } => { if let Some(m) = self.meshes.get(&id) { queue.write_buffer(&m.vb, 0, bytemuck::cast_slice(&data)); } }
                 MeshUpdate::Tint { id, tint } => { if let Some(m) = self.meshes.get_mut(&id) { m.tint = tint; let mu = mat_u(m.tint, m.mask, m.has_tex, &m.mp); queue.write_buffer(&m.mat_buf, 0, bytemuck::bytes_of(&mu)); } }
                 MeshUpdate::Material { id, tint, mat } => { if let Some(m) = self.meshes.get_mut(&id) { m.tint = tint; m.mp = mat; let mu = mat_u(m.tint, m.mask, m.has_tex, &m.mp); queue.write_buffer(&m.mat_buf, 0, bytemuck::bytes_of(&mu)); } }
+                MeshUpdate::Texture { id, img } => {
+                    if let Some(m) = self.meshes.get_mut(&id) {
+                        let t = device.create_texture_with_data(queue, &wgpu::TextureDescriptor { label: Some(&id), size: wgpu::Extent3d { width: img.w, height: img.h, depth_or_array_layers: 1 }, mip_level_count: img.levels.len() as u32, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: wgpu::TextureFormat::Rgba8UnormSrgb, usage: wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[] }, wgpu::util::TextureDataOrder::LayerMajor, &img.levels.concat());
+                        let v = t.create_view(&Default::default());
+                        m.mat_bg = device.create_bind_group(&wgpu::BindGroupDescriptor { label: None, layout: &self.mat_bgl, entries: &[wgpu::BindGroupEntry { binding: 0, resource: m.mat_buf.as_entire_binding() }, wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&v) }, wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) }] });
+                        m._tex = Some(t); m.has_tex = true;
+                        let mu = mat_u(m.tint, m.mask, true, &m.mp); queue.write_buffer(&m.mat_buf, 0, bytemuck::bytes_of(&mu));
+                    }
+                }
                 MeshUpdate::Remove(id) => { self.meshes.remove(&id); self.order.retain(|x| *x != id); }
             }
         }

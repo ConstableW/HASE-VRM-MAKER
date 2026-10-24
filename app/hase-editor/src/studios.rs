@@ -226,6 +226,52 @@ impl App {
         if n != h { s.edit_style(20, |st| st.hair = n.clone()); }
     }
 
+    pub(crate) fn makeup_panel(&mut self, ui: &mut egui::Ui) {
+        let s = self.session.as_mut().unwrap();
+        if s.generic { ui.colored_label(theme::WARN, "Make-up-Bereiche (Lippen, Lider, Wangen) benötigen Masken aus Gesichts-Morphs; für importierte Körperbasen noch nicht verfügbar. Details (Muttermale/Tattoos/Narben) funktionieren."); }
+        let cur = s.state.style.skin.clone();
+        let mut n = cur.clone();
+        for (label, l) in [("Lippenfarbe", &mut n.lips), ("Lidschatten", &mut n.shadow), ("Wangenrouge", &mut n.blush)] {
+            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut l.color); ui.add(egui::Slider::new(&mut l.amount, 0.0..=1.0).text(label)); });
+        }
+        ui.weak("Die Bereiche folgen der Gesichtsform (Masken aus den Morph-Fußabdrücken von Lippen, Lidfalten und Wangen). Eyeliner, Glanz-/Matt-Lippen und Make-up-Presets: noch nicht unterstützt.");
+        if n != cur { s.edit_style(40, |st| st.skin = n.clone()); }
+    }
+
+    pub(crate) fn details_panel(&mut self, ui: &mut egui::Ui) {
+        let cur = self.session.as_ref().unwrap().state.style.skin.clone();
+        let mut n = cur.clone();
+        ui.strong("Sommersprossen");
+        ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut n.freckles.color); ui.add(egui::Slider::new(&mut n.freckles.amount, 0.0..=1.0).text("Dichte")); });
+        ui.add(egui::Slider::new(&mut n.freckle_size, 0.4..=2.5).text("Größe"));
+        if ui.button("Neu verteilen").clicked() { n.freckle_seed = n.freckle_seed.wrapping_mul(1664525).wrapping_add(1013904223) >> 8; }
+        ui.separator();
+        ui.strong("Muttermale, Tattoos, Narben");
+        ui.horizontal_wrapped(|ui| { for (i, nm) in hase_core::state::DECAL_SHAPES.iter().enumerate() { if ui.selectable_label(self.decal_shape == i as u8, *nm).clicked() { self.decal_shape = i as u8; } } });
+        let on = self.tool == crate::app::Tool::Decal;
+        if ui.selectable_label(on, if on { "Platzieren aktiv – Klick auf den Körper" } else { "Am Modell platzieren …" }).clicked() { self.tool = if on { crate::app::Tool::Orbit } else { crate::app::Tool::Decal }; }
+        ui.weak("Das Motiv wird an der angeklickten Hautstelle in die Hauttextur eingerechnet.");
+        let mut del = None;
+        let mut sel = self.decal_sel;
+        for (i, d) in n.decals.iter_mut().enumerate() {
+            let name = hase_core::state::DECAL_SHAPES[d.shape as usize];
+            ui.horizontal(|ui| {
+                if ui.selectable_label(sel == Some(i), format!("{} {}", name, i + 1)).clicked() { sel = Some(i); }
+                if ui.small_button("Entfernen").clicked() { del = Some(i); }
+            });
+            if sel == Some(i) {
+                ui.indent(("decal", i), |ui| {
+                    ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut d.color); ui.add(egui::Slider::new(&mut d.opacity, 0.05..=1.0).text("Deckkraft")); });
+                    ui.add(egui::Slider::new(&mut d.size, 0.002..=0.06).logarithmic(true).text("Größe"));
+                    ui.add(egui::Slider::new(&mut d.rot, -3.14..=3.14).text("Drehung"));
+                });
+            }
+        }
+        self.decal_sel = sel;
+        if let Some(i) = del { n.decals.remove(i); self.decal_sel = None; }
+        if n != cur { let s = self.session.as_mut().unwrap(); s.edit_style(41, |st| st.skin = n.clone()); }
+    }
+
     pub(crate) fn skin_style_panel(&mut self, ui: &mut egui::Ui) {
         let s = self.session.as_mut().unwrap();
         let mut g = s.state.style.skin.gloss; let old = g;

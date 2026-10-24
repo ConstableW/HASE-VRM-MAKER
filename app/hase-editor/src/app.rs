@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Tool { Orbit, Pan, Zoom, Focus, Region }
+pub(crate) enum Tool { Orbit, Pan, Zoom, Focus, Region, Decal }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Workspace { Charakter, Outfit, Finalisieren, Studio }
@@ -67,6 +67,8 @@ pub struct App {
     pub(crate) hair_tab: usize,
     pub(crate) lib: crate::library_ui::LibState,
     pub(crate) tool: Tool,
+    pub(crate) decal_shape: u8,
+    pub(crate) decal_sel: Option<usize>,
     pub(crate) region_energy: Vec<f32>,
     pub(crate) light: usize,
     pub(crate) grid: bool,
@@ -97,7 +99,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), tool: Tool::Orbit, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), tool: Tool::Orbit, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -252,17 +254,18 @@ impl App {
     fn viewport(&mut self, ui: &mut egui::Ui) {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
         let tool = self.tool;
-        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Orbit | Tool::Region | Tool::Focus => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
+        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Orbit | Tool::Region | Tool::Focus | Tool::Decal => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
         if resp.dragged_by(egui::PointerButton::Secondary) || resp.dragged_by(egui::PointerButton::Middle) { let d = resp.drag_delta(); self.camera.pan(d.x, d.y); }
         if resp.hovered() { let sc = ui.input(|i| i.smooth_scroll_delta.y); if sc != 0.0 { self.camera.zoom(sc); } }
         if resp.double_clicked() { self.camera = Camera::default(); self.saved_cam = None; }
         let aspect_pick = (rect.width() / rect.height().max(1.0)).max(0.1);
         let studio_pick = self.ws == Workspace::Studio && self.studio.prep.as_ref().map(|p| p.pick != crate::studio::Pick::None).unwrap_or(false);
-        if resp.clicked() && (studio_pick || matches!(tool, Tool::Region | Tool::Focus)) {
+        if resp.clicked() && (studio_pick || matches!(tool, Tool::Region | Tool::Focus | Tool::Decal)) {
             if let Some(pp) = resp.interact_pointer_pos() {
                 let (nx, ny) = ((pp.x - rect.left()) / rect.width() * 2.0 - 1.0, 1.0 - (pp.y - rect.top()) / rect.height() * 2.0);
                 let (o, d) = self.camera.ray(nx, ny, aspect_pick);
                 if studio_pick { if let Some(s) = self.session.as_mut() { crate::studio::on_pick(s, &mut self.studio, o, d); } }
+                else if tool == Tool::Decal { self.place_decal(o, d); }
                 else { self.pick_tool(o, d); }
             }
         }
@@ -336,6 +339,18 @@ impl App {
             None => self.status = "Für diese Stelle gibt es keinen zugeordneten Bearbeitungsbereich".into(),
         }
     }
+    /// Werkzeug „Detail“: Klick platziert ein Hautdetail (Muttermal, Tattoo-Motiv, Narbe) an der UV-Position unter dem Cursor.
+    fn place_decal(&mut self, o: [f32; 3], d: [f32; 3]) {
+        let shape = self.decal_shape;
+        let Some(s) = self.session.as_mut() else { return };
+        let Some(uv) = s.pick_uv(o, d) else { self.status = "Kein Treffer am Körper".into(); return };
+        let (size, color, opacity) = match shape { 0 => (0.004, [0.18, 0.10, 0.07], 0.9), 5 => (0.012, [0.75, 0.52, 0.48], 0.7), _ => (0.014, [0.10, 0.12, 0.25], 0.85) };
+        let n = s.state.style.skin.decals.len();
+        s.edit_style(1000 + n, |st| st.skin.decals.push(hase_core::state::Decal { shape, u: uv[0], v: uv[1], size, rot: 0.0, color, opacity }));
+        self.decal_sel = Some(n);
+        self.status = format!("{} platziert", hase_core::state::DECAL_SHAPES[shape as usize]);
+    }
+
     fn focus_point(&mut self, p: [f32; 3]) {
         if self.saved_cam.is_none() { self.saved_cam = Some(self.camera); }
         self.camera.target = p; self.camera.dist = (self.camera.dist * 0.6).clamp(0.35, 3.0);
@@ -501,7 +516,7 @@ impl App {
                     }
                     sec(ui, "HAARE & STIL");
                     if ui.selectable_label(self.main == Main::Haare, "Frisur").clicked() { go = Some((Main::Haare, usize::MAX, 0, regions::CAM_HEAD)); }
-                    for (i, l) in ["Haut", "Augen (→ Gesicht › Augen)", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { if i == 1 { go = Some((Main::Gesicht, crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap(), 0, crate::regions::REGIONS.iter().find(|r| r.label == "Augen").unwrap().cam)); } else { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } } }
+                    for (i, l) in ["Haut", "Make-up", "Details (Sommersprossen, Muttermale, Tattoos, Narben)", "Augen (→ Gesicht › Augen)", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { if i == 3 { go = Some((Main::Gesicht, crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap(), 0, crate::regions::REGIONS.iter().find(|r| r.label == "Augen").unwrap().cam)); } else { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } } }
                 });
                 if let Some((m, r, sub, c)) = go { self.main = m; self.region = r; self.sub = sub; self.focus(c); }
             }
@@ -616,8 +631,10 @@ impl App {
                 match self.hair_tab { 0 => self.hair_grid(ui, ctx), 1 => self.hair_shape_panel(ui), _ => self.hair_color_panel(ui) }
             }
             Main::Stil => match self.sub {
-                0 => { ui.heading("Haut"); ui.separator(); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); ui.weak("Make-up, Sommersprossen, Narben, Tattoos, Körperbehaarung: noch nicht unterstützt."); }
-                1 => { ui.heading("Augenfarbe"); ui.separator(); self.skin_panel(ui, ctx, false); }
+                0 => { ui.heading("Haut"); ui.separator(); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); }
+                1 => { ui.heading("Make-up"); ui.separator(); self.makeup_panel(ui); }
+                2 => { ui.heading("Details"); ui.separator(); self.details_panel(ui); }
+                3 => { ui.heading("Augen"); ui.separator(); ui.label("Das Augenstudio befindet sich unter Gesicht › Augen."); }
                 _ => { ui.heading("Brauen & Wimpern"); ui.separator(); self.assets_panel(ui, ctx, &[Category::Eyebrows, Category::Eyelashes], None); }
             },
             Main::Kleidung => {

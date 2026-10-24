@@ -7,6 +7,7 @@ mod library;
 mod library_ui;
 mod render;
 mod session;
+mod skin;
 mod studio;
 mod theme;
 mod thumbs;

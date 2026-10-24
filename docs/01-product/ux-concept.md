@@ -23,3 +23,7 @@ Bekannte Einschränkungen: keine Icons/Thumbnails, Panels nicht einklappbar, Lic
 Vierter, übergeordneter Arbeitsbereich „Körper & Spezies“ (Authoring) neben den drei Charakterphasen. Links Speziesbibliothek (neu aus Charakter, duplizieren), rechts Reiter Übersicht · Körperbasis (Prüfstufen, OBJ-Importanalyse) · Werte & Grenzen · Presets · Kompatibilität · Paket (Version, Speichern). Architektur, Prüfstufen, Versionsstrategie und Stand: `../02-architecture/body-species-studio.md`.
 
 Navigation (präzisiert): kreative Phasen „1 Charakter · 2 Outfit · 3 Finalisieren“ links; rechts getrennt unter „Werkzeuge“ der Authoring-Bereich „Körperbasen & Spezies“, daneben Bibliothek, Speichern, Laden.
+
+## Umsetzungsstand Studios (2026-10-24, nach Windows-Verifikation der Kette)
+Umgesetzt (Details und Grenzen: `../02-architecture/character-studios.md`): Augenstudio (Form-Presets mit Vorschaubildern, Iris innen/außen je Auge, Pupille, Reflexion/Limbus), anatomisches Brust-/Gesäßmodell, Haarstudio (Auswahl-Kacheln, Form, Farbe/Verlauf/Highlights), Haut (Ton, Glanz), Make-up, Sommersprossen, Muttermale/Tattoos/Narben per Klick, Charakterbibliothek mit Vorlagen/Favoriten/Varianten/Snapshots/Vergleich, Preset-Leiste mit Vorschaubildern, Viewport-Werkzeuge (Bereichs-Pick, Fokus), Licht-/Hintergrund-Presets.
+Offen: Outfit-Studio-Vertiefung, Finalisieren (Posen, Animation, VRM-Export), Pupillenformen/Irismuster, Haar-Scheitel/Strähnen/Physik, Panel-Einklappen, Icons, Direktmanipulation per Griffe.
