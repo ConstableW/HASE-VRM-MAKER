@@ -21,5 +21,6 @@ W = Eintrittswahrscheinlichkeit, A = Auswirkung (1 niedrig – 5 sehr hoch), Sco
 | R-14 | **Umfangsrisiko / Scope Creep**: Vollumfang (Sculpting, Cloth, Haarphysik) gefährdet Lieferbarkeit | 4 | 4 | 16 | REQ-PROD-005 | Phasenplan mit Architekturvorsorge statt Umfangskürzung; P0-Fundament zuerst | – |
 | R-15 | **Barrierefreiheit im Custom-Viewport**: GPU-/Canvas-UIs sind oft schlecht zugänglich | 3 | 3 | 9 | REQ-UX-014 | UI-Framework-Auswahl mit Accessibility-Kriterium; Tastatur-/Controller-Pfad für alle Kernfunktionen | SP-08 |
 | R-16 | **Blender-Backend**: Prozessgrenze, Versionsabhängigkeit, GPL-Implikationen bei Bündelung | 3 | 3 | 9 | REQ-PKG-007 | Nur als optionaler externer Prozess; keine Bündelung; Add-on separat | SP-09 |
+| R-17 | **Performance verfehlt Ziele auf Zielhardware** (GPU-Frame-Time, UI-Latenz, Speicher) – Performance ist zentrale Vorgabe (OD-025) | 3 | 5 | 15 | REQ-PERF-* | Performance-Architektur (`../02-architecture/performance-architecture.md`), Zielwerte vorab, Benchmark-Harness, Windows-Lauf vor ADR-0002-Freigabe; CPU-/UI-Reserven gemessen (Faktor 10–100) | SP-08 (Teil 1 erledigt, Teil 2 offen) |
 
 Top-Risiken (Score ≥ 20): **R-03**, **R-01**, **R-05**, **R-13**. Sie bestimmen die Reihenfolge der Spikes (`../06-planning/roadmap.md`).

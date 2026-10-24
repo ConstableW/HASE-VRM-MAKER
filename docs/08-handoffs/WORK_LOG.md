@@ -31,3 +31,11 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - Beispiele: 14 Packages (Body `humanoid-mh08` aus Testcandidate-Daten, Spezies Mensch/Elf/Katzen-Demi/Hunde-Demi, Assets Haar/Shirt/Hose + Stubs für Ohren/Schwanz/Schnauze) und `character.example.hase.json` mit Lock.
 - Prototyp-Validator `tools/validate/validate_packages.py`: Schema + Kompatibilitätsregeln + Lock-Digests, 8 negative Selbsttests bestanden.
 - ADR-0004, ADR-0005 (PROPOSED).
+
+## 2026-10-24 – Performance als Architekturvorgabe (OD-025), Spike SP-08 Teil 1
+- Zielwerte, Referenzhardware, Testbedingungen **vor** den Messungen festgelegt und committet (`docs/07-quality/performance-targets.md`, REQ-PERF-001…020).
+- Rust-Benchmark `bench/morph-spike/` (wgpu 30.0.1, egui 0.37.0): reale Daten (13.380 Vertices, 610 Targets, 867k Deltas). CPU-Morphing, egui-UI-Kosten, wgpu-Pipeline (Compute-Morph, Skinning, Schatten, MSAA, Timestamps) gebaut und gelaufen.
+- Ergebnisse `docs/04-research/benchmarks.md` + `bench/results/*.json`: CPU-Morph 64 Targets 0,14 ms, alle 610 1,8 ms, Einzelupdate 0,001 ms; Morph-Daten 13 MB (dicht 93 MB); UI virtualisiert 0,3 ms (nicht virtualisiert 2,4 ms); UI unter Hintergrundlast unverändert; **GPU-Zeiten im Container nicht aussagekräftig (SwiftShader)**.
+- `docs/02-architecture/performance-architecture.md` (10 Bereiche), ADR-0002 (PROPOSED, Stack-Vergleich, Abnahmebedingung Windows-Lauf), R-17, OQ-31.
+- Korrektur: Anzahl Morph-Targets ist **610**, nicht 609.
+

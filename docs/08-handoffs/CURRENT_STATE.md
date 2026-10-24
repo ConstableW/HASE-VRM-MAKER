@@ -17,6 +17,9 @@ Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testca
 - **Entfernt:** Mixamo-abgeleitete `assets/animation-*` und Duplikate (Historie bleibt).
 - **Repo-Größe:** Klon ca. 770 MB (Owner-Upload der Rohpacks in `content/testcandidate/downloads/` inkl. Historie). Kein History-Rewrite vorgenommen.
 
+## Performance (OD-025, 2026-10-24)
+Zielwerte vorab: `docs/07-quality/performance-targets.md`. Spike-Teil 1 gemessen (`docs/04-research/benchmarks.md`): CPU-Morph/Speicher/UI weit innerhalb der Ziele; **GPU-Frame-Times offen** – Windows-Lauf nötig (NEXT_ACTIONS 14). ADR-0002 (Stack) PROPOSED, nicht freigabefähig bis dahin. Architekturregeln: `docs/02-architecture/performance-architecture.md`.
+
 ## Umgebung / Randbedingungen
 Container ohne GPU und ohne Windows. Netzwerk-Allowlist vom Owner erweitert (MakeHuman, Quaternius); `github.com`-Clone bleibt gesperrt, `raw.githubusercontent.com` und PyPI funktionieren (C-10).
 

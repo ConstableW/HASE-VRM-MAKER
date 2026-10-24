@@ -5,7 +5,7 @@
 | ADR | Thema | Status |
 |---|---|---|
 | ADR-0001 | Dokumentationsstruktur und Statuskonventionen | PROPOSED (siehe Datei) |
-| ADR-0002 | Technologie-Stack (Sprache, Renderer, UI, Plugin-Sandbox) | reserviert, Recherche vorhanden, Vorlage an Owner folgt |
+| ADR-0002 | Technologie-Stack unter Performance-Vorgabe | PROPOSED (nicht freigabefähig bis Windows-GPU-Lauf) |
 | ADR-0003 | Interner Datenaustausch / Character-Intermediate und Export-Architektur | reserviert |
 | ADR-0004 | Body Archetype, Species und Topologie-Familien | PROPOSED |
 | ADR-0005 | Package-System (Manifest, Versionierung, Auflösung, Sicherheit) | PROPOSED |

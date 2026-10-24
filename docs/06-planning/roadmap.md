@@ -31,7 +31,7 @@ Jeder Spike: zeitlich begrenzt, Wegwerf-Code, Ergebnisbericht in `04-research/be
 | SP-05 | Rig-Fitting + Retargeting über Proportionen/Digitigrade | R-06 | VRMA-Animationen aus `assets/` (Lizenz beachten) laufen auf 3 Körpern ohne sichtbare Fußgleiter > 2 cm und ohne Gelenkflips |
 | SP-06 | Package-Resolver + Kompatibilität | R-02, R-09 | 1000 synthetische Packages: Auflösung < 1 s; Konflikte werden deterministisch gemeldet; manipulierte Hashes werden zu 100 % erkannt |
 | SP-07 | Deterministischer VRM-1.0-Export + Validierung in Referenz-Loadern | R-07, R-08 | Zwei Exporte desselben Projekts auf zwei Maschinen sind byte-identisch; Laden in ≥ 3 Referenz-Viewern fehlerfrei; Verlustreport vollständig |
-| SP-08 | Walking Skeleton des Kandidaten-Stacks (Viewport, Property-UI, 100 Morphs auf 60k-Tri-Mesh, Skinning, Docking-UI, Accessibility-Grundtest) | R-10, R-12, R-15 | ≥ 60 fps bei Zielhardware; Morph-Update < 5 ms; UI-Tastaturbedienung und Screenreader-Basisfunktion nachweisbar; Lizenzcheck bestanden |
+| SP-08 **(Teil 1 erledigt 2026-10-24: `bench/morph-spike`, siehe `../04-research/benchmarks.md`; Teil 2 = Lauf auf Windows-GPU offen)** | Walking Skeleton des Kandidaten-Stacks (Viewport, Property-UI, 100 Morphs auf 60k-Tri-Mesh, Skinning, Docking-UI, Accessibility-Grundtest) | R-10, R-12, R-15 | ≥ 60 fps bei Zielhardware; Morph-Update < 5 ms; UI-Tastaturbedienung und Screenreader-Basisfunktion nachweisbar; Lizenzcheck bestanden |
 | SP-09 | Blender als optionales Backend (headless) | R-16 | Batch-Import/Konvertierung eines Test-Assets automatisiert, ohne gebündelte Blender-Binaries |
 
 ## 3. Grobe Umsetzungsphasen (Hypothese, nach Abnahme zu detaillieren)
