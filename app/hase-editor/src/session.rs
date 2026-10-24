@@ -1,5 +1,5 @@
 //! Session: Projektzustand + Evaluator + Proxy-Laufzeit; erzeugt Render-Updates. Kein egui-/wgpu-Gerätebezug (nur Datenübergabe).
-use crate::render::{ImageRgba, MeshDesc, MeshUpdate};
+use crate::render::{ImageRgba, MatParams, MeshDesc, MeshUpdate};
 use hase_core::assets::{self, AssetEntry, Category};
 use hase_core::body::Body;
 use hase_core::eval::{normals, Evaluator};
@@ -16,7 +16,7 @@ pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::pac
 
 pub struct LoadedProxy { pub proxy: Proxy, pub texture: Option<Arc<ImageRgba>> }
 
-struct ProxyRt { proxy: Proxy, texture: Option<Arc<ImageRgba>>, fit: Vec<[f32; 3]>, nrm: Vec<[f32; 3]>, created: bool }
+struct ProxyRt { proxy: Proxy, texture: Option<Arc<ImageRgba>>, fit: Vec<[f32; 3]>, nrm: Vec<[f32; 3]>, created: bool, yrange: (f32, f32) }
 
 #[derive(Default, Clone, Copy)]
 pub struct Perf { pub morph_ms: f64, pub fit_ms: f64, pub total_ms: f64, pub changed: u32, pub active: u32, pub full: bool }
@@ -42,7 +42,9 @@ pub struct Session {
     skin_tex: Option<Arc<ImageRgba>>,
     dirty: bool,
     assets_dirty: bool,
+    style_dirty: bool,
     pub generic: bool,
+    eyes_loaded: String,
     pub hide_body: bool,
     pub reference_body: hase_core::packages::BodyPackage,
     pub markers: Vec<String>,
@@ -91,6 +93,18 @@ fn default_tint(cat: &Category, name: &str) -> [f32; 3] {
     }
 }
 
+fn eye_mat(st: &hase_core::state::EyeStyle) -> MatParams {
+    let r = if st.linked { &st.left } else { &st.right };
+    let l = &st.left;
+    MatParams { kind: 1, gloss: 0.0, p: [
+        [l.inner[0], l.inner[1], l.inner[2], l.pupil], [l.outer[0], l.outer[1], l.outer[2], l.custom as u32 as f32],
+        [r.inner[0], r.inner[1], r.inner[2], r.pupil], [r.outer[0], r.outer[1], r.outer[2], r.custom as u32 as f32],
+        [0.118, 0.040, st.reflection * 1.6, 0.0], [st.limbal, 0.0, 0.0, 0.0] ] }
+}
+fn hair_mat(h: &hase_core::state::HairStyle, yr: (f32, f32)) -> MatParams {
+    MatParams { kind: 2, gloss: h.gloss, p: [[h.root[0], h.root[1], h.root[2], yr.1], [h.tip[0], h.tip[1], h.tip[2], yr.0], [h.highlight[0], h.highlight[1], h.highlight[2], h.highlight_amt], [0.0; 4], [0.0; 4], [0.0; 4]] }
+}
+
 impl Session {
     pub fn load(repo: &Path) -> Result<Session, String> {
         let packages = Packages::load(repo)?;
@@ -102,13 +116,13 @@ impl Session {
         let eyes = assets.eye_colors.iter().find(|(n, _)| n == "brown").or(assets.eye_colors.first()).map(|x| x.0.clone()).unwrap_or_default();
         let sp0 = packages.species.iter().find(|s| s.id.ends_with(".human")).or(packages.species.first()).cloned();
         let species = sp0.as_ref().map(|s| s.id.clone()).unwrap_or_default();
-        let mut state = CharacterState { body_ref: PkgRef::default(), species_ref: PkgRef::default(), species, values: params.defaults(), assets: vec![], skin, eyes };
+        let mut state = CharacterState { style: Default::default(), body_ref: PkgRef::default(), species_ref: PkgRef::default(), species, values: params.defaults(), assets: vec![], skin, eyes };
         if let Some(sp) = sp0.as_ref() { for (k, v) in &sp.defaults { if let Some(i) = params.canonical(k) { state.values[i] = *v; } } }
         let n = body.morphs.names.len();
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, generic: false, hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -159,7 +173,7 @@ impl Session {
     pub fn insert_proxy(&mut self, id: String, lp: LoadedProxy) {
         if self.generic { return; }
         let n = lp.proxy.obj_pos_len;
-        self.proxies.insert(id, ProxyRt { proxy: lp.proxy, texture: lp.texture, fit: Vec::with_capacity(n), nrm: vec![], created: false });
+        self.proxies.insert(id, ProxyRt { proxy: lp.proxy, texture: lp.texture, fit: Vec::with_capacity(n), nrm: vec![], created: false, yrange: (1.0, 0.0) });
         self.assets_dirty = true;
     }
 
@@ -212,6 +226,13 @@ impl Session {
         self.history.record(&before, None);
     }
 
+    /// Kopie des Zustands mit angewendeten Parameterwerten (für Preset-Vorschauen), unter Beachtung der Speziesgrenzen.
+    pub fn state_with(&self, m: &std::collections::BTreeMap<String, f32>) -> CharacterState {
+        let mut st = self.state.clone();
+        for (k, v) in m { if let Some(i) = self.params.canonical(k) { st.values[i] = self.clamp_to_species(i, *v); if let Some(mi) = self.params.defs[i].mirror { st.values[mi] = st.values[i]; } } }
+        st
+    }
+
     pub fn clamp_all_to_species(&mut self) {
         let before = self.state.clone();
         for i in 0..self.params.defs.len() { self.state.values[i] = self.clamp_to_species(i, self.state.values[i]); }
@@ -238,6 +259,15 @@ impl Session {
         self.dirty = true;
     }
 
+    /// Ändert Stil-/Materialwerte (Augen, Haare, Haut) mit Undo (Slider-Ziehen wird über `key` zusammengefasst).
+    pub fn edit_style(&mut self, key: usize, f: impl FnOnce(&mut hase_core::state::Style)) {
+        let before = self.state.clone();
+        f(&mut self.state.style);
+        if self.state.style == before.style { return; }
+        self.history.record(&before, Some(100_000 + key));
+        self.style_dirty = true;
+    }
+
     pub fn set_tint(&mut self, id: &str, tint: [f32; 3]) {
         if let Some(a) = self.state.assets.iter_mut().find(|a| a.id == id) { a.tint = tint; }
         self.pending.push(MeshUpdate::Tint { id: format!("proxy:{id}"), tint });
@@ -260,7 +290,9 @@ impl Session {
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
         for id in removed { if self.proxies.remove(&id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); } }
         let skin_changed = s.skin != self.state.skin;
+        self.style_dirty = true;
         self.state = s;
+        for a in &self.state.assets { if self.proxies.contains_key(&a.id) { self.pending.push(MeshUpdate::Tint { id: format!("proxy:{}", a.id), tint: a.tint }); } }
         if skin_changed { self.skin_tex = self.skin_path().and_then(|p| load_image(&p, 2048).ok()); self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
         self.dirty = true;
     }
@@ -291,7 +323,7 @@ impl Session {
                     normals(&self.eval.pos, &self.body.topo.base_tris, &mut self.body_nrm);
                     let data = Self::interleave(&self.eval.pos, &self.body_nrm, &self.body.topo.vmap, self.floor_off);
                     if self.hide_body { } else if !self.body_created {
-                        self.pending.push(MeshUpdate::Create(MeshDesc { id: "body".into(), indices: self.body.topo.indices.clone(), uv: self.body.topo.uv.clone(), data, texture: self.skin_tex.clone(), tint: [1.0, 0.97, 0.95], mask: false, cull_back: true }));
+                        self.pending.push(MeshUpdate::Create(MeshDesc { id: "body".into(), indices: self.body.topo.indices.clone(), uv: self.body.topo.uv.clone(), data, texture: self.skin_tex.clone(), tint: [1.0, 0.97, 0.95], mask: false, cull_back: true, mat: MatParams { kind: 3, gloss: self.state.style.skin.gloss, ..Default::default() } }));
                         self.body_created = true;
                     } else { self.pending.push(MeshUpdate::Positions { id: "body".into(), data }); }
                 }
@@ -301,12 +333,14 @@ impl Session {
                     let tint = self.state.assets.iter().find(|a| a.id == id).map(|a| a.tint).unwrap_or(if id == EYES_ID { [1.0; 3] } else { [0.9; 3] });
                     let rt = self.proxies.get_mut(&id).unwrap();
                     rt.proxy.fit(&self.eval.pos, &mut rt.fit);
+                    rt.yrange = rt.fit.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1]))); rt.yrange = (rt.yrange.0 + self.floor_off, rt.yrange.1 + self.floor_off);
                     let tris: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
                     normals(&rt.fit, &tris, &mut rt.nrm);
                     let data = Self::interleave(&rt.fit, &rt.nrm, &rt.proxy.topo.vmap, self.floor_off);
                     if !rt.created {
                         let cull_back = false;
-                        self.pending.push(MeshUpdate::Create(MeshDesc { id: format!("proxy:{id}"), indices: rt.proxy.topo.indices.clone(), uv: rt.proxy.topo.uv.clone(), data, texture: rt.texture.clone(), tint, mask: rt.proxy.alpha_mask, cull_back }));
+                        let mat = if id == EYES_ID { eye_mat(&self.state.style.eyes) } else if id.starts_with("hair/") { hair_mat(&self.state.style.hair, rt.yrange) } else { MatParams::default() };
+                        self.pending.push(MeshUpdate::Create(MeshDesc { id: format!("proxy:{id}"), indices: rt.proxy.topo.indices.clone(), uv: rt.proxy.topo.uv.clone(), data, texture: rt.texture.clone(), tint, mask: rt.proxy.alpha_mask, cull_back, mat }));
                         rt.created = true;
                     } else { self.pending.push(MeshUpdate::Positions { id: format!("proxy:{id}"), data }); }
                 }
@@ -315,11 +349,40 @@ impl Session {
             self.perf.total_ms = t0.elapsed().as_secs_f64() * 1e3;
             self.dirty = false; self.assets_dirty = false;
         }
+        if self.style_dirty {
+            self.style_dirty = false;
+            self.pending.push(MeshUpdate::Material { id: "body".into(), tint: [1.0, 0.97, 0.95], mat: MatParams { kind: 3, gloss: self.state.style.skin.gloss, ..Default::default() } });
+            for (id, rt) in &self.proxies {
+                if !rt.created { continue; }
+                if *id == EYES_ID { self.pending.push(MeshUpdate::Material { id: format!("proxy:{id}"), tint: [1.0; 3], mat: eye_mat(&self.state.style.eyes) }); }
+                else if id.starts_with("hair/") { self.pending.push(MeshUpdate::Material { id: format!("proxy:{id}"), tint: [1.0; 3], mat: hair_mat(&self.state.style.hair, rt.yrange) }); }
+            }
+        }
         std::mem::take(&mut self.pending)
     }
 
     /// Körperhöhe (Scheitel über Boden) in m – für höhenrelative Kamerafokus-Punkte.
     pub fn body_height(&self) -> f32 { self.floor_off + self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MIN, f32::max) }
+
+    /// Ersetzt den Zustand ohne Undo-Eintrag (Thumbnail-Worker).
+    pub fn set_state_silent(&mut self, st: CharacterState) { self.restore(st); }
+
+    /// Lädt ausgewählte Assets und das Augenmaterial synchron nach (nur Worker-/Screenshot-Kontexte).
+    pub fn ensure_assets_blocking(&mut self) {
+        if self.generic { return; }
+        let ids: Vec<String> = self.state.assets.iter().map(|a| a.id.clone()).collect();
+        for id in ids { if !self.proxies.contains_key(&id) { let _ = self.select_asset_blocking_noselect(&id); } }
+        if self.eyes_loaded != self.state.eyes || !self.proxies.contains_key(EYES_ID) {
+            let mhclo = self.repo.join("content/testcandidate/downloads/eyes/high-poly/high-poly.mhclo");
+            if let Ok(lp) = load_proxy_blocking(&mhclo, self.eyes_path().as_deref()) { self.proxies.remove(EYES_ID); self.pending.push(MeshUpdate::Remove(format!("proxy:{EYES_ID}"))); self.insert_proxy(EYES_ID.into(), lp); self.eyes_loaded = self.state.eyes.clone(); }
+        }
+    }
+    fn select_asset_blocking_noselect(&mut self, id: &str) -> Result<(), String> {
+        let e = self.asset_entry(id).cloned().ok_or_else(|| format!("Asset {id} unbekannt"))?;
+        let lp = load_proxy_blocking(&e.mhclo, None)?;
+        self.insert_proxy(id.into(), lp);
+        Ok(())
+    }
 
     /// Wechselt die aktive Körperbasis (Assets/Proxys der alten Topologie werden entfernt, Parameterkatalog neu aufgebaut).
     pub fn switch_body(&mut self, body: Body, params: Catalog, pkg: hase_core::packages::BodyPackage, tex: Option<Arc<ImageRgba>>, generic: bool) {
@@ -412,7 +475,7 @@ impl Session {
         let indices = vec![0, 2, 4, 4, 2, 1, 1, 2, 5, 5, 2, 0, 0, 4, 3, 4, 1, 3, 1, 5, 3, 5, 0, 3];
         let mid = format!("marker:{id}");
         self.pending.push(MeshUpdate::Remove(mid.clone()));
-        self.pending.push(MeshUpdate::Create(MeshDesc { id: mid, indices, uv: vec![[0.0, 0.0]; 6], data, texture: None, tint, mask: false, cull_back: false }));
+        self.pending.push(MeshUpdate::Create(MeshDesc { id: mid, indices, uv: vec![[0.0, 0.0]; 6], data, texture: None, tint, mask: false, cull_back: false, mat: Default::default() }));
         if !self.markers.iter().any(|m| m == id) { self.markers.push(id.into()); }
     }
     pub fn remove_marker(&mut self, id: &str) { self.pending.push(MeshUpdate::Remove(format!("marker:{id}"))); self.markers.retain(|m| m != id); }

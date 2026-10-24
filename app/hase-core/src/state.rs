@@ -7,6 +7,50 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssetSel { pub id: String, pub tint: [f32; 3] }
 
+/// Ein Auge: Iris-Farben (innen/außen), Pupillengröße (Faktor), eigene Farben statt Textur.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EyeSide { pub inner: [f32; 3], pub outer: [f32; 3], pub pupil: f32, pub custom: bool }
+impl Default for EyeSide { fn default() -> Self { Self { inner: [0.45, 0.28, 0.12], outer: [0.20, 0.12, 0.05], pupil: 1.0, custom: false } } }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EyeStyle { pub linked: bool, pub left: EyeSide, pub right: EyeSide, pub reflection: f32, pub limbal: f32 }
+impl Default for EyeStyle { fn default() -> Self { Self { linked: true, left: EyeSide::default(), right: EyeSide::default(), reflection: 0.5, limbal: 0.5 } } }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct HairStyle { pub root: [f32; 3], pub tip: [f32; 3], pub highlight: [f32; 3], pub highlight_amt: f32, pub gloss: f32 }
+impl Default for HairStyle { fn default() -> Self { Self { root: [0.30, 0.19, 0.11], tip: [0.55, 0.36, 0.22], highlight: [0.80, 0.62, 0.38], highlight_amt: 0.0, gloss: 0.3 } } }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SkinStyle { pub gloss: f32 }
+impl Default for SkinStyle { fn default() -> Self { Self { gloss: 0.3 } } }
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Style { pub eyes: EyeStyle, pub hair: HairStyle, pub skin: SkinStyle }
+
+fn jv3(a: &[f32; 3]) -> Value { json!([a[0], a[1], a[2]]) }
+fn pv3(v: &Value, d: [f32; 3]) -> [f32; 3] { v.as_array().and_then(|a| Some([a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32, a.get(2)?.as_f64()? as f32])).unwrap_or(d) }
+fn pf(v: &Value, d: f32) -> f32 { v.as_f64().map(|x| x as f32).unwrap_or(d) }
+
+impl Style {
+    pub fn to_json(&self) -> Value {
+        let side = |e: &EyeSide| json!({"inner": jv3(&e.inner), "outer": jv3(&e.outer), "pupil": e.pupil, "custom": e.custom});
+        json!({
+            "eyes": {"linked": self.eyes.linked, "left": side(&self.eyes.left), "right": side(&self.eyes.right), "reflection": self.eyes.reflection, "limbal": self.eyes.limbal},
+            "hair": {"root": jv3(&self.hair.root), "tip": jv3(&self.hair.tip), "highlight": jv3(&self.hair.highlight), "highlightAmount": self.hair.highlight_amt, "gloss": self.hair.gloss},
+            "skin": {"gloss": self.skin.gloss}
+        })
+    }
+    pub fn from_json(v: &Value) -> Style {
+        let d = Style::default();
+        let side = |v: &Value, d: &EyeSide| EyeSide { inner: pv3(&v["inner"], d.inner), outer: pv3(&v["outer"], d.outer), pupil: pf(&v["pupil"], d.pupil), custom: v["custom"].as_bool().unwrap_or(d.custom) };
+        Style {
+            eyes: EyeStyle { linked: v["eyes"]["linked"].as_bool().unwrap_or(true), left: side(&v["eyes"]["left"], &d.eyes.left), right: side(&v["eyes"]["right"], &d.eyes.right), reflection: pf(&v["eyes"]["reflection"], d.eyes.reflection), limbal: pf(&v["eyes"]["limbal"], d.eyes.limbal) },
+            hair: HairStyle { root: pv3(&v["hair"]["root"], d.hair.root), tip: pv3(&v["hair"]["tip"], d.hair.tip), highlight: pv3(&v["hair"]["highlight"], d.hair.highlight), highlight_amt: pf(&v["hair"]["highlightAmount"], d.hair.highlight_amt), gloss: pf(&v["hair"]["gloss"], d.hair.gloss) },
+            skin: SkinStyle { gloss: pf(&v["skin"]["gloss"], d.skin.gloss) },
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct PkgRef { pub id: String, pub version: String, pub digest: String }
 
@@ -14,6 +58,7 @@ pub struct PkgRef { pub id: String, pub version: String, pub digest: String }
 pub struct CharacterState {
     pub body_ref: PkgRef,
     pub species_ref: PkgRef,
+    pub style: Style,
     pub species: String,
     pub values: Vec<f32>, // aligned zu Catalog.defs
     pub assets: Vec<AssetSel>,
@@ -48,7 +93,7 @@ impl CharacterState {
             "body": { "id": body_id, "range": "^1.0", "version": self.body_ref.version, "digest": self.body_ref.digest }, "species": { "id": self.species, "range": "^1.0", "version": self.species_ref.version, "digest": self.species_ref.digest },
             "parameters": params,
             "assets": self.assets.iter().map(|a| json!({ "dev-asset": a.id, "tint": a.tint })).collect::<Vec<_>>(),
-            "skin": self.skin, "eyes": self.eyes
+            "skin": self.skin, "eyes": self.eyes, "style": self.style.to_json()
         })
     }
     /// Parameter-IDs einer Projektdatei, die der Katalog nicht kennt (gehen beim Laden verloren → Migrationshinweis).
@@ -60,6 +105,6 @@ impl CharacterState {
         for (k, x) in v["parameters"].as_object()? { if let (Some(i), Some(f)) = (cat.canonical(k), x.as_f64()) { values[i] = f as f32; } }
         let assets = v["assets"].as_array()?.iter().filter_map(|a| { let t = a["tint"].as_array()?; Some(AssetSel { id: a["dev-asset"].as_str()?.into(), tint: [t.first()?.as_f64()? as f32, t.get(1)?.as_f64()? as f32, t.get(2)?.as_f64()? as f32] }) }).collect();
         let r = |k: &str| PkgRef { id: v[k]["id"].as_str().unwrap_or("").into(), version: v[k]["version"].as_str().unwrap_or("").into(), digest: v[k]["digest"].as_str().unwrap_or("").into() };
-        Some(CharacterState { body_ref: r("body"), species_ref: r("species"), species: v["species"]["id"].as_str()?.into(), values, assets, skin: v["skin"].as_str().unwrap_or("").into(), eyes: v["eyes"].as_str().unwrap_or("").into() })
+        Some(CharacterState { style: Style::from_json(&v["style"]), body_ref: r("body"), species_ref: r("species"), species: v["species"]["id"].as_str()?.into(), values, assets, skin: v["skin"].as_str().unwrap_or("").into(), eyes: v["eyes"].as_str().unwrap_or("").into() })
     }
 }

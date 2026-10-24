@@ -2,10 +2,12 @@ mod app;
 mod camera;
 mod offscreen;
 mod regions;
+mod studios;
 mod render;
 mod session;
 mod studio;
 mod theme;
+mod thumbs;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

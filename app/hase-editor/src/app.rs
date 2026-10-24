@@ -47,17 +47,23 @@ pub struct App {
     pub(crate) sub: usize,
     pub(crate) expert: bool,
     pub(crate) saved_cam: Option<Camera>,
-    pub(crate) reg_idx: Vec<usize>, reg_key: (usize, usize),
-    pub(crate) filter: String, asset_filter: String,
+    pub(crate) reg_idx: Vec<usize>, pub(crate) reg_key: (usize, usize),
+    pub(crate) filter: String, pub(crate) asset_filter: String,
     pub(crate) open_groups: HashSet<String>,
-    pub(crate) rows: Vec<Row>, rows_key: (String, usize),
+    pub(crate) rows: Vec<Row>, pub(crate) rows_key: (String, usize),
     pub(crate) loading: HashSet<String>,
     pub(crate) show_stats: bool,
-    pub(crate) frame_ms: f32, frame_avg: f32,
+    pub(crate) frame_ms: f32, pub(crate) frame_avg: f32,
     pub(crate) started: Instant,
     pub(crate) status: String,
     pub(crate) gpu_name: String,
     pub(crate) studio: crate::studio::StudioState,
+    pub(crate) thumbs: crate::thumbs::ThumbService,
+    pub(crate) eye_tab: usize,
+    pub(crate) eye_side: usize,
+    pub(crate) hair_tab: usize,
+    pub(crate) light: usize,
+    pub(crate) grid: bool,
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
     pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
 }
@@ -84,11 +90,11 @@ impl App {
             rs.renderer.write().callback_resources.insert(r);
         }
         crate::theme::apply(&cc.egui_ctx);
-        spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo);
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), pending_load: None, pending_body: None }
+        spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
-    fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
+    pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
         if self.loading.contains(id) { return; }
         self.loading.insert(id.to_string());
         let (tx, ctx2, id2) = (self.tx.clone(), ctx.clone(), id.to_string());
@@ -218,7 +224,7 @@ impl App {
         }
     }
 
-    fn skin_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, skin: bool) {
+    pub(crate) fn skin_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, skin: bool) {
         let Some(s) = self.session.as_mut() else { return };
         if skin {
         ui.label("Hautton");
@@ -312,6 +318,7 @@ impl eframe::App for App {
         let dt = ctx.input(|i| i.unstable_dt) * 1000.0;
         self.frame_ms = dt; self.frame_avg = if self.frame_avg == 0.0 { dt } else { self.frame_avg * 0.95 + dt * 0.05 };
         self.poll(&ctx);
+        self.thumbs.poll(&ctx);
         if self.session.is_none() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) { if let Some(s) = self.session.as_mut() { s.undo(); } }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) { if let Some(s) = self.session.as_mut() { s.redo(); } }
@@ -437,7 +444,7 @@ impl App {
                     }
                     sec(ui, "HAARE & STIL");
                     if ui.selectable_label(self.main == Main::Haare, "Frisur").clicked() { go = Some((Main::Haare, usize::MAX, 0, regions::CAM_HEAD)); }
-                    for (i, l) in ["Haut", "Augenfarbe", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } }
+                    for (i, l) in ["Haut", "Augen (→ Gesicht › Augen)", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { if i == 1 { go = Some((Main::Gesicht, crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap(), 0, crate::regions::REGIONS.iter().find(|r| r.label == "Augen").unwrap().cam)); } else { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } } }
                 });
                 if let Some((m, r, sub, c)) = go { self.main = m; self.region = r; self.sub = sub; self.focus(c); }
             }
@@ -508,7 +515,7 @@ impl App {
     }
 
     /// Regler einer Region/Auswahl in Unterabschnitten (Form / Proportionen / Position).
-    fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool) {
+    pub(crate) fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool) {
         let Some(s) = self.session.as_mut() else { return };
         let key = (if macros { 9999 } else { region.unwrap_or(10_000) }, s.params.defs.len());
         if key != self.reg_key {
@@ -557,17 +564,18 @@ impl App {
                     }
                 } else {
                     ui.heading(REGIONS[self.region].label); ui.separator();
-                    if REGIONS[self.region].label == "Augen" { ui.weak("Iris-, Pupillen- und Materialbearbeitung: noch nicht unterstützt (Stil → Augen: Augenfarbe)."); }
-                    self.region_sliders(ui, Some(self.region), false);
+                    if REGIONS[self.region].label == "Augen" { self.eye_studio(ui); } else { self.region_sliders(ui, Some(self.region), false); }
                 }
             }
             Main::Haare => {
-                ui.heading("Frisur"); ui.separator();
-                ui.weak("Frisuren-Presets mit Grundfarbe. Regionale Länge/Volumen/Locken, Farbverläufe und Material: noch nicht unterstützt (Package-Capabilities geplant).");
-                self.assets_panel(ui, ctx, &[Category::Hair], None);
+                ui.heading("Haarstudio"); ui.separator();
+                ui.horizontal(|ui| { for (i, t) in ["Auswahl", "Farbe & Material"].iter().enumerate() { if ui.selectable_label(self.hair_tab == i, *t).clicked() { self.hair_tab = i; } } });
+                ui.weak("Regionale Bearbeitung (Länge, Volumen, Scheitel, Pony, Strähnen) und Haarphysik: noch nicht unterstützt.");
+                ui.separator();
+                if self.hair_tab == 0 { self.hair_grid(ui, ctx); } else { self.hair_color_panel(ui); }
             }
             Main::Stil => match self.sub {
-                0 => { ui.heading("Haut"); ui.separator(); self.skin_panel(ui, ctx, true); ui.weak("Make-up, Narben, Tattoos, Körperbehaarung: noch nicht unterstützt."); }
+                0 => { ui.heading("Haut"); ui.separator(); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); ui.weak("Make-up, Sommersprossen, Narben, Tattoos, Körperbehaarung: noch nicht unterstützt."); }
                 1 => { ui.heading("Augenfarbe"); ui.separator(); self.skin_panel(ui, ctx, false); }
                 _ => { ui.heading("Brauen & Wimpern"); ui.separator(); self.assets_panel(ui, ctx, &[Category::Eyebrows, Category::Eyelashes], None); }
             },
