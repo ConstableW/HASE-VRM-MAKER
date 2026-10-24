@@ -29,3 +29,17 @@ Umgesetzt (Details und Grenzen: `../02-architecture/character-studios.md`): Auge
 Offen: Outfit-Studio-Vertiefung, Finalisieren (Posen, Animation, VRM-Export), Pupillenformen/Irismuster, Haar-Scheitel/Strähnen/Physik, Panel-Einklappen, Icons, Direktmanipulation per Griffe.
 
 Finalisieren (2026-10-24): „Posen & Animation“ (VRMA-Clips mit Skinning-Vorschau) und „Export (VRM 1.0)“ (Profile, Metadaten, Vorabinformationen, Bericht mit Verlustliste, Hintergrund-Schreiben) sind umgesetzt; Details und Grenzen in `../02-architecture/character-studios.md`.
+
+## Umsetzung des verbindlichen Mockups (2026-10-24, Meilenstein „startbare Anwendung“)
+Referenzbilder im Repo: `mockup-hauptlayout.png` (Charakter-Phase), `mockup-verbindlich.png` (Gesamtübersicht aller Bereiche). Priorität laut Owner: Gesamtprodukt/Nutzbarkeit vor Einzeltechnologien.
+
+Umgesetzt (Code: `shell.rs`, `ui_kit.rs`, `icons.rs`, `theme.rs`):
+- **Kopfzeile:** Logo, drei nummerierte Arbeitsbereiche (Titel + Untertitel), Icon-Knöpfe Projekt (Menü), Bibliothek, Speichern, Export, Werkzeuge (Körperbasen & Spezies), Einstellungen (Menü). Kein natives Menü mehr.
+- **Links:** Karte „Spezies“ (Auswahl ‹ Mensch ›, fünf Preset-Vorschauen), Karte „Bereiche“ mit Icons (Gesamtansicht · Gesicht · Körper · Haare & Stil), Fußknöpfe Ansicht zurücksetzen / Symmetrie. Outfit und Finalisieren haben eigene Navigationskarten.
+- **Mitte:** großer Viewport (abgerundet), Werkzeugleiste mit Icons (Bewegen, Rotieren, Zoomen, Fokus, Bereich), Licht-Presets mit Vorschaufeldern, Kameraansichten, Leistungskarte, Leiste Undo/Redo/Ansicht/Raster, Vollbild (blendet Seitenleisten aus). Untere Presetleiste mit Vorschaubildern (Tabs Presets/Meine Charaktere/Favoriten, Suche).
+- **Rechts:** Reiter Presets · Parameter · Fein · Erweitert; Parameter/Fein als Akkordeon der Regionen (Gesicht/Körper) mit Icons; Parameterzeilen im Mockup-Stil (Beschriftung, Regler, Zahlenfeld, Doppelklick = Standard). Augenstudio als Abschnitt „Augen“ im Akkordeon.
+- **Outfit:** Kachelraster mit Vorschaubildern je Kategorie, Liste „Getragen“ mit Farbe/Ablegen.
+- **Bibliothek:** als Seitenpanel (Tabs, Suche, Kachelraster, Details, Snapshots) statt Fenster.
+- Species „Mensch“ v1.1.0 mit 11 Presets (Natürlich, Junge Frau, Realistisch, Anime, Elfe, Kindlich, Reif, Mann, Markant, Asiatisch, Afrikanisch).
+
+Offen (Mockup-Abweichungen): eigene Fensterleiste (min/max/close) statt nativer Titelleiste; Kopfform-Preset-Reihen je Region; Kamerathumbnails zeigen Icons statt Porträts; Haarstudio/Haut/Make-up/Details/Export/Posen nutzen bereits die neuen Bausteine nur teilweise (Reglerzeilen noch nicht überall im Zeilenstil); Einklappen/Größenänderung der Karten; Schriftart ist die egui-Standardschrift.

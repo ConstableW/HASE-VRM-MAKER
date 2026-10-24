@@ -109,37 +109,50 @@ impl App {
 
     pub(crate) fn lib_window(&mut self, ctx: &egui::Context) {
         self.save_prompt_window(ctx);
-        if !self.lib.open { return; }
+        self.lib_compare(ctx);
+    }
+
+    /// Charakterbibliothek als Seitenpanel (ersetzt den Editor rechts, solange sie geöffnet ist).
+    pub(crate) fn lib_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if !self.lib.loaded { self.lib_refresh(); }
-        let mut open = true;
-        egui::Window::new("Charakterbibliothek").open(&mut open).default_size([760.0, 560.0]).resizable(true).show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            crate::icons::show(ui, crate::icons::Icon::Library, 20.0, theme::TEXT); ui.label(egui::RichText::new("Charakterbibliothek").strong().size(16.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if crate::ui_kit::icon_tile(ui, crate::icons::Icon::Close, "", egui::vec2(28.0, 28.0), false, "Bibliothek schließen").clicked() { self.lib.open = false; } });
+        });
+        crate::ui_kit::hr(ui); ui.add_space(6.0);
+        let tw = ((ui.available_width() - 3.0 * 6.0) / 4.0).floor().max(70.0);
+        {
+            let mut t = self.lib.tab;
+            if crate::ui_kit::tabs(ui, &["Meine Charaktere", "Vorlagen", "Favoriten"], &mut t) { self.lib.tab = t; }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| { crate::icons::show(ui, crate::icons::Icon::Search, 16.0, theme::TEXT2); ui.add(egui::TextEdit::singleline(&mut self.lib.filter).hint_text("Suche Charaktere, Tags …").desired_width(f32::INFINITY)); });
+        }
+        ui.add_space(4.0);
             ui.horizontal(|ui| {
-                for (i, t) in ["Meine Charaktere", "Vorlagen", "Favoriten"].iter().enumerate() { if ui.selectable_label(self.lib.tab == i, *t).clicked() { self.lib.tab = i; } }
-                ui.separator(); ui.label("Suche:"); ui.text_edit_singleline(&mut self.lib.filter);
+                ui.add(egui::TextEdit::singleline(&mut self.lib.new_name).hint_text("Name für neuen Eintrag").desired_width(f32::INFINITY));
             });
             ui.horizontal(|ui| {
-                ui.text_edit_singleline(&mut self.lib.new_name);
                 let ok = !self.lib.new_name.trim().is_empty();
-                if ui.add_enabled(ok, egui::Button::new("Aktuellen Charakter speichern")).clicked() { let n = self.lib.new_name.trim().to_string(); self.lib_save_new(ctx, &n, false); self.lib.new_name.clear(); }
-                if ui.add_enabled(ok, egui::Button::new("Als Vorlage speichern")).on_hover_text("Basischarakter ohne Outfit-Bezug als wiederverwendbare Vorlage").clicked() { let n = self.lib.new_name.trim().to_string(); self.lib_save_new(ctx, &n, true); self.lib.new_name.clear(); }
-                if let Some(cur) = self.lib.current.clone() { if ui.button("Änderungen speichern").on_hover_text("Überschreibt den geöffneten Bibliothekseintrag").clicked() { self.lib_save_current(ctx); } ui.weak(format!("geöffnet: {}", self.lib.entries.iter().find(|e| e.id == cur).map(|e| e.name.clone()).unwrap_or_default())); }
+                if ui.add_enabled(ok, egui::Button::new("Speichern")).clicked() { let n = self.lib.new_name.trim().to_string(); self.lib_save_new(ctx, &n, false); self.lib.new_name.clear(); }
+                if ui.add_enabled(ok, egui::Button::new("Als Vorlage")).on_hover_text("Basischarakter ohne Outfit-Bezug als wiederverwendbare Vorlage").clicked() { let n = self.lib.new_name.trim().to_string(); self.lib_save_new(ctx, &n, true); self.lib.new_name.clear(); }
+                if let Some(cur) = self.lib.current.clone() { if ui.button("Änderungen sichern").on_hover_text("Überschreibt den geöffneten Bibliothekseintrag").clicked() { self.lib_save_current(ctx); } ui.label(egui::RichText::new(format!("geöffnet: {}", self.lib.entries.iter().find(|e| e.id == cur).map(|e| e.name.clone()).unwrap_or_default())).color(theme::TEXT2)); }
             });
             if !self.lib.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.lib.msg); }
             ui.separator();
             let f = self.lib.filter.to_lowercase();
             let list: Vec<LibEntry> = self.lib.entries.iter().filter(|e| (self.lib.tab == 0 || (self.lib.tab == 1 && e.template) || (self.lib.tab == 2 && e.favorite)) && (f.is_empty() || e.name.to_lowercase().contains(&f))).cloned().collect();
-            ui.columns(2, |cols| {
                 // Karten
-                egui::ScrollArea::vertical().id_salt("libcards").auto_shrink([false; 2]).show(&mut cols[0], |ui| {
+                egui::ScrollArea::vertical().id_salt("libcards").max_height(300.0).auto_shrink([false, true]).show(ui, |ui| {
                     if list.is_empty() { ui.weak("Keine Einträge. Speichere den aktuellen Charakter, um die Bibliothek zu füllen."); }
                     ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
                         for e in &list {
                             let sel = self.lib.sel.as_deref() == Some(e.id.as_str());
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(108.0, 140.0), egui::Sense::click());
+                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(tw, tw + 40.0), egui::Sense::click());
                             let tex = self.lib_texture(ui.ctx(), &e.dir);
                             let p = ui.painter();
                             p.rect_filled(rect, 6.0, if sel { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
-                            let ir = egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(100.0, 100.0));
+                            let ir = egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(tw - 8.0, tw - 8.0));
                             match tex { Some(t) => { p.image(t.id(), ir, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE); } None => { p.rect_filled(ir, 4.0, theme::BG); p.text(ir.center(), egui::Align2::CENTER_CENTER, "kein Bild", egui::FontId::proportional(11.0), theme::TEXT2); } }
                             p.text(egui::pos2(rect.center().x, rect.bottom() - 26.0), egui::Align2::CENTER_CENTER, &e.name, egui::FontId::proportional(13.0), theme::TEXT);
                             let tag = format!("{}{}{}", if e.template { "Vorlage " } else { "" }, if e.favorite { "Favorit " } else { "" }, if e.parent.is_some() { "Variante" } else { "" });
@@ -150,9 +163,12 @@ impl App {
                         }
                     });
                 });
+        ui.add_space(8.0);
+        crate::ui_kit::hr(ui); ui.add_space(6.0);
+        let _ = ctx;
+        {
                 // Details
-                let ui = &mut cols[1];
-                let Some(e) = self.lib.sel.as_ref().and_then(|id| self.lib.entries.iter().find(|e| e.id == *id)).cloned() else { ui.weak("Wähle einen Charakter."); return; };
+                let Some(e) = self.lib.sel.as_ref().and_then(|id| self.lib.entries.iter().find(|e| e.id == *id)).cloned() else { ui.colored_label(theme::TEXT2, "Wähle einen Charakter."); return; };
                 ui.heading(&e.name);
                 ui.colored_label(theme::TEXT2, format!("Erstellt {} · geändert {}", e.created, e.modified));
                 ui.colored_label(theme::TEXT2, format!("Spezies: {} · Körperbasis: {}", if e.species.is_empty() { "–" } else { &e.species }, e.body));
@@ -179,10 +195,7 @@ impl App {
                 ui.separator();
                 if !self.lib.confirm_delete { if ui.button("Löschen …").clicked() { self.lib.confirm_delete = true; } }
                 else { ui.colored_label(theme::WARN, "Wirklich löschen (inkl. Snapshots)?"); ui.horizontal(|ui| { if ui.button("Ja, löschen").clicked() { let _ = library::delete(&e); self.lib.sel = None; if self.lib.current.as_deref() == Some(e.id.as_str()) { self.lib.current = None; } self.lib.confirm_delete = false; self.lib_refresh(); } if ui.button("Abbrechen").clicked() { self.lib.confirm_delete = false; } }); }
-            });
-        });
-        if !open { self.lib.open = false; }
-        self.lib_compare(ctx);
+        }
     }
 
     /// Vorher/Nachher: aktueller Zustand neben einem Bibliothekseintrag (gleiche Körperbasis) mit Parameter-Unterschieden.
@@ -213,47 +226,56 @@ impl App {
     pub(crate) fn preset_bar(&mut self, ui: &mut egui::Ui) {
         if self.session.is_none() { return; }
         if !self.lib.loaded { self.lib_refresh(); }
-        ui.horizontal(|ui| {
-            for (i, t) in ["Presets", "Meine Charaktere", "Favoriten"].iter().enumerate() { if ui.selectable_label(self.lib.bottom_tab == i, *t).clicked() { self.lib.bottom_tab = i; } }
-            ui.separator(); ui.label("Suche:"); ui.add(egui::TextEdit::singleline(&mut self.lib.bottom_filter).desired_width(160.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.button("Bibliothek öffnen").clicked() { self.lib.open = true; } });
-        });
-        let f = self.lib.bottom_filter.to_lowercase();
         let ctx = ui.ctx().clone();
-        egui::ScrollArea::horizontal().id_salt("bottombar").show(ui, |ui| {
+        egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0, theme::LINE)).corner_radius(egui::CornerRadius::same(8)).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                // Neu
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(72.0, 96.0), egui::Sense::click());
-                ui.painter().rect_filled(rect, 6.0, if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "+\nNeu", egui::FontId::proportional(16.0), theme::TEXT);
-                if resp.on_hover_text("Neuer Charakter mit den Standardwerten der Spezies").clicked() { if let Some(s) = self.session.as_mut() { s.new_character(); self.lib.current = None; } }
-                match self.lib.bottom_tab {
-                    0 => {
-                        let Some(s) = self.session.as_ref() else { return };
-                        let presets: Vec<(String, BTreeMapF)> = s.species_opt().map(|i| s.packages.species[i].presets.iter().filter(|p| f.is_empty() || p.label.to_lowercase().contains(&f)).map(|p| (p.label.clone(), p.params.clone())).collect()).unwrap_or_default();
-                        let traits: Vec<(String, BTreeMapF)> = s.species_opt().map(|i| s.packages.species[i].traits.iter().filter(|t| f.is_empty() || t.label.to_lowercase().contains(&f)).map(|t| (t.label.clone(), t.set.clone())).collect()).unwrap_or_default();
-                        if s.species_opt().is_none() { ui.weak("Diese Körperbasis hat noch keine Spezies/Presets."); }
-                        for (label, map) in presets.into_iter().chain(traits.into_iter().map(|(l, m)| (format!("+ {l}"), m))) {
-                            let st = self.session.as_ref().unwrap().state_with(&map);
-                            if self.tile(ui, egui::vec2(96.0, 96.0), st, "head", &label, false) { if let Some(s) = self.session.as_mut() { s.apply_map(&map); } }
+                ui.spacing_mut().item_spacing.x = 8.0;
+                let mut t = self.lib.bottom_tab;
+                ui.allocate_ui(egui::vec2(330.0, 28.0), |ui| { if crate::ui_kit::tabs(ui, &["Presets", "Meine Charaktere", "Favoriten"], &mut t) { self.lib.bottom_tab = t; } });
+                crate::icons::show(ui, crate::icons::Icon::Search, 16.0, theme::TEXT2);
+                ui.add(egui::TextEdit::singleline(&mut self.lib.bottom_filter).hint_text("Suche Presets, Charaktere …").desired_width(220.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.button("Bibliothek öffnen").clicked() { self.lib.open = true; } });
+            });
+            ui.add_space(6.0);
+            let f = self.lib.bottom_filter.to_lowercase();
+            egui::ScrollArea::horizontal().id_salt("bottombar").auto_shrink([false, true]).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(80.0, 100.0 + 20.0), egui::Sense::click());
+                    ui.painter().rect_filled(rect, 7.0, if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
+                    ui.painter().rect_stroke(rect, 7.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
+                    crate::icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center() - egui::vec2(0.0, 8.0), egui::vec2(30.0, 30.0)), crate::icons::Icon::Plus, theme::TEXT);
+                    ui.painter().text(egui::pos2(rect.center().x, rect.bottom() - 18.0), egui::Align2::CENTER_CENTER, "Neu", egui::FontId::proportional(13.0), theme::TEXT);
+                    if resp.on_hover_text("Neuer Charakter mit den Standardwerten der Spezies").clicked() { if let Some(s) = self.session.as_mut() { s.new_character(); self.lib.current = None; } }
+                    match self.lib.bottom_tab {
+                        0 => {
+                            let Some(s) = self.session.as_ref() else { return };
+                            let presets: Vec<(String, BTreeMapF)> = s.species_opt().map(|i| s.packages.species[i].presets.iter().filter(|p| f.is_empty() || p.label.to_lowercase().contains(&f)).map(|p| (p.label.clone(), p.params.clone())).collect()).unwrap_or_default();
+                            let traits: Vec<(String, BTreeMapF)> = s.species_opt().map(|i| s.packages.species[i].traits.iter().filter(|t| f.is_empty() || t.label.to_lowercase().contains(&f)).map(|t| (t.label.clone(), t.set.clone())).collect()).unwrap_or_default();
+                            if s.species_opt().is_none() { ui.weak("Diese Körperbasis hat noch keine Spezies/Presets."); }
+                            for (label, map) in presets.into_iter().chain(traits.into_iter().map(|(l, m)| (format!("+ {l}"), m))) {
+                                let st = self.session.as_ref().unwrap().state_with(&map);
+                                if self.tile_card(ui, 94.0, 100.0, st, "head", &label, false) { if let Some(s) = self.session.as_mut() { s.apply_map(&map); } }
+                            }
+                        }
+                        _ => {
+                            let list: Vec<LibEntry> = self.lib.entries.iter().filter(|e| (self.lib.bottom_tab == 1 || e.favorite) && (f.is_empty() || e.name.to_lowercase().contains(&f))).cloned().collect();
+                            if list.is_empty() { ui.weak("Noch keine Einträge – mit „Speichern“ in der Kopfzeile anlegen."); }
+                            for e in list {
+                                let tex = self.lib_texture(&ctx, &e.dir);
+                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(94.0, 120.0), egui::Sense::click());
+                                let p = ui.painter();
+                                let img = egui::Rect::from_min_size(rect.min, egui::vec2(94.0, 100.0));
+                                p.rect_filled(img, 7.0, if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
+                                if let Some(t) = tex { p.image(t.id(), img.shrink(2.0), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE); }
+                                p.rect_stroke(img, 7.0, egui::Stroke::new(1.0, if resp.hovered() { theme::TEXT2 } else { theme::LINE }), egui::StrokeKind::Inside);
+                                p.text(egui::pos2(rect.center().x, rect.bottom() - 9.0), egui::Align2::CENTER_CENTER, &e.name, egui::FontId::proportional(12.5), theme::TEXT);
+                                if resp.clicked() { self.lib_open(&e); }
+                            }
                         }
                     }
-                    _ => {
-                        let list: Vec<LibEntry> = self.lib.entries.iter().filter(|e| (self.lib.bottom_tab == 1 || e.favorite) && (f.is_empty() || e.name.to_lowercase().contains(&f))).cloned().collect();
-                        if list.is_empty() { ui.weak("Noch keine Einträge – im Bibliotheksfenster speichern."); }
-                        for e in list {
-                            let tex = self.lib_texture(&ctx, &e.dir);
-                            let (rect, resp) = ui.allocate_exact_size(egui::vec2(96.0, 96.0), egui::Sense::click());
-                            let p = ui.painter();
-                            p.rect_filled(rect, 6.0, if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
-                            if let Some(t) = tex { p.image(t.id(), rect.shrink(2.0), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE); }
-                            let lr = egui::Rect::from_min_max(egui::pos2(rect.left() + 2.0, rect.bottom() - 18.0), rect.right_bottom() - egui::vec2(2.0, 2.0));
-                            p.rect_filled(lr, 4.0, egui::Color32::from_black_alpha(150)); p.text(lr.center(), egui::Align2::CENTER_CENTER, &e.name, egui::FontId::proportional(11.0), theme::TEXT);
-                            p.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
-                            if resp.clicked() { self.lib_open(&e); }
-                        }
-                    }
-                }
+                });
             });
         });
     }

@@ -22,16 +22,19 @@ pub fn apply(ctx: &egui::Context) {
     let r = CornerRadius::same(6);
     let w = &mut v.widgets;
     w.noninteractive.bg_fill = PANEL; w.noninteractive.bg_stroke = Stroke::new(1.0, LINE); w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT2); w.noninteractive.corner_radius = r;
-    w.inactive.bg_fill = PANEL2; w.inactive.weak_bg_fill = PANEL2; w.inactive.bg_stroke = Stroke::new(1.0, LINE); w.inactive.fg_stroke = Stroke::new(1.0, TEXT); w.inactive.corner_radius = r;
-    w.hovered.bg_fill = HOVER; w.hovered.weak_bg_fill = HOVER; w.hovered.bg_stroke = Stroke::new(1.0, ACCENT); w.hovered.fg_stroke = Stroke::new(1.0, TEXT); w.hovered.corner_radius = r;
-    w.active.bg_fill = ACTIVE; w.active.weak_bg_fill = ACTIVE; w.active.bg_stroke = Stroke::new(1.0, ACCENT); w.active.fg_stroke = Stroke::new(1.0, TEXT); w.active.corner_radius = r;
+    w.inactive.bg_fill = Color32::from_rgb(0x34, 0x47, 0x60); w.inactive.weak_bg_fill = PANEL2; w.inactive.bg_stroke = Stroke::new(1.0, LINE); w.inactive.fg_stroke = Stroke::new(1.0, TEXT); w.inactive.corner_radius = r;
+    w.hovered.bg_fill = Color32::from_rgb(0x4A, 0x6A, 0x92); w.hovered.weak_bg_fill = HOVER; w.hovered.bg_stroke = Stroke::new(1.0, ACCENT); w.hovered.fg_stroke = Stroke::new(1.0, TEXT); w.hovered.corner_radius = r;
+    w.active.bg_fill = ACCENT; w.active.weak_bg_fill = ACTIVE; w.active.bg_stroke = Stroke::new(1.0, ACCENT); w.active.fg_stroke = Stroke::new(1.0, TEXT); w.active.corner_radius = r;
     w.open.bg_fill = PANEL2; w.open.weak_bg_fill = PANEL2; w.open.corner_radius = r;
+    v.handle_shape = egui::style::HandleShape::Circle;
+    v.slider_trailing_fill = false;
     ctx.set_visuals(v);
     ctx.global_style_mut(|s| {
         s.spacing.item_spacing = egui::vec2(8.0, 6.0);
         s.spacing.button_padding = egui::vec2(10.0, 5.0);
         s.spacing.interact_size.y = 24.0;
         s.spacing.slider_width = 150.0;
+        s.spacing.slider_rail_height = 5.0;
         for (_, f) in s.text_styles.iter_mut() { f.size *= 1.05; }
     });
 }
@@ -42,7 +45,7 @@ pub fn label_de(l: &str) -> String {
         ("decr incr", ""), ("down up", "Höhe"), ("backward forward", "Tiefe"), ("in out", "innen/außen"), ("concave convex", "konkav/konvex"),
         ("square round", "eckig/rund"), ("pointed triangle", "spitz/dreieckig"), ("compress uncompress", "Kompression"), ("l r", "links/rechts"),
         ("asym", "Asymmetrie"), ("eyebrows", "Augenbrauen"), ("brown", "Augenbraue"), ("eyefold", "Lidfalte"), ("eye", "Auge"), ("bag", "Tränensack"),
-        ("corner", "Augenwinkel"), ("height", "Höhe"), ("push", "Wölbung"), ("trans", "Position"), ("scale", "Größe"), ("horiz", "Breite"), ("vert", "Höhe"),
+        ("corner1", "Außenwinkel"), ("corner2", "Innenwinkel"), ("epicanthus", "Epikanthus"), ("corner", "Augenwinkel"), ("height", "Höhe"), ("push", "Wölbung"), ("trans", "Position"), ("scale", "Größe"), ("horiz", "Breite"), ("vert", "Höhe"),
         ("depth", "Tiefe"), ("nose", "Nase"), ("nostrils", "Nasenlöcher"), ("width", "Breite"), ("flaring", "Nasenflügel"), ("hump", "Höcker"),
         ("point", "Spitze"), ("curve", "Rücken"), ("base", "Basis"), ("septumangle", "Septumwinkel"), ("volume", "Volumen"), ("greek", "griechisch"),
         ("mouth", "Mund"), ("upperlip", "Oberlippe"), ("lowerlip", "Unterlippe"), ("cupidsbow", "Amorbogen"), ("philtrum", "Philtrum"), ("angles", "Mundwinkel"),

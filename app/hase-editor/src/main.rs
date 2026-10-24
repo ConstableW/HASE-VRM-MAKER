@@ -1,6 +1,9 @@
 mod app;
 mod camera;
 mod export_ui;
+mod icons;
+mod shell;
+mod ui_kit;
 mod offscreen;
 mod regions;
 mod studios;
@@ -31,7 +34,7 @@ fn main() {
         std::process::exit(offscreen::run(&repo, &out, &args));
     }
     let native = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1500.0, 920.0]).with_min_inner_size([900.0, 600.0]).with_title("HASE VRM MAKER"),
+        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1760.0, 990.0]).with_maximized(true).with_min_inner_size([900.0, 600.0]).with_title("HASE VRM MAKER"),
         multisampling: 4,
         depth_buffer: 32,
         renderer: eframe::Renderer::Wgpu,

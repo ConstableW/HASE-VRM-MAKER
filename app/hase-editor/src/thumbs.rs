@@ -30,6 +30,9 @@ pub fn cam_for(kind: &str, hh: f32) -> Camera {
     match kind {
         "eye" => Camera { yaw: 0.0, pitch: 0.0, dist: 0.26 * k.max(0.6), target: [0.0, 0.935 * hh, 0.0], fov: 0.62 },
         "hair" => Camera { yaw: 0.45, pitch: 0.05, dist: 0.75 * k.max(0.6), target: [0.0, 0.915 * hh, 0.0], fov: 0.62 },
+        "upper" => Camera { yaw: 0.25, pitch: 0.05, dist: 1.55 * k.max(0.6), target: [0.0, 0.72 * hh, 0.0], fov: 0.62 },
+        "lower" => Camera { yaw: 0.25, pitch: 0.05, dist: 1.9 * k.max(0.6), target: [0.0, 0.40 * hh, 0.0], fov: 0.62 },
+        "feet" => Camera { yaw: 0.5, pitch: 0.15, dist: 1.0 * k.max(0.6), target: [0.0, 0.07 * hh, 0.0], fov: 0.62 },
         "head" => Camera { yaw: 0.0, pitch: 0.02, dist: 0.62 * k.max(0.6), target: [0.0, 0.91 * hh, 0.0], fov: 0.62 },
         _ => Camera { yaw: 0.3, pitch: 0.05, dist: 3.2 * k.max(0.6), target: [0.0, 0.52 * hh, 0.0], fov: 0.62 },
     }

@@ -15,7 +15,7 @@ pub const LIGHTS: [Lighting; 3] = [
 ];
 
 pub const PRESETS: [(&str, Camera); 5] = [
-    ("Vorne", Camera { yaw: 0.0, pitch: 0.04, dist: 3.4, target: [0.0, 0.88, 0.0], fov: 0.62 }),
+    ("Vorne", Camera { yaw: 0.0, pitch: 0.04, dist: 3.0, target: [0.0, 0.9, 0.0], fov: 0.62 }),
     ("Seite", Camera { yaw: 1.5708, pitch: 0.04, dist: 3.4, target: [0.0, 0.88, 0.0], fov: 0.62 }),
     ("Hinten", Camera { yaw: 3.1416, pitch: 0.04, dist: 3.4, target: [0.0, 0.88, 0.0], fov: 0.62 }),
     ("Kopf", Camera { yaw: 0.0, pitch: 0.02, dist: 0.95, target: [0.0, 1.55, 0.0], fov: 0.62 }),

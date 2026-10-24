@@ -1,6 +1,7 @@
 //! egui-Anwendung: Parameterpanel, Asset-Bibliotheken, 3D-Viewport mit Orbit-Kamera, Profiling-Overlay.
 use crate::camera::{Camera, LIGHTS, PRESETS};
 use crate::theme;
+use crate::icons::Icon;
 use crate::regions::{self, Main, CLOTHES_KINDS, REGIONS, TIER_LABELS};
 use crate::render::{MeshUpdate, SceneRenderer};
 use crate::session::{load_proxy_blocking, LoadedProxy, Session, EYES_ID};
@@ -77,6 +78,10 @@ pub struct App {
     pub(crate) grid: bool,
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
     pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
+    pub(crate) rtab: usize,
+    pub(crate) open_regions: HashSet<usize>,
+    pub(crate) scroll_to: Option<usize>,
+    pub(crate) panels_hidden: bool,
 }
 
 pub fn spawn_session_load(tx: Sender<Msg>, ctx: egui::Context, repo: std::path::PathBuf) {
@@ -102,7 +107,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -148,7 +153,7 @@ impl App {
         self.rows_key = key;
     }
 
-    fn params_panel(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn params_panel(&mut self, ui: &mut egui::Ui) {
         let Some(s) = self.session.as_mut() else { return };
         ui.horizontal(|ui| {
             ui.label("Spezies:");
@@ -255,7 +260,7 @@ impl App {
         }
     }
 
-    fn viewport(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn viewport(&mut self, ui: &mut egui::Ui) {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
         let tool = self.tool;
         if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Orbit | Tool::Region | Tool::Focus | Tool::Decal => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
@@ -276,33 +281,7 @@ impl App {
         let updates = self.session.as_mut().map(|s| s.refresh()).unwrap_or_default();
         let aspect = (rect.width() / rect.height().max(1.0)).max(0.1);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals_lit(aspect, &LIGHTS[self.light.min(2)], self.grid) }));
-        // Kamera-Presets (rechts)
-        let mut y = rect.top() + 8.0;
-        for (i, (n, c)) in PRESETS.iter().enumerate() {
-            let r = egui::Rect::from_min_size(egui::pos2(rect.right() - 120.0, y), egui::vec2(112.0, 22.0));
-            if ui.put(r, egui::Button::new(format!("{} {}", i + 1, n)).small()).clicked() { self.camera = *c; }
-            y += 24.0;
-        }
-        // Werkzeuge (links)
-        let mut y = rect.top() + 8.0;
-        for (t, n, tip) in [(Tool::Orbit, "Rotieren", "Ziehen dreht die Kamera"), (Tool::Pan, "Bewegen", "Ziehen verschiebt die Ansicht"), (Tool::Zoom, "Zoomen", "Ziehen zoomt"), (Tool::Focus, "Fokus", "Klick auf den Körper zentriert die Kamera dort"), (Tool::Region, "Bereich", "Klick auf eine Körperstelle öffnet den passenden Bereich zum Bearbeiten")] {
-            let r = egui::Rect::from_min_size(egui::pos2(rect.left() + 8.0, y), egui::vec2(84.0, 26.0));
-            if ui.put(r, egui::Button::new(n).selected(self.tool == t)).on_hover_text(tip).clicked() { self.tool = t; }
-            y += 30.0;
-        }
-        // Licht & Hintergrund (oben Mitte)
-        let w = 3.0 * 76.0 + 70.0;
-        let mut x = rect.center().x - w / 2.0;
-        for (i, l) in LIGHTS.iter().enumerate() {
-            let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + 8.0), egui::vec2(72.0, 24.0));
-            if ui.put(r, egui::Button::new(l.name).selected(self.light == i)).clicked() { self.light = i; }
-            x += 76.0;
-        }
-        let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + 8.0), egui::vec2(66.0, 24.0));
-        if ui.put(r, egui::Button::new("Raster").selected(self.grid)).clicked() { self.grid = !self.grid; }
-        // Kompakte Leistungsanzeige (unten links)
-        ui.painter().text(rect.left_bottom() + egui::vec2(10.0, -10.0), egui::Align2::LEFT_BOTTOM, format!("{:.0} FPS · {:.1} ms{}", 1000.0 / self.frame_avg.max(0.1), self.frame_avg, self.session.as_ref().map(|s| format!(" · Morph {:.2} ms", s.perf.morph_ms)).unwrap_or_default()), egui::FontId::monospace(11.0), egui::Color32::from_rgb(190, 205, 230));
-        if self.session.is_none() { ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, if self.error.is_some() { "Fehler beim Laden" } else { "Lade Charakterdaten …" }, egui::FontId::proportional(18.0), egui::Color32::WHITE); }
+        self.viewport_overlays(ui, rect);
         if self.show_stats {
             let mut t = format!("Frame {:.1} ms (Ø {:.1}) · {:.0} fps\nGPU: {}", self.frame_ms, self.frame_avg, 1000.0 / self.frame_avg.max(0.1), self.gpu_name);
             if let Some(s) = &self.session {
@@ -314,7 +293,7 @@ impl App {
         }
     }
 
-    fn save_dialog(&mut self) {
+    pub(crate) fn save_dialog(&mut self) {
         let Some(s) = self.session.as_ref() else { return };
         if let Some(p) = rfd::FileDialog::new().add_filter("HASE Charakter", &["json"]).set_file_name("charakter.hase.json").save_file() {
             let v = s.state.to_json(&s.params, &s.packages.body.id);
@@ -390,7 +369,7 @@ impl App {
         }
     }
 
-    fn load_dialog(&mut self) {
+    pub(crate) fn load_dialog(&mut self) {
         if let Some(p) = rfd::FileDialog::new().add_filter("HASE Charakter", &["json"]).pick_file() {
             let r = std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|e| e.to_string()));
             match (r, self.session.as_mut()) {
@@ -419,54 +398,7 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F3)) { self.show_stats = !self.show_stats; }
         if !ctx.egui_wants_keyboard_input() { for (i, (_, c)) in PRESETS.iter().enumerate() { let k = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5][i]; if ctx.input(|inp| inp.key_pressed(k)) { self.camera = *c; } } }
 
-        egui::Panel::top("menu").show(ui, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("Datei", |ui| {
-                    if ui.button("In Bibliothek speichern  Strg+S").clicked() { ui.close(); self.quick_save(); }
-                    if ui.button("Als Datei speichern …").clicked() { ui.close(); self.save_dialog(); }
-                    if ui.button("Aus Bibliothek öffnen …").clicked() { ui.close(); self.lib.open = true; }
-                    if ui.button("Aus Datei laden …").clicked() { ui.close(); self.load_dialog(); }
-                    ui.separator();
-                    if ui.button("Modell öffnen (VRM/GLB) …").on_hover_text("Fertiges VRM-Modell ansehen, posen und Ausdrücke vorführen").clicked() { ui.close(); self.open_vrm_dialog(); }
-                    if ui.button("VRM exportieren …").clicked() { ui.close(); self.goto_export(); }
-                    ui.separator();
-                    if ui.button("Beenden").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
-                });
-                ui.menu_button("Bearbeiten", |ui| {
-                    if ui.add_enabled(self.session.as_ref().map(|s| s.history.can_undo()).unwrap_or(false), egui::Button::new("Rückgängig  Strg+Z")).clicked() { if let Some(s) = self.session.as_mut() { s.undo(); } ui.close(); }
-                    if ui.add_enabled(self.session.as_ref().map(|s| s.history.can_redo()).unwrap_or(false), egui::Button::new("Wiederholen  Strg+Y")).clicked() { if let Some(s) = self.session.as_mut() { s.redo(); } ui.close(); }
-                });
-                ui.menu_button("Ansicht", |ui| {
-                    for (i, (n, c)) in PRESETS.iter().enumerate() { if ui.button(format!("{n}  ({})", i + 1)).clicked() { self.camera = *c; ui.close(); } }
-                    ui.separator();
-                    ui.checkbox(&mut self.show_stats, "Leistungsanzeige  (F3)");
-                });
-                ui.menu_button("Hilfe", |ui| { ui.label("Linke Maus: Kamera drehen · Rechte/Mittlere Maus: verschieben · Mausrad: Zoom"); ui.label("Doppelklick: Kamera zurücksetzen · 1–5: Ansichten"); ui.label("Slider: Doppelklick = zurücksetzen"); });
-            });
-        });
-        egui::Panel::bottom("status").show(ui, |ui| { ui.horizontal(|ui| { ui.label(&self.status); if let Some(e) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, e); } ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.weak("HASE VRM MAKER – Entwicklungsstand (Testcandidate)"); }); }); });
-        self.load_modal(&ctx);
-        egui::Panel::top("nav").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("HASE VRM MAKER").strong().size(16.0)); ui.weak("Character Studio");
-                ui.add_space(16.0);
-                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB")] { self.ws_button(ui, n, ws, t); }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Exportieren").on_hover_text("VRM 1.0 exportieren (Finalisieren › Export)").clicked() { self.goto_export(); }
-                    if ui.button("Speichern").on_hover_text("Charakter in der Bibliothek speichern (Strg+S)").clicked() { self.quick_save(); }
-                    if ui.button("Bibliothek").on_hover_text("Gespeicherte Charaktere, Vorlagen, Varianten").clicked() { self.lib.open = true; }
-                    ui.separator();
-                    self.ws_button(ui, "Körperbasen & Spezies", Workspace::Studio, "Authoring-Werkzeug: Körperbasen und Spezies erstellen, importieren, prüfen, speichern");
-                    ui.weak("Werkzeuge");
-                });
-            });
-        });
-        self.lib_pending();
-        self.lib_window(&ctx);
-        if self.ws == Workspace::Charakter && !self.expert && !self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) { egui::Panel::bottom("presetbar").min_size(130.0).show(ui, |ui| self.preset_bar(ui)); }
-        egui::Panel::left("regions").default_size(190.0).min_size(150.0).show(ui, |ui| self.region_list(ui));
-        egui::Panel::right("detail").default_size(400.0).min_size(300.0).show(ui, |ui| self.detail_panel(ui, &ctx));
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport(ui));
+        self.layout(ui, &ctx);
         if self.started.elapsed().as_secs() < 5 || self.session.as_ref().map(|s| s.perf.total_ms > 0.0).unwrap_or(false) { /* UI-Zeit nur für Overlay */ }
         let _ = t0;
     }
@@ -474,16 +406,8 @@ impl eframe::App for App {
 
 
 impl App {
-    fn ws_button(&mut self, ui: &mut egui::Ui, n: &str, ws: Workspace, tip: &str) {
-        if ui.add(egui::Button::new(egui::RichText::new(n).size(15.0)).selected(self.ws == ws)).on_hover_text(tip).clicked() {
-            self.ws = ws;
-            self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation, Workspace::Studio => Main::Charakter };
-            self.region = usize::MAX; self.sub = 0; self.asset_filter.clear();
-        }
-    }
-
     /// Rückfrage beim Laden eines Charakters, dessen Ressourcen sich geändert haben – niemals stilles Umschalten.
-    fn load_modal(&mut self, ctx: &egui::Context) {
+    pub(crate) fn load_modal(&mut self, ctx: &egui::Context) {
         if let Some((v, b, path)) = self.pending_body.clone() {
             let mut done = false;
             egui::Window::new("Charakter benötigt eine andere Körperbasis").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
@@ -518,57 +442,14 @@ impl App {
         if done { self.pending_load = None; }
     }
 
-    fn nav_button(&mut self, ui: &mut egui::Ui, m: Main) {
-        if ui.selectable_label(self.main == m, egui::RichText::new(m.label()).size(15.0)).clicked() { self.main = m; self.region = usize::MAX; self.sub = 0; self.asset_filter.clear(); }
-    }
-
-    fn focus(&mut self, mut cam: Camera) {
+    pub(crate) fn focus(&mut self, mut cam: Camera) {
         if self.saved_cam.is_none() { self.saved_cam = Some(self.camera); }
         // Fokuspunkte sind für 1,75 m Körperhöhe definiert → auf aktuelle Höhe skalieren
         if let Some(s) = self.session.as_ref() { let k = (s.body_height() / 1.75).clamp(0.3, 1.5); cam.target[1] *= k; cam.dist *= k.max(0.6); }
         self.camera = cam;
     }
 
-    fn region_list(&mut self, ui: &mut egui::Ui) {
-        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { ui.strong("Geöffnetes Modell"); ui.separator(); ui.weak("Körper und Haare sind im Mesh fest enthalten und hier nicht veränderbar."); ui.add_space(6.0); ui.weak("Kleidung anprobieren: 2 Outfit"); ui.weak("Posen: 3 Finalisieren › Posen & Animation"); return; }
-        match self.ws {
-            Workspace::Charakter => {
-                ui.strong("Bereiche");
-                ui.separator();
-                let mut go: Option<(Main, usize, usize, Camera)> = None;
-                let sec = |ui: &mut egui::Ui, t: &str| { ui.add_space(4.0); ui.weak(t); };
-                egui::ScrollArea::vertical().auto_shrink([false; 2]).max_height(ui.available_height() - 140.0).show(ui, |ui| {
-                    sec(ui, "CHARAKTER");
-                    for (i, l) in ["Spezies & Presets", "Alter, Geschlecht & Typ"].iter().enumerate() { if ui.selectable_label(self.main == Main::Charakter && self.sub == i, *l).clicked() { go = Some((Main::Charakter, usize::MAX, i, regions::CAM_BODY)); } }
-                    for (m, t) in [(Main::Gesicht, "GESICHT"), (Main::Koerper, "KÖRPER")] {
-                        sec(ui, t);
-                        for (i, r) in regions::regions_of(m) { if ui.selectable_label(self.main == m && self.region == i, r.label).clicked() { go = Some((m, i, 0, r.cam)); } }
-                    }
-                    sec(ui, "HAARE & STIL");
-                    if ui.selectable_label(self.main == Main::Haare, "Frisur").clicked() { go = Some((Main::Haare, usize::MAX, 0, regions::CAM_HEAD)); }
-                    for (i, l) in ["Haut", "Make-up", "Details (Sommersprossen, Muttermale, Tattoos, Narben)", "Augen (→ Gesicht › Augen)", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { if i == 3 { go = Some((Main::Gesicht, crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap(), 0, crate::regions::REGIONS.iter().find(|r| r.label == "Augen").unwrap().cam)); } else { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } } }
-                });
-                if let Some((m, r, sub, c)) = go { self.main = m; self.region = r; self.sub = sub; self.focus(c); }
-            }
-            Workspace::Outfit => {
-                ui.strong("Outfit"); ui.separator();
-                for (i, l) in CLOTHES_KINDS.iter().enumerate() { if ui.selectable_label(self.sub == i, *l).clicked() { self.sub = i; } }
-            }
-            Workspace::Studio => self.studio_library(ui),
-            Workspace::Finalisieren => { ui.strong("Finalisieren"); ui.separator(); for (i, l) in ["Posen & Animation", "Export (VRM 1.0)"].iter().enumerate() { if ui.selectable_label(self.export.sub == i, *l).clicked() { self.export.sub = i; } } if ui.button("Vorlagen & Varianten …").on_hover_text("Öffnet die Charakterbibliothek").clicked() { self.lib.open = true; } }
-        }
-        ui.separator();
-        if let Some(c) = self.saved_cam { if ui.button("Eigene Kamera").on_hover_text("Zur manuell eingestellten Ansicht zurück").clicked() { self.camera = c; self.saved_cam = None; } }
-        if let Some(s) = self.session.as_mut() {
-            ui.horizontal(|ui| {
-                if ui.add_enabled(s.history.can_undo(), egui::Button::new("Rückgängig")).on_hover_text("Strg+Z").clicked() { s.undo(); }
-                if ui.add_enabled(s.history.can_redo(), egui::Button::new("Wiederholen")).on_hover_text("Strg+Y").clicked() { s.redo(); }
-            });
-            ui.checkbox(&mut s.symmetric, "Symmetrie (links = rechts)");
-        }
-    }
-
-    fn species_panel(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn species_panel(&mut self, ui: &mut egui::Ui) {
         let Some(s) = self.session.as_mut() else { return };
         ui.horizontal(|ui| {
             ui.label("Spezies:");
@@ -600,82 +481,78 @@ impl App {
         }
     }
 
-    /// Regler einer Region/Auswahl in Unterabschnitten (Form / Proportionen / Position).
-    pub(crate) fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool) {
+    /// Regler einer Region/Auswahl in Unterabschnitten. `fine`: nur Feinparameter (Position/Winkel, Asymmetrie), sonst Anatomie/Form/Proportionen.
+    pub(crate) fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool, fine: bool) {
         let Some(s) = self.session.as_mut() else { return };
-        let key = (if macros { 9999 } else { region.unwrap_or(10_000) }, s.params.defs.len());
+        let key = (if macros { 9999 } else { region.unwrap_or(10_000) } * 2 + fine as usize, s.params.defs.len());
         if key != self.reg_key {
-            self.reg_idx = (0..s.params.defs.len()).filter(|&i| { let d = &s.params.defs[i]; if macros { d.group == "Makro" } else { match region { Some(r) => regions::region_of(d) == Some(r), None => d.group != "Makro" && regions::region_of(d).is_none() } } }).collect();
+            self.reg_idx = (0..s.params.defs.len()).filter(|&i| { let d = &s.params.defs[i]; if macros { d.group == "Makro" } else { let t = regions::tier(d); let ok = if fine { t >= 3 } else { t < 3 }; ok && match region { Some(r) => regions::region_of(d) == Some(r), None => d.group != "Makro" && regions::region_of(d).is_none() } } }).collect();
             self.reg_idx.sort_by_key(|&i| (regions::tier(&s.params.defs[i]), s.params.defs[i].label.clone()));
             self.reg_key = key;
         }
-        if self.reg_idx.is_empty() { ui.weak("Keine Parameter in diesem Bereich."); return; }
+        if self.reg_idx.is_empty() { ui.colored_label(theme::TEXT2, if fine { "Keine Feinparameter in diesem Bereich." } else { "Keine Parameter in diesem Bereich." }); return; }
         let idx = self.reg_idx.clone();
-        if ui.button("Bereich zurücksetzen").clicked() { s.reset_indices(&idx); }
         let mut set: Option<(usize, f32)> = None;
-        egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-            let mut last = usize::MAX;
-            for &i in &idx {
-                let d = &s.params.defs[i];
-                if !macros { let t = regions::tier(d); if t != last { ui.add_space(6.0); ui.strong(TIER_LABELS[t]); last = t; } }
-                let mut v = s.state.values[i];
-                let resp = ui.add(egui::Slider::new(&mut v, { let (lo, hi) = s.range(i); lo..=hi.max(lo + 1e-4) }).text(crate::theme::label_de(&d.label)).fixed_decimals(2));
-                if resp.changed() { set = Some((i, v)); }
-                if resp.double_clicked() { set = Some((i, d.default)); }
-            }
-        });
+        let mut last = usize::MAX;
+        for &i in &idx {
+            let d = &s.params.defs[i];
+            if !macros { let t = regions::tier(d); if t != last { if last != usize::MAX || t != 1 { crate::ui_kit::section(ui, TIER_LABELS[t]); } last = t; } }
+            let (lo, hi) = s.range(i);
+            if let Some(v) = crate::ui_kit::param_row(ui, &crate::theme::label_de(&d.label), s.state.values[i], lo..=hi.max(lo + 1e-4), d.default, "") { set = Some((i, v)); }
+        }
+        ui.add_space(4.0);
+        if ui.add(egui::Button::new(egui::RichText::new("Bereich zurücksetzen").size(12.5))).clicked() { s.reset_indices(&idx); }
         if let Some((i, v)) = set { s.set_param(i, v); }
     }
 
-    fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(crate) fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.session.is_none() { ui.label("Lade …"); return; }
-        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { self.vrm_panel(ui); return; }
-        if self.ws == Workspace::Charakter {
-            ui.horizontal(|ui| { if ui.selectable_label(!self.expert, "Parameter").clicked() { self.expert = false; } if ui.selectable_label(self.expert, "Erweitert (alle Parameter)").clicked() { self.expert = true; } });
-            ui.separator();
-        }
+        let vrm = self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
+        if vrm && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { self.vrm_panel(ui); return; }
         if self.ws == Workspace::Studio { self.studio_detail(ui); return; }
-        if self.expert && self.ws == Workspace::Charakter { self.params_panel(ui); return; }
+        if self.ws == Workspace::Charakter {
+            match self.rtab { 0 => { self.panel_title(ui, Icon::Species, "Spezies & Presets"); self.species_panel(ui); return; } 3 => { self.params_panel(ui); return; } _ => {} }
+        }
+        let fine = self.ws == Workspace::Charakter && self.rtab == 2;
         match self.main {
             Main::Charakter => {
-                if self.sub == 0 { ui.heading("Spezies & Presets"); ui.separator(); self.species_panel(ui); }
-                else { ui.heading("Alter, Geschlecht & Typ"); ui.separator(); self.region_sliders(ui, None, true); }
+                self.panel_title(ui, Icon::Overview, "Gesamtansicht");
+                ui.colored_label(theme::TEXT2, "Alter, Geschlecht, Körpertyp und Proportionen als Ausgangspunkt – Details in den Bereichen links.");
+                ui.add_space(4.0);
+                if fine { ui.colored_label(theme::TEXT2, "Feinparameter gibt es je Bereich (Gesicht, Körper)."); } else { self.region_sliders(ui, None, true, false); }
             }
             Main::Gesicht | Main::Koerper => {
-                if self.region == usize::MAX {
-                    ui.heading(format!("{} · Übersicht", self.main.label())); ui.separator();
-                    ui.label("Wähle links einen Bereich. Die Kamera fokussiert automatisch; „Eigene Kamera“ stellt deine Ansicht wieder her.");
-                    if self.main == Main::Koerper {
-                        ui.add_space(8.0);
-                        ui.colored_label(theme::TEXT2, "Brust und Gesäß besitzen ein anatomisches Modell (Abschnitt „Anatomisches Modell“): Volumen, Projektion, obere/untere Fülle, Breite, Ansatzhöhe, Hängen – links/rechts getrennt, mit glatten Übergängen zum Körper. Muskulatur/Hüfte nutzen weiterhin die MakeHuman-Parameter.");
-                    }
-                } else {
-                    ui.heading(REGIONS[self.region].label); ui.separator();
-                    if REGIONS[self.region].label == "Augen" { self.eye_studio(ui); } else { self.region_sliders(ui, Some(self.region), false); }
-                }
+                let g = self.main == Main::Gesicht;
+                self.panel_title(ui, if g { Icon::Head } else { Icon::Overview }, &format!("{}{}", if g { "Gesicht" } else { "Körper" }, if fine { " · Feinabstimmung" } else { "" }));
+                if !fine && !g { ui.colored_label(theme::TEXT2, "Brust und Gesäß besitzen ein anatomisches Modell: Volumen, Projektion, Fülle, Breite, Ansatzhöhe – links/rechts getrennt."); ui.add_space(4.0); }
+                self.region_accordion(ui, self.main, fine);
             }
             Main::Haare => {
-                ui.heading("Haarstudio"); ui.separator();
-                ui.horizontal(|ui| { for (i, t) in ["Auswahl", "Form", "Farbe & Material"].iter().enumerate() { if ui.selectable_label(self.hair_tab == i, *t).clicked() { self.hair_tab = i; } } });
-                ui.weak("Haarphysik und Strähnen-/Scheitelbearbeitung: noch nicht unterstützt.");
-                ui.separator();
+                self.panel_title(ui, Icon::Hair, "Haarstudio");
+                crate::ui_kit::tabs(ui, &["Auswahl", "Form", "Farbe & Material"], &mut self.hair_tab);
+                ui.colored_label(theme::TEXT2, "Haarphysik, Scheitel und Strähnen: noch nicht unterstützt.");
+                ui.add_space(4.0);
                 match self.hair_tab { 0 => self.hair_grid(ui, ctx), 1 => self.hair_shape_panel(ui), _ => self.hair_color_panel(ui) }
             }
             Main::Stil => match self.sub {
-                0 => { ui.heading("Haut"); ui.separator(); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); }
-                1 => { ui.heading("Make-up"); ui.separator(); self.makeup_panel(ui); }
-                2 => { ui.heading("Details"); ui.separator(); self.details_panel(ui); }
-                3 => { ui.heading("Augen"); ui.separator(); ui.label("Das Augenstudio befindet sich unter Gesicht › Augen."); }
-                _ => { ui.heading("Brauen & Wimpern"); ui.separator(); self.assets_panel(ui, ctx, &[Category::Eyebrows, Category::Eyelashes], None); }
+                0 => { self.panel_title(ui, Icon::Skin, "Haut"); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); }
+                1 => { self.panel_title(ui, Icon::Makeup, "Make-up"); self.makeup_panel(ui); }
+                2 => { self.panel_title(ui, Icon::Details, "Details"); self.details_panel(ui); }
+                3 => { self.panel_title(ui, Icon::Eye, "Augen"); ui.label("Das Augenstudio befindet sich unter Gesicht › Augen."); }
+                _ => { self.panel_title(ui, Icon::Lashes, "Brauen & Wimpern"); self.assets_panel(ui, ctx, &[Category::Eyebrows, Category::Eyelashes], None); }
             },
             Main::Kleidung => {
-                ui.heading(format!("Outfit · {}", CLOTHES_KINDS[self.sub.min(4)])); ui.separator();
-                ui.weak("Kleidung ist vom Charakter getrennt: der Körper bleibt unverändert, Teile werden an die Körperform angepasst.");
-                self.assets_panel(ui, ctx, &[Category::Clothes], Some(self.sub.min(4)));
+                self.panel_title(ui, Icon::Outfit, &format!("Outfit · {}", CLOTHES_KINDS[self.sub.min(4)]));
+                ui.colored_label(theme::TEXT2, "Kleidung ist vom Charakter getrennt: der Körper bleibt unverändert, Teile werden an die Körperform angepasst.");
+                ui.add_space(4.0);
+                self.clothes_panel(ui, ctx, self.sub.min(4));
             }
-            Main::Animation => {
-                if self.export.sub == 0 { self.anim_panel(ui); } else { self.export_panel(ui); }
-            }
+            Main::Animation => { if self.export.sub == 0 { self.anim_panel(ui); } else { self.export_panel(ui); } }
         }
+    }
+
+    pub(crate) fn panel_title(&self, ui: &mut egui::Ui, icon: Icon, t: &str) {
+        ui.horizontal(|ui| { crate::icons::show(ui, icon, 20.0, theme::TEXT); ui.label(egui::RichText::new(t).strong().size(16.0)); });
+        ui.add_space(2.0); crate::ui_kit::hr(ui); ui.add_space(6.0);
     }
 }

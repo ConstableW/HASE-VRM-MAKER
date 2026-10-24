@@ -53,6 +53,25 @@ impl App {
         resp.clicked()
     }
 
+    /// Kachel mit Beschriftung unter dem Vorschaubild (Presetleiste, Spezies-Karte).
+    pub(crate) fn tile_card(&mut self, ui: &mut egui::Ui, w: f32, h: f32, st: CharacterState, cam_kind: &str, label: &str, selected: bool) -> bool {
+        let lab_h = if label.is_empty() { 0.0 } else { 20.0 };
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h + lab_h), egui::Sense::click());
+        let Some(s) = self.session.as_ref() else { return false };
+        let (tw, th) = (192u32, (192.0 * h / w) as u32);
+        let key = make_key(&st, &s.packages.body.digest, cam_kind, tw, th, &s.params);
+        let body = s.packages.body.clone();
+        let ctx = ui.ctx().clone();
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w: tw, h: th, body });
+        let p = ui.painter();
+        let img = egui::Rect::from_min_size(rect.min, egui::vec2(w, h));
+        p.rect_filled(img, 7.0, if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
+        match tex { Some(t) => { p.image(t.id(), img.shrink(2.0), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE); } None => { p.text(img.center(), egui::Align2::CENTER_CENTER, "…", egui::FontId::proportional(18.0), theme::TEXT2); } }
+        p.rect_stroke(img, 7.0, egui::Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { theme::ACCENT } else if resp.hovered() { theme::TEXT2 } else { theme::LINE }), egui::StrokeKind::Inside);
+        if !label.is_empty() { let mut job = egui::text::LayoutJob::simple_singleline(label.to_string(), egui::FontId::proportional(12.5), if selected { egui::Color32::WHITE } else { theme::TEXT }); job.wrap = egui::text::TextWrapping { max_width: w - 4.0, max_rows: 1, break_anywhere: true, overflow_character: Some('…') }; let g = p.layout_job(job); let pos = egui::pos2(rect.center().x - g.size().x / 2.0, rect.bottom() - 9.0 - g.size().y / 2.0); p.galley(pos, g, theme::TEXT); }
+        resp.clicked()
+    }
+
     pub(crate) fn eye_studio(&mut self, ui: &mut egui::Ui) {
         if self.session.is_none() { return; }
         ui.horizontal(|ui| { for (i, t) in ["Form", "Iris", "Pupille", "Material"].iter().enumerate() { if ui.selectable_label(self.eye_tab == i, *t).clicked() { self.eye_tab = i; } } });
@@ -95,7 +114,7 @@ impl App {
                     self.reg_key = (usize::MAX, 0);
                 }
                 ui.add_space(6.0);
-                self.region_sliders(ui, Some(crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap()), false);
+                self.region_sliders(ui, Some(crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap()), false, false);
             }
             1 => {
                 let s = self.session.as_mut().unwrap();
@@ -145,6 +164,59 @@ impl App {
                 if limb != o2 { s.edit_style(11, |st| st.eyes.limbal = limb); }
                 ui.weak("Augenweiß-Farbe, Augen-Make-up und Irismuster: noch nicht unterstützt.");
             }
+        }
+    }
+
+    /// Kleidungsauswahl als Kachelraster mit Vorschaubildern + Liste der getragenen Teile (Farbe, Ablegen).
+    pub(crate) fn clothes_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, kind: usize) {
+        ui.horizontal(|ui| { crate::icons::show(ui, crate::icons::Icon::Search, 16.0, theme::TEXT2); ui.add(egui::TextEdit::singleline(&mut self.asset_filter).hint_text("Suche Kleidung …").desired_width(f32::INFINITY)); });
+        let f = self.asset_filter.to_lowercase();
+        let list: Vec<usize> = { let s = self.session.as_ref().unwrap(); s.assets.assets.iter().enumerate().filter(|(_, a)| a.category == Category::Clothes && crate::regions::clothes_kind(&a.name) == kind && (f.is_empty() || a.name.to_lowercase().contains(&f))).map(|(i, _)| i).collect() };
+        ui.colored_label(theme::TEXT2, format!("{} Teile (nur Assets mit geklärter Lizenz)", list.len()));
+        ui.add_space(4.0);
+        let cols = 3usize; let tile = ((ui.available_width() - 2.0 * 8.0) / cols as f32).floor();
+        let cam = ["full", "upper", "lower", "feet", "upper"][kind.min(4)];
+        let mut click: Option<usize> = None;
+        let rows = list.len().div_ceil(cols);
+        for r in 0..rows {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                for c in 0..cols {
+                    let Some(&idx) = list.get(r * cols + c) else { break };
+                    let (e, on, st) = {
+                        let s = self.session.as_ref().unwrap();
+                        let e = s.assets.assets[idx].clone();
+                        let mut st = s.state.clone();
+                        st.assets.retain(|a| !a.id.starts_with("clothes/"));
+                        st.assets.push(hase_core::state::AssetSel { id: e.id.clone(), tint: crate::session::default_tint(&e.category, &e.name) });
+                        (e.clone(), s.is_selected(&e.id), st)
+                    };
+                    let busy = self.loading.contains(&e.id);
+                    if self.tile(ui, egui::vec2(tile, tile * 1.15), st, cam, &e.name.replace('_', " "), on) && !busy { click = Some(idx); }
+                }
+            });
+            ui.add_space(4.0);
+        }
+        let worn: Vec<hase_core::state::AssetSel> = self.session.as_ref().unwrap().state.assets.iter().filter(|a| a.id.starts_with("clothes/")).cloned().collect();
+        crate::ui_kit::hr(ui);
+        crate::ui_kit::section(ui, "Getragen");
+        if worn.is_empty() { ui.colored_label(theme::TEXT2, "Noch nichts ausgewählt – Kachel anklicken."); }
+        let mut tint: Option<(String, [f32; 3])> = None; let mut off: Option<String> = None;
+        for a in &worn {
+            ui.horizontal(|ui| {
+                let mut t = a.tint;
+                if ui.color_edit_button_rgb(&mut t).changed() { tint = Some((a.id.clone(), t)); }
+                ui.label(a.id.rsplit('/').next().unwrap_or(&a.id).replace('_', " "));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if crate::ui_kit::icon_tile(ui, crate::icons::Icon::Close, "", egui::vec2(24.0, 24.0), false, "Ablegen").clicked() { off = Some(a.id.clone()); } });
+            });
+        }
+        let s = self.session.as_mut().unwrap();
+        if let Some((id, t)) = tint { s.set_tint(&id, t); }
+        if let Some(id) = off { s.toggle_asset_off(&id); }
+        if let Some(i) = click {
+            let e = self.session.as_ref().unwrap().assets.assets[i].clone();
+            let s = self.session.as_mut().unwrap();
+            if s.is_selected(&e.id) { s.toggle_asset_off(&e.id); } else { s.add_asset_selection(&e); self.start_asset_load(ctx, &e.id, e.mhclo.clone(), None); }
         }
     }
 

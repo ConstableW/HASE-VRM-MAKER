@@ -3,7 +3,7 @@
   "schemaVersion": "1.0",
   "id": "org.hase.species.human",
   "type": "species",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": {
     "de": "Mensch"
   },
@@ -46,6 +46,16 @@
     "capabilities": [],
     "presets": [
       {
+        "id": "natural",
+        "label": {
+          "de": "Natürlich"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.4
+        }
+      },
+      {
         "id": "young-female",
         "label": {
           "de": "Junge Frau"
@@ -56,13 +66,128 @@
         }
       },
       {
+        "id": "realistic",
+        "label": {
+          "de": "Realistisch"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.5,
+          "mh:macro-race-caucasian": 0.7,
+          "mh:macro-race-asian": 0.15,
+          "mh:macro-race-african": 0.15
+        }
+      },
+      {
+        "id": "anime",
+        "label": {
+          "de": "Anime"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.22,
+          "mh:l-eye-scale-decr-incr": 0.7,
+          "mh:r-eye-scale-decr-incr": 0.7,
+          "mh:l-eye-height1-decr-incr": 0.5,
+          "mh:r-eye-height1-decr-incr": 0.5,
+          "mh:chin-height-decr-incr": -0.5,
+          "mh:nose-scale-vert-decr-incr": -0.6,
+          "mh:nose-scale-horiz-decr-incr": -0.4,
+          "mh:mouth-scale-horiz-decr-incr": -0.4,
+          "mh:head-scale-horiz-decr-incr": 0.2
+        }
+      },
+      {
+        "id": "elf",
+        "label": {
+          "de": "Elfe"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.32,
+          "mh:head-scale-horiz-decr-incr": -0.4,
+          "mh:chin-width-decr-incr": -0.6,
+          "mh:chin-prominent-decr-incr": -0.2,
+          "mh:l-eye-corner1-down-up": 0.6,
+          "mh:r-eye-corner1-down-up": 0.6,
+          "mh:l-eye-scale-decr-incr": 0.25,
+          "mh:r-eye-scale-decr-incr": 0.25,
+          "mh:nose-width1-decr-incr": -0.5,
+          "mh:nose-scale-vert-decr-incr": 0.2
+        }
+      },
+      {
+        "id": "child",
+        "label": {
+          "de": "Kindlich"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.5,
+          "mh:macro-age": 0.12,
+          "mh:l-eye-scale-decr-incr": 0.3,
+          "mh:r-eye-scale-decr-incr": 0.3,
+          "mh:nose-scale-vert-decr-incr": -0.4
+        }
+      },
+      {
+        "id": "mature",
+        "label": {
+          "de": "Reif"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.85
+        }
+      },
+      {
         "id": "adult-male",
         "label": {
-          "de": "Erwachsener Mann"
+          "de": "Mann"
         },
         "parameters": {
           "mh:macro-gender": 1.0,
           "mh:macro-age": 0.55
+        }
+      },
+      {
+        "id": "rugged-male",
+        "label": {
+          "de": "Markant"
+        },
+        "parameters": {
+          "mh:macro-gender": 1.0,
+          "mh:macro-age": 0.6,
+          "mh:chin-prominent-decr-incr": 0.5,
+          "mh:chin-width-decr-incr": 0.4,
+          "mh:forehead-nubian-decr-incr": 0.3,
+          "mh:torso-muscle-pectoral-decr-incr": 0.6,
+          "mh:nose-scale-vert-decr-incr": 0.2
+        }
+      },
+      {
+        "id": "asian",
+        "label": {
+          "de": "Asiatisch"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.4,
+          "mh:macro-race-asian": 1.0,
+          "mh:macro-race-african": 0.0,
+          "mh:macro-race-caucasian": 0.0
+        }
+      },
+      {
+        "id": "african",
+        "label": {
+          "de": "Afrikanisch"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.4,
+          "mh:macro-race-african": 1.0,
+          "mh:macro-race-asian": 0.0,
+          "mh:macro-race-caucasian": 0.0
         }
       }
     ]

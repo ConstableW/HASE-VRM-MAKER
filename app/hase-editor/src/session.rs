@@ -103,7 +103,7 @@ pub fn load_proxy_blocking(mhclo: &Path, texture_override: Option<&Path>) -> Res
     Ok(LoadedProxy { proxy, texture })
 }
 
-fn default_tint(cat: &Category, name: &str) -> [f32; 3] {
+pub(crate) fn default_tint(cat: &Category, name: &str) -> [f32; 3] {
     match cat {
         Category::Hair => [0.55, 0.36, 0.22],
         Category::Eyebrows => [0.30, 0.20, 0.14],
@@ -1259,5 +1259,18 @@ mod dress_tests {
         assert!(doc.meshes.iter().any(|m| m.name.starts_with("Clothes_")));
         let glb = hase_core::export::write_glb(&doc).unwrap();
         hase_core::export::verify_glb(&glb).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod dump_params {
+    use super::*;
+    #[test]
+    fn dump_param_ids() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let s = Session::load(&repo).unwrap();
+        let mut out = String::new();
+        for d in &s.params.defs { out += &format!("{}|{}|{}|{}\n", d.id, d.group, d.min, d.max); }
+        std::fs::write("/tmp/param_ids.txt", out).unwrap();
     }
 }

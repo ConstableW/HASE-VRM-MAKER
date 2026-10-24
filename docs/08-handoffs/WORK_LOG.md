@@ -55,3 +55,6 @@ Posen (A→T-Kompensation), Kleidungskollision, Lippenmaske, Header Speichern/Ex
 
 ## 2026-10-24 – Anprobe auf importierten VRMs
 `dress.rs` (Registrierung, Gewichtsübernahme), Session-Integration (Outfit-Workspace bei geöffnetem Modell, Teileliste, Posen mit Kleidung, Export), VRM-Teile kompaktiert. Test: `test.vrm` (VRoid-Basis) mit Shirt + Shorts.
+
+## 2026-10-24 – UI-Meilenstein nach verbindlichem Mockup
+Neues Hauptlayout (Kopfzeile, Navigation links mit Icons, Viewport-Overlays, Akkordeon rechts, Presetleiste, Bibliothek als Panel, Outfit-Kachelraster), 11 Presets für „Mensch“. Details: ux-concept.md.
