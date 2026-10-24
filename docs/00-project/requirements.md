@@ -221,3 +221,31 @@ Diese Priorisierung ist selbst `PR` bis zur Owner-Abnahme.
 | REQ-GOV-001 | Keine Implementierung, Commits, Pushes, Releases, kostenpflichtigen Ressourcen ohne Owner-Freigabe | OD | P0 | 9 |
 | REQ-GOV-002 | Technische Spikes nur nach gesonderter Freigabe | OD | P0 | 5 |
 | REQ-GOV-003 | Architekturfreigabe ausschließlich durch den Product Owner | OD | P0 | 12 |
+
+## Performance (OD-025)
+
+Maßgebliche Zielwerte und Messregeln: `../07-quality/performance-targets.md`.
+
+| ID | Anforderung | Status | Prio |
+|---|---|---|---|
+| REQ-PERF-001 | Interaktive Frame-Time statisch (p95 ≤ 16,6 ms T-Ref) | OD | P0 |
+| REQ-PERF-002 | Kontinuierliche Parameteränderung ohne Frame-Einbruch (64 aktive Targets) | OD | P0 |
+| REQ-PERF-003 | Eingabe→Pixel ≤ 2 Frames | OD | P0 |
+| REQ-PERF-004 | Alle Targets gleichzeitig aktiv als Stresstest | PR | P1 |
+| REQ-PERF-005 | UI-Frame ≤ 2 ms CPU bei ≥ 600 Parametern (virtualisiert) | OD | P0 |
+| REQ-PERF-006 | Keine UI-Blockade > 100 ms; lange Operationen abbrechbar | OD | P0 |
+| REQ-PERF-007 | Inkrementelles Fitting nur betroffener Komponenten | OD | P0 |
+| REQ-PERF-008 | Keine unnötigen Neuberechnungen (messbar) | OD | P0 |
+| REQ-PERF-009 | Projekt-Öffnen ≤ 3 s | PR | P1 |
+| REQ-PERF-010 | Große Bibliotheken/Package-Mengen skalieren (Index, Virtualisierung) | OD | P0 |
+| REQ-PERF-011 | CPU-Speicher kontrolliert (≤ 1,5 GB / 50 Assets) | OD | P0 |
+| REQ-PERF-012 | GPU-Speicher kontrolliert (≤ 1 GB T-Ref) | OD | P0 |
+| REQ-PERF-013 | Morph-Daten sparse/komprimiert (≤ 100 MB / 609 Targets) | PR | P0 |
+| REQ-PERF-014 | Export/Validierung im Hintergrund, UI unbeeinträchtigt | OD | P0 |
+| REQ-PERF-015 | Asynchrones Laden, Platzhalter, Caching | OD | P0 |
+| REQ-PERF-016 | Effizientes Skinning/Posing/Animation | OD | P0 |
+| REQ-PERF-017 | Skalierung linear in sichtbaren Assets, unabhängig von Bibliotheksgröße | OD | P0 |
+| REQ-PERF-018 | Profiling von Anfang an eingebaut | OD | P0 |
+| REQ-PERF-019 | Performance-Regressionstests in CI | PR | P1 |
+| REQ-PERF-020 | Performance ohne Einschränkung der Spezies-/Package-Erweiterbarkeit | OD | P0 |
+
