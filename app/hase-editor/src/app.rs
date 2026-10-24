@@ -69,6 +69,7 @@ pub struct App {
     pub(crate) export: crate::export_ui::ExportState,
     pub(crate) ctx: egui::Context,
     pub(crate) tool: Tool,
+    pub(crate) open_on_start: Option<std::path::PathBuf>,
     pub(crate) decal_shape: u8,
     pub(crate) decal_sel: Option<usize>,
     pub(crate) region_energy: Vec<f32>,
@@ -101,7 +102,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -114,7 +115,8 @@ impl App {
     fn poll(&mut self, ctx: &egui::Context) {
         while let Ok(m) = self.rx.try_recv() {
             match m {
-                Msg::Session(Ok(s)) => { self.status = format!("Bereit – Daten in {:.0} ms geladen{}", s.body.load_ms, if s.body.from_cache { " (Cache)" } else { " (erster Start, Cache wird angelegt)" }); self.session = Some(*s); }
+                Msg::Session(Ok(s)) => {
+                    if let Some(p) = self.open_on_start.take() { let mut s2 = *s; let r = s2.open_vrm(&p); self.status = match r { Ok(i) => format!("Modell geöffnet – {i}"), Err(e) => format!("Modell: {e}") }; self.session = Some(s2); continue; } self.status = format!("Bereit – Daten in {:.0} ms geladen{}", s.body.load_ms, if s.body.from_cache { " (Cache)" } else { " (erster Start, Cache wird angelegt)" }); self.session = Some(*s); }
                 Msg::Session(Err(e)) => self.error = Some(e),
                 Msg::Asset { id, res } => {
                     self.loading.remove(&id);
@@ -358,6 +360,23 @@ impl App {
         self.camera.target = p; self.camera.dist = (self.camera.dist * 0.6).clamp(0.35, 3.0);
     }
 
+    /// Speichern in die Bibliothek: vorhandenen Eintrag aktualisieren, sonst nach einem Namen fragen.
+    pub(crate) fn quick_save(&mut self) {
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) { self.status = "Ein geöffnetes VRM-Modell lässt sich nicht in der Bibliothek speichern (nur gestaltete Charaktere).".into(); return; }
+        let ctx = self.ctx.clone();
+        if self.lib.current.is_some() { self.lib_save_current(&ctx); self.status = "In Bibliothek gespeichert".into(); }
+        else { self.lib.save_prompt = true; }
+    }
+    pub(crate) fn open_vrm_dialog(&mut self) {
+        let Some(p) = rfd::FileDialog::new().add_filter("VRM / GLB", &["vrm", "glb"]).pick_file() else { return };
+        self.open_vrm_path(&p);
+    }
+    pub(crate) fn open_vrm_path(&mut self, p: &std::path::Path) {
+        let Some(s) = self.session.as_mut() else { return };
+        self.status = match s.open_vrm(p) { Ok(i) => { self.ws = Workspace::Charakter; self.main = Main::Charakter; self.region = usize::MAX; format!("Modell geöffnet – {i}") } Err(e) => format!("Modell konnte nicht geöffnet werden: {e}") };
+    }
+    pub(crate) fn goto_export(&mut self) { self.ws = Workspace::Finalisieren; self.main = Main::Animation; self.export.sub = 1; }
+
     pub(crate) fn continue_load(&mut self, v: serde_json::Value, path: String) {
         let Some(s) = self.session.as_mut() else { return };
         match s.plan_load(&v) {
@@ -396,14 +415,20 @@ impl eframe::App for App {
         if self.session.is_none() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) { if let Some(s) = self.session.as_mut() { s.undo(); } }
         if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) { if let Some(s) = self.session.as_mut() { s.redo(); } }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) { self.quick_save(); }
         if ctx.input(|i| i.key_pressed(egui::Key::F3)) { self.show_stats = !self.show_stats; }
         if !ctx.egui_wants_keyboard_input() { for (i, (_, c)) in PRESETS.iter().enumerate() { let k = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5][i]; if ctx.input(|inp| inp.key_pressed(k)) { self.camera = *c; } } }
 
         egui::Panel::top("menu").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("Datei", |ui| {
-                    if ui.button("Speichern unter …").clicked() { ui.close(); self.save_dialog(); }
-                    if ui.button("Öffnen …").clicked() { ui.close(); self.load_dialog(); }
+                    if ui.button("In Bibliothek speichern  Strg+S").clicked() { ui.close(); self.quick_save(); }
+                    if ui.button("Als Datei speichern …").clicked() { ui.close(); self.save_dialog(); }
+                    if ui.button("Aus Bibliothek öffnen …").clicked() { ui.close(); self.lib.open = true; }
+                    if ui.button("Aus Datei laden …").clicked() { ui.close(); self.load_dialog(); }
+                    ui.separator();
+                    if ui.button("Modell öffnen (VRM/GLB) …").on_hover_text("Fertiges VRM-Modell ansehen, posen und Ausdrücke vorführen").clicked() { ui.close(); self.open_vrm_dialog(); }
+                    if ui.button("VRM exportieren …").clicked() { ui.close(); self.goto_export(); }
                     ui.separator();
                     if ui.button("Beenden").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
                 });
@@ -427,9 +452,9 @@ impl eframe::App for App {
                 ui.add_space(16.0);
                 for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB")] { self.ws_button(ui, n, ws, t); }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Laden").clicked() { self.load_dialog(); }
-                    if ui.button("Speichern").clicked() { self.save_dialog(); }
-                    if ui.button("Bibliothek").clicked() { self.lib.open = true; }
+                    if ui.button("Exportieren").on_hover_text("VRM 1.0 exportieren (Finalisieren › Export)").clicked() { self.goto_export(); }
+                    if ui.button("Speichern").on_hover_text("Charakter in der Bibliothek speichern (Strg+S)").clicked() { self.quick_save(); }
+                    if ui.button("Bibliothek").on_hover_text("Gespeicherte Charaktere, Vorlagen, Varianten").clicked() { self.lib.open = true; }
                     ui.separator();
                     self.ws_button(ui, "Körperbasen & Spezies", Workspace::Studio, "Authoring-Werkzeug: Körperbasen und Spezies erstellen, importieren, prüfen, speichern");
                     ui.weak("Werkzeuge");
@@ -438,7 +463,7 @@ impl eframe::App for App {
         });
         self.lib_pending();
         self.lib_window(&ctx);
-        if self.ws == Workspace::Charakter && !self.expert { egui::Panel::bottom("presetbar").min_size(130.0).show(ui, |ui| self.preset_bar(ui)); }
+        if self.ws == Workspace::Charakter && !self.expert && !self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) { egui::Panel::bottom("presetbar").min_size(130.0).show(ui, |ui| self.preset_bar(ui)); }
         egui::Panel::left("regions").default_size(190.0).min_size(150.0).show(ui, |ui| self.region_list(ui));
         egui::Panel::right("detail").default_size(400.0).min_size(300.0).show(ui, |ui| self.detail_panel(ui, &ctx));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport(ui));
@@ -505,6 +530,7 @@ impl App {
     }
 
     fn region_list(&mut self, ui: &mut egui::Ui) {
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio { ui.strong("Geöffnetes Modell"); ui.separator(); ui.weak("Körper, Haare und Kleidung sind im Mesh fest enthalten und hier nicht veränderbar."); ui.add_space(6.0); ui.weak("Posen: 3 Finalisieren › Posen & Animation"); return; }
         match self.ws {
             Workspace::Charakter => {
                 ui.strong("Bereiche");
@@ -603,6 +629,7 @@ impl App {
 
     fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.session.is_none() { ui.label("Lade …"); return; }
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio { self.vrm_panel(ui); return; }
         if self.ws == Workspace::Charakter {
             ui.horizontal(|ui| { if ui.selectable_label(!self.expert, "Parameter").clicked() { self.expert = false; } if ui.selectable_label(self.expert, "Erweitert (alle Parameter)").clicked() { self.expert = true; } });
             ui.separator();

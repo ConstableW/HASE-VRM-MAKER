@@ -147,6 +147,12 @@ impl App {
                 if let Some((path, rep)) = &self.studio.import {
                     ui.colored_label(theme::TEXT2, path);
                     for st in rep { stage_row(ui, st); }
+                    let is_model = self.studio.import_path.as_ref().and_then(|p| p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase())).map(|e| e == "vrm" || e == "glb").unwrap_or(false);
+                    if is_model && rep.get(3).map(|r| r.ok == Some(true)).unwrap_or(false) {
+                        if ui.button("Als Modell öffnen (Ansehen, Posen, Ausdrücke)").on_hover_text("Öffnet das Modell mit Skelett, Texturen und Blendshapes im Viewport").clicked() {
+                            if let Some(p) = self.studio.import_path.clone() { self.studio.msg = match s.open_vrm(&p) { Ok(i) => i, Err(e) => e }; }
+                        }
+                    }
                     let usable = rep.first().map(|r| r.ok == Some(true)).unwrap_or(false) && rep.get(1).map(|r| r.ok == Some(true)).unwrap_or(false);
                     ui.add_space(4.0);
                     ui.colored_label(theme::WARN, "Aufbereitung: fehlende Stufen (Rig mit Bone-Mapping auf VRM-Humanoid, Morph-Targets/Shape Keys, Regionen, Links/Rechts) müssen ergänzt werden, z. B. in Blender (glTF-Export mit Skin und Shape Keys). Das Zuordnen von Regionen/Morphs in der Oberfläche und die Nutzung einer importierten Körperbasis im Editor sind noch nicht implementiert.");

@@ -51,11 +51,11 @@ fn raster(body: &Body, w: &[f32], lo: f32, hi: f32) -> Vec<u8> {
 }
 
 pub fn build_masks(body: &Body) -> Masks {
-    let lips = weights(body, 0.06, 0.40, |n| n.starts_with("mouth/") && (n.contains("lip-volume") || n.contains("lip-middle") || n.contains("cupidsbow") || n.contains("philtrum")));
+    let lips = weights(body, 0.15, 0.50, |n| n.starts_with("mouth/") && n.contains("lip-volume"));
     let eyes = weights(body, 0.10, 0.50, |n| n.starts_with("eyes/") && n.contains("eyefold") && !n.contains("bag"));
     let cheeks = weights(body, 0.10, 0.50, |n| n.starts_with("cheek/") && (n.contains("volume") || n.contains("bones")));
     let nose = weights(body, 0.30, 0.70, |n| n.starts_with("nose/") && (n.contains("scale") || n.contains("width1") || n.contains("hump")));
-    Masks { lips: raster(body, &lips, 0.38, 0.78), eyes: raster(body, &eyes, 0.30, 0.70), cheeks: raster(body, &cheeks, 0.0, 1.0), nose: raster(body, &nose, 0.0, 1.0) }
+    Masks { lips: raster(body, &lips, 0.45, 0.80), eyes: raster(body, &eyes, 0.30, 0.70), cheeks: raster(body, &cheeks, 0.0, 1.0), nose: raster(body, &nose, 0.0, 1.0) }
 }
 
 fn hash2(x: i32, y: i32, seed: u32) -> f32 {
@@ -175,5 +175,37 @@ mod perf_tests {
         let mut st = SkinStyle::default(); st.lips.amount = 0.8; st.blush.amount = 0.6; st.freckles.amount = 0.8; st.shadow.amount = 0.5;
         let t1 = std::time::Instant::now(); let _ = compose(&base, &m, &st); let t_comp = t1.elapsed();
         eprintln!("MASKEN {:?} KOMPOSITION {:?}", t_masks, t_comp);
+    }
+}
+
+#[cfg(test)]
+mod lip_debug {
+    use super::*;
+    #[test]
+    fn lip_mask_variants_overlay() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let body = Body::load(&repo.join("content/testcandidate/mpfb2-cc0"), &repo.join(".hase-cache")).unwrap();
+        let Ok(base) = crate::session::load_image(&repo.join("content/testcandidate/downloads/skins/young_caucasian_female/young_lightskinned_female_diffuse.png"), 1024) else { return };
+        let variants: Vec<(&str, Vec<u8>)> = vec![
+            ("A_aktuell", raster(&body, &weights(&body, 0.06, 0.40, |n| n.starts_with("mouth/") && (n.contains("lip-volume") || n.contains("lip-middle") || n.contains("cupidsbow") || n.contains("philtrum"))), 0.38, 0.78)),
+            ("B_volume", raster(&body, &weights(&body, 0.15, 0.50, |n| n.starts_with("mouth/") && n.contains("lip-volume")), 0.45, 0.80)),
+            ("C_volume_eng", raster(&body, &weights(&body, 0.30, 0.65, |n| n.starts_with("mouth/") && n.contains("lip-volume")), 0.50, 0.85)),
+            ("D_volume+width", raster(&body, &weights(&body, 0.25, 0.60, |n| n.starts_with("mouth/") && (n.contains("lip-volume") || n.contains("lip-width"))), 0.50, 0.85)),
+        ];
+        let (x0, y0, x1, y1) = (800usize, 470usize, 980usize, 640usize);
+        let (cw, ch) = (x1 - x0, y1 - y0);
+        let mut sheet = image::RgbaImage::new((cw * 4) as u32, ch as u32);
+        for (k, (_, m)) in variants.iter().enumerate() {
+            for y in 0..ch { for x in 0..cw {
+                let (sx, sy) = (x0 + x, y0 + y);
+                let i = (sy * 1024 + sx) * 4; let mut px = [base.levels[0][i], base.levels[0][i + 1], base.levels[0][i + 2], 255];
+                let a = m[sy * N + sx] as f32 / 255.0;
+                px[0] = (px[0] as f32 * (1.0 - a * 0.6) + 255.0 * a * 0.6) as u8; px[1] = (px[1] as f32 * (1.0 - a * 0.6)) as u8; px[2] = (px[2] as f32 * (1.0 - a * 0.6)) as u8;
+                sheet.put_pixel((k * cw + x) as u32, y as u32, image::Rgba(px));
+            } }
+        }
+        let big = image::imageops::resize(&sheet, sheet.width() * 2, sheet.height() * 2, image::imageops::FilterType::Nearest);
+        let _ = big.save(std::env::temp_dir().join("lip_variants.png"));
+        let _ = image::imageops::resize(&image::RgbaImage::from_fn(cw as u32, ch as u32, |x, y| { let i = ((y0 + y as usize) * 1024 + x0 + x as usize) * 4; image::Rgba([base.levels[0][i], base.levels[0][i + 1], base.levels[0][i + 2], 255]) }), cw as u32 * 2, ch as u32 * 2, image::imageops::FilterType::Nearest).save(std::env::temp_dir().join("lip_base.png"));
     }
 }

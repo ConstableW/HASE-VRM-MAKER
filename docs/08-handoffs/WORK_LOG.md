@@ -49,3 +49,6 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - Zweite Körperbasis (Quaternius + synthetische Shape Keys) als Testfixture; Kette mit zwei Basen per Test; Fix: Symmetrie-Erkennung ("_l" in "_longer"); Spezies pro Körperbasis, Charakter ohne Spezies, Körperbasis-Wechsel beim Laden mit Rückfrage. Fitting auf fremde Topologien zurückgestellt (Owner).
 - Produktphase (nach Owner-Windows-Test): Render-Materialsystem, Thumbnail-Worker, Augenstudio, anatomisches Brust-/Gesäßmodell, Haarform/-farbe, Haut-Make-up/Details (Masken aus Morph-Fußabdrücken), Charakterbibliothek, Preset-Leiste mit Thumbnails, Viewport-Werkzeuge. Messwerte: Hautmasken 1,9 ms, Komposition 12 ms. Doku: character-studios.md.
 - Finalisieren: natives VRM-1.0-Export (Rig, Gewichte, MToon, Expressions, eingebackene Augentextur) + Posen-/Animationsvorschau (VRMA-Retargeting, CPU-Skinning 1,4 ms/Frame). Validierung: VRM-Schema 0 Fehler, glTF-Validator 0 Fehler, Blender-Import + Tanz-VRMA. Gefundene und behobene Fehler: negative Skin-Gewichte, nicht normierte Normalen, Ruhepose-Rücksetzen.
+
+## 2026-10-24 – Korrekturrunde nach Owner-Test
+Posen (A→T-Kompensation), Kleidungskollision, Lippenmaske, Header Speichern/Exportieren, statisches VRM-Öffnen (Lylia), Analyse nach VRM-Humanoid-Map. Windows-exe neu gebaut. Offen: Windows-Test, Cloth-Performance, Spring Bones.

@@ -73,7 +73,7 @@ const VRM_REQUIRED: &[(&str, &[&str])] = &[
     ("hand L", &["hand_l", "lefthand", "mixamorig:lefthand"]), ("hand R", &["hand_r", "righthand", "mixamorig:righthand"]),
 ];
 
-/// Analyse eines glTF/GLB/VRM-Modells: Geometrie, Skelett (Bone-Mapping auf die 15 VRM-Pflicht-Bones), Morph-Targets, Materialien.
+/// Analyse eines glTF/GLB/VRM-Modells: Geometrie, Skelett (VRM-Humanoid-Zuordnung bzw. Namensabgleich), Morph-Targets (Ausdrücke vs. Körper), Materialien.
 pub fn analyze_gltf(path: &Path, body: &Body) -> Result<Vec<Stage>, String> {
     let g = gltf::Gltf::open(path).map_err(|e| e.to_string())?;
     let doc = &g.document;
@@ -82,20 +82,40 @@ pub fn analyze_gltf(path: &Path, body: &Body) -> Result<Vec<Stage>, String> {
         prims += 1;
         if let Some(a) = p.get(&gltf::Semantic::Positions) { verts += a.count(); }
         if let Some(i) = p.indices() { tris += i.count() / 3; }
-        morphs = morphs.max(p.morph_targets().len());
+        morphs += p.morph_targets().len();
     } }
     let skins = doc.skins().count();
     let joints: Vec<String> = doc.skins().flat_map(|s| s.joints().map(|j| j.name().unwrap_or("").to_lowercase()).collect::<Vec<_>>()).collect();
-    let missing: Vec<&str> = VRM_REQUIRED.iter().filter(|(_, names)| !joints.iter().any(|j| names.contains(&j.as_str()))).map(|(n, _)| *n).collect();
-    let has_vrm = doc.extensions_used().any(|e| e.contains("VRM"));
+    // humanoide Zuordnung aus VRM 1.0 / 0.x
+    let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    let jv: Option<serde_json::Value> = if data.len() > 20 && &data[0..4] == b"glTF" { let jl = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize; serde_json::from_slice(&data[20..20 + jl.min(data.len() - 20)]).ok() } else { None };
+    let mut mapped: Vec<String> = Vec::new();
+    let mut expr_binds = 0usize;
+    if let Some(j) = &jv {
+        if let Some(hb) = j["extensions"]["VRMC_vrm"]["humanoid"]["humanBones"].as_object() { mapped = hb.keys().cloned().collect(); }
+        else if let Some(hb) = j["extensions"]["VRM"]["humanoid"]["humanBones"].as_array() { mapped = hb.iter().filter_map(|v| v["bone"].as_str().map(String::from)).collect(); }
+        if let Some(pr) = j["extensions"]["VRMC_vrm"]["expressions"]["preset"].as_object() { expr_binds = pr.values().map(|e| e["morphTargetBinds"].as_array().map(|a| a.len()).unwrap_or(0)).sum(); }
+    }
+    let required = ["hips", "spine", "head", "leftUpperLeg", "rightUpperLeg", "leftLowerLeg", "rightLowerLeg", "leftFoot", "rightFoot", "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm", "leftHand", "rightHand"];
+    let (rig_ok, rig_detail) = if !mapped.is_empty() {
+        let missing: Vec<&str> = required.iter().filter(|r| !mapped.iter().any(|m| m == *r)).copied().collect();
+        (skins > 0 && missing.is_empty(), if missing.is_empty() { format!("{} Joints, VRM-Humanoid-Zuordnung vollständig ({} Bones)", joints.len(), mapped.len()) } else { format!("{} Joints; in der VRM-Zuordnung fehlen: {}", joints.len(), missing.join(", ")) })
+    } else {
+        let missing: Vec<&str> = VRM_REQUIRED.iter().filter(|(_, names)| !joints.iter().any(|j| names.contains(&j.as_str()))).map(|(n, _)| *n).collect();
+        (skins > 0 && missing.is_empty(), if skins == 0 { "kein Skelett (Skin) im Modell".to_string() } else if missing.is_empty() { format!("{} Joints, alle 15 VRM-Pflicht-Bones über Namen zuordenbar", joints.len()) } else { format!("{} Joints, keine VRM-Zuordnung im Modell; über Namen nicht zuordenbar: {}", joints.len(), missing.join(", ")) })
+    };
+    let has_vrm = !mapped.is_empty() || doc.extensions_used().any(|e| e.contains("VRM"));
     let mats = doc.materials().count(); let imgs = doc.images().count();
     let same_topo = verts == body.topo.vmap.len();
+    let (morph_ok, morph_detail) = if morphs == 0 { (false, "keine Morph-Targets – Körperparameter müssten ergänzt werden (z. B. Shape Keys in Blender)".to_string()) }
+        else if expr_binds > 0 { (false, format!("{morphs} Blendshapes, die als Gesichtsausdrücke genutzt werden (keine Körper-Morphs) – als Modell zum Ansehen/Posen/Ausdrücken öffenbar, aber nicht als parametrische Körperbasis")) }
+        else { (true, format!("{morphs} Shape Keys/Morph-Targets; Topologie {} zur aktiven Körperbasis", if same_topo { "identisch" } else { "abweichend" })) };
     Ok(vec![
-        st("Importiert", Some(true), format!("{prims} Primitive, {verts} Vertices, {} Knoten{}", doc.nodes().count(), if has_vrm { ", VRM-Erweiterung vorhanden" } else { "" })),
+        st("Importiert", Some(true), format!("{prims} Primitive, {verts} Vertices, {} Knoten{}", doc.nodes().count(), if has_vrm { ", VRM-Datei" } else { "" })),
         st("Geometrisch verwendbar", Some(verts > 0 && tris > 0), format!("{tris} Dreiecke")),
         st("Materialien/Texturen", Some(mats > 0), format!("{mats} Materialien, {imgs} Bilder")),
-        st("Rig-kompatibel", Some(skins > 0 && missing.is_empty()), if skins == 0 { "kein Skelett (Skin) im Modell".to_string() } else if missing.is_empty() { format!("{} Joints, alle 15 VRM-Pflicht-Bones zuordenbar", joints.len()) } else { format!("{} Joints; nicht zuordenbar: {}", joints.len(), missing.join(", ")) }),
-        st("Morph-kompatibel", Some(morphs > 0), if morphs > 0 { format!("{morphs} Shape Keys/Morph-Targets; Topologie {} zur aktiven Körperbasis", if same_topo { "identisch" } else { "abweichend" }) } else { "keine Morph-Targets – Parameter müssen ergänzt werden (z. B. Shape Keys in Blender)".to_string() }),
+        st("Rig-kompatibel", Some(rig_ok), rig_detail),
+        st("Morph-kompatibel", Some(morph_ok), morph_detail),
         st("Als Körperbasis vollständig konfiguriert", Some(false), "Regionen, Links/Rechts-Zuordnung und Morph-Kategorien sind noch nicht festgelegt"),
     ])
 }

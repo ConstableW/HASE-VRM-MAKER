@@ -26,6 +26,8 @@ pub struct LibState {
     pub pending_thumbs: Vec<(String, PathBuf)>,
     pub bottom_tab: usize,
     pub bottom_filter: String,
+    pub save_prompt: bool,
+    pub prompt_name: String,
 }
 
 impl App {
@@ -87,7 +89,26 @@ impl App {
         match library::load(e) { Ok(v) => { self.lib.current = Some(e.id.clone()); self.continue_load(v, e.name.clone()); } Err(x) => self.lib.msg = x }
     }
 
+    /// Namensabfrage beim ersten Speichern.
+    fn save_prompt_window(&mut self, ctx: &egui::Context) {
+        if !self.lib.save_prompt { return; }
+        let mut done = false;
+        egui::Window::new("In Bibliothek speichern").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label("Name des Charakters:");
+            let r = ui.text_edit_singleline(&mut self.lib.prompt_name);
+            r.request_focus();
+            let ok = !self.lib.prompt_name.trim().is_empty();
+            ui.horizontal(|ui| {
+                if (ui.add_enabled(ok, egui::Button::new("Speichern")).clicked() || (ok && r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))) { let n = self.lib.prompt_name.trim().to_string(); self.lib_save_new(ctx, &n, false); self.lib.prompt_name.clear(); done = true; self.status = format!("„{n}“ in der Bibliothek gespeichert"); }
+                if ui.add_enabled(ok, egui::Button::new("Als Vorlage")).clicked() { let n = self.lib.prompt_name.trim().to_string(); self.lib_save_new(ctx, &n, true); self.lib.prompt_name.clear(); done = true; }
+                if ui.button("Abbrechen").clicked() { done = true; }
+            });
+        });
+        if done { self.lib.save_prompt = false; }
+    }
+
     pub(crate) fn lib_window(&mut self, ctx: &egui::Context) {
+        self.save_prompt_window(ctx);
         if !self.lib.open { return; }
         if !self.lib.loaded { self.lib_refresh(); }
         let mut open = true;

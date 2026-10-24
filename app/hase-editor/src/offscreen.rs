@@ -9,6 +9,7 @@ fn arg<'a>(args: &'a [String], k: &str) -> Option<&'a str> { args.iter().positio
 pub fn run(repo: &Path, out: &str, args: &[String]) -> i32 {
     let (w, h) = arg(args, "--size").and_then(|s| s.split_once('x')).and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?))).unwrap_or((900, 1000));
     let mut s = match Session::load(repo) { Ok(s) => s, Err(e) => { eprintln!("{e}"); return 1; } };
+    if let Some(p) = arg(args, "--vrm") { match s.open_vrm(std::path::Path::new(p)) { Ok(i) => eprintln!("{i}"), Err(e) => { eprintln!("--vrm: {e}"); return 1; } } if let Some(ex) = arg(args, "--expr") { for kv in ex.split(',') { if let Some((k, v)) = kv.split_once('=') { s.set_expression(k, v.parse().unwrap_or(0.0)); } } } }
     if let Some(i) = arg(args, "--species").and_then(|x| x.parse::<usize>().ok()) { s.apply_species(i); }
     if let Some(sk) = arg(args, "--skin") { s.set_skin(sk); }
     let assets = arg(args, "--assets").unwrap_or("eyebrows/mindfront_eyebrows_01,eyelashes/mindfront_eyelashes_01,hair/short02");

@@ -37,7 +37,7 @@ fn main() {
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
-    if let Err(e) = eframe::run_native("HASE VRM MAKER", native, Box::new(move |cc| Ok(Box::new(app::App::new(cc, repo.clone()))))) {
+    if let Err(e) = eframe::run_native("HASE VRM MAKER", native, Box::new(move |cc| { let mut a = app::App::new(cc, repo.clone()); a.open_on_start = args.iter().position(|x| x == "--open").and_then(|i| args.get(i + 1)).map(std::path::PathBuf::from); Ok(Box::new(a)) })) {
         eprintln!("Start fehlgeschlagen: {e}");
         std::process::exit(1);
     }

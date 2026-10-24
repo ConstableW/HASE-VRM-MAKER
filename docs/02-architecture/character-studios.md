@@ -35,3 +35,11 @@ VRMA-Clips (Quaternius UAL1/UAL2, CC0) werden geladen und auf das Rig retargetet
 
 ## Bekannte Einschränkungen (offen)
 Keine Pupillenformen, Irismuster, Augenweiß-/Augen-Make-up; keine Outfit-Studio-Funktionen über das Anlegen hinaus (Layer, Material, Clipping); Panels nicht einklappbar; keine Icons; Direktmanipulation per Griffe fehlt. GUI wurde für diesen Stand nur headless unter Linux geprüft.
+
+## Korrekturen nach Owner-Test (2026-10-24)
+
+- **Pose-Retargeting:** VRMA-Quellen haben T-Pose-Ruhelage, unsere Körper A-Pose. Die Welt-Delta-Rotation wird relativ zur Quell-Ruhelage berechnet und für die Armkette um die A→T-Kompensation `C` ergänzt (`pose.rs`). `PoseRig::generic` deckt beliebige Körperbasen ab. RESEARCHED (Sichtprüfung Walk/Dance); Rest-Limit: kurze Ärmel können bei Armhebung durchstoßen.
+- **Kleidung:** `fit::push_out` schiebt Kleidungsvertices per `BodyGrid` aus dem Körper (3 mm Abstand, zwei Durchgänge mit Glättung); ca. 14 ms pro Fit. Kostenoptimierung offen.
+- **Lippen:** eigene Lippenmaske aus Morph-Footprint (UV 90° gedreht berücksichtigt), kein „Pinselklecks“ mehr.
+- **Header:** „Speichern“ legt in die Bibliothek (`quick_save`), „Exportieren“ springt zu Finalisieren › Export.
+- **VRM öffnen (statisch):** `vrm_model.rs` lädt fremde VRMs (z. B. Lylia_v2.vrm) als Ansichts-/Pose-/Ausdrucksmodell. Körper, Haare, Kleidung sind gebacken, nicht editierbar; Spring Bones werden nicht simuliert; kein Export/Bibliothek für importierte Modelle. PROPOSED nächster Schritt: Editierbarkeit nur über Morph-Sets/Retopologie.

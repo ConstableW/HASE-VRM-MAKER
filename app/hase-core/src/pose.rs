@@ -110,36 +110,64 @@ impl Clip {
     }
 }
 
-pub struct PoseRig { bones: Vec<ExBone>, order: Vec<usize>, vrm: Vec<Option<String>>, hips: usize }
+pub struct PoseRig { bones: Vec<ExBone>, order: Vec<usize>, vrm: Vec<Option<String>>, c: Vec<Q>, rest: Vec<Q>, hips: usize }
 
 impl PoseRig {
+    /// MPFB2-Rig (UE-Mannequin-Namen, Ruherotationen = Identität).
     pub fn new(bones: Vec<ExBone>) -> PoseRig {
         let map = humanoid_map();
         let vrm: Vec<Option<String>> = bones.iter().map(|b| map.iter().find(|(_, ue)| ue.eq_ignore_ascii_case(&b.name)).map(|(v, _)| v.clone())).collect();
+        let n = bones.len();
+        PoseRig::generic(bones, vec![QI; n], vrm)
+    }
+
+    /// Beliebiges Rig: Welt-Ruherotationen und humanoide Namen je Bone (None = kein Humanoid-Bone, folgt dem Vorfahren).
+    pub fn generic(bones: Vec<ExBone>, rest: Vec<Q>, vrm: Vec<Option<String>>) -> PoseRig {
         let mut order = Vec::new(); let mut done = vec![false; bones.len()];
-        while order.len() < bones.len() { for i in 0..bones.len() { if !done[i] && bones[i].parent.map(|p| done[p]).unwrap_or(true) { done[i] = true; order.push(i); } } }
-        let hips = bones.iter().position(|b| b.name.eq_ignore_ascii_case("pelvis")).unwrap_or(0);
-        PoseRig { bones, order, vrm, hips }
+        while order.len() < bones.len() { let before = order.len(); for i in 0..bones.len() { if !done[i] && bones[i].parent.map(|p| done[p]).unwrap_or(true) { done[i] = true; order.push(i); } } if order.len() == before { break; } }
+        let slot = |name: &str| vrm.iter().position(|v| v.as_deref() == Some(name));
+        // A-Pose-Ausgleich: Die Quell-Ruhepose der Clips ist eine T-Pose; C(b) dreht die eigene Ruherichtung der Arm-Ketten in die T-Richtung (±x).
+        let mut c = vec![QI; bones.len()];
+        for (sx, side) in [(1.0f32, "left"), (-1.0, "right")] {
+            let chain = [format!("{side}Shoulder"), format!("{side}UpperArm"), format!("{side}LowerArm"), format!("{side}Hand")];
+            let mut hand_q = QI;
+            for (k, name) in chain.iter().enumerate() {
+                let child = match k { 0 => slot(&chain[1]), 1 => slot(&chain[2]), 2 => slot(&chain[3]), _ => slot(&format!("{side}MiddleProximal")) };
+                let (Some(b), Some(ch)) = (slot(name), child) else { continue };
+                let d = [bones[ch].pos[0] - bones[b].pos[0], bones[ch].pos[1] - bones[b].pos[1], bones[ch].pos[2] - bones[b].pos[2]];
+                c[b] = q_from_to(d, [sx, 0.0, 0.0]); if k == 3 { hand_q = c[b]; }
+            }
+            for (i, v) in vrm.iter().enumerate() { if let Some(v) = v { if v.starts_with(side) && ["Thumb", "Index", "Middle", "Ring", "Little"].iter().any(|f| v[side.len()..].starts_with(f)) { c[i] = hand_q; } } }
+        }
+        let hips = slot("hips").unwrap_or(0);
+        PoseRig { bones, order, vrm, c, rest, hips }
     }
     pub fn bone_count(&self) -> usize { self.bones.len() }
 
-    /// Skin-Matrizen (Welt-Pose × inverse Ruhepose) je Bone. `anim`: (Clip, Zeit); None = Ruhepose.
+    /// Skin-Matrizen (Pose-Welt × inverse Ruhe-Welt) je Bone. `anim`: (Clip, Zeit); None = Ruhepose.
     pub fn skin_matrices(&self, anim: Option<(&Clip, f32)>, hip_scale: f32) -> Vec<M> {
         let n = self.bones.len();
         let ident: M = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]];
         let deltas = anim.map(|(c, t)| c.deltas(t));
-        let mut g: Vec<Q> = vec![QI; n];
+        let mut dc: Vec<Q> = vec![QI; n]; // D·C des nächsten humanoiden Vorfahren (bzw. des Bones selbst)
+        let mut g: Vec<Q> = vec![QI; n];   // Pose-Weltrotation
         let mut world: Vec<M> = vec![ident; n];
         for &i in &self.order {
             let b = &self.bones[i];
-            let (pp, parent_world, gp) = match b.parent { Some(p) => (self.bones[p].pos, world[p], g[p]), None => ([0.0; 3], ident, QI) };
-            g[i] = match (&deltas, &self.vrm[i]) { (Some(d), Some(name)) => d.get(name).copied().unwrap_or(gp), _ => gp };
-            let mut local_t = [b.pos[0] - pp[0], b.pos[1] - pp[1], b.pos[2] - pp[2]];
-            if i == self.hips { if let Some((c, t)) = anim { if let Some(h) = c.hips(t) { let r = c.hips_rest(); local_t = [local_t[0] + (h[0] - r[0]) * hip_scale, local_t[1] + (h[1] - r[1]) * hip_scale, local_t[2] + (h[2] - r[2]) * hip_scale]; } } }
+            let (pp, parent_world, gp, dcp, rp) = match b.parent { Some(p) => (self.bones[p].pos, world[p], g[p], dc[p], self.rest[p]), None => ([0.0; 3], ident, QI, QI, QI) };
+            dc[i] = match (&deltas, &self.vrm[i]) { (Some(d), Some(name)) => d.get(name).map(|q| qmul(*q, self.c[i])).unwrap_or(dcp), _ => dcp };
+            g[i] = qmul(dc[i], self.rest[i]);
+            // lokale Ruhe-Translation im Eltern-Ruhe-Frame
+            let mut t = qrot(qinv(rp), [b.pos[0] - pp[0], b.pos[1] - pp[1], b.pos[2] - pp[2]]);
+            if i == self.hips { if let Some((c, tm)) = anim { if let Some(h) = c.hips(tm) { let r = c.hips_rest(); let d = [(h[0] - r[0]) * hip_scale, (h[1] - r[1]) * hip_scale, (h[2] - r[2]) * hip_scale]; let dl = qrot(qinv(gp), d); t = [t[0] + dl[0], t[1] + dl[1], t[2] + dl[2]]; } } }
             let l = qmul(qinv(gp), g[i]);
-            world[i] = mmul(&parent_world, &mat(l, local_t));
+            world[i] = mmul(&parent_world, &mat(l, t));
         }
-        (0..n).map(|i| { let p = self.bones[i].pos; mmul(&world[i], &[[1.0, 0.0, 0.0, -p[0]], [0.0, 1.0, 0.0, -p[1]], [0.0, 0.0, 1.0, -p[2]]]) }).collect()
+        (0..n).map(|i| {
+            // inverse Ruhe-Welt: R⁻¹ · T(−pos)
+            let ri = qinv(self.rest[i]); let p = self.bones[i].pos; let tp = qrot(ri, [-p[0], -p[1], -p[2]]);
+            mmul(&world[i], &mat(ri, tp))
+        }).collect()
     }
     pub fn hips_rest_y(&self) -> f32 { self.bones[self.hips].pos[1] }
 }
@@ -149,4 +177,21 @@ pub fn skin_point(m: &[M], j: [u16; 4], w: [f32; 4], p: [f32; 3]) -> [f32; 3] {
     let mut o = [0f32; 3];
     for k in 0..4 { if w[k] > 0.0 { let q = mpoint(&m[j[k] as usize], p); o[0] += w[k] * q[0]; o[1] += w[k] * q[1]; o[2] += w[k] * q[2]; } }
     o
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::*;
+    #[test]
+    fn print_arm_deltas() {
+        let repo = crate::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let c = Clip::load(&repo.join("content/testcandidate/animations/UAL1/Idle_Loop.vrma")).unwrap();
+        let d = c.deltas(0.0);
+        let ang = |q: Q| 2.0 * q[3].abs().min(1.0).acos().to_degrees();
+        for b in ["hips", "spine", "chest", "leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand", "rightUpperArm", "leftUpperLeg", "head"] {
+            let q = d[b]; eprintln!("DELTA {b}: winkel {:.1}° achse [{:.2},{:.2},{:.2}]", ang(q), q[0], q[1], q[2]);
+        }
+        let pos = c.rot.get(&c.bone_node["leftUpperArm"]).map(|k| k[0].1);
+        eprintln!("rest upperarm {:?} anim0 {:?}", c.rest[c.bone_node["leftUpperArm"]], pos);
+    }
 }

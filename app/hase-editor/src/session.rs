@@ -14,6 +14,9 @@ use std::time::Instant;
 
 pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::packages::BodyPackage), MissingBody(String), Invalid }
 
+/// Geöffnetes statisches VRM-/glTF-Modell (Ansehen, Posen, Ausdrücke).
+pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, created: bool, dirty: bool, pub path: PathBuf }
+
 #[derive(Default)]
 pub struct Playback { pub clip: Option<hase_core::pose::Clip>, pub t: f32, pub playing: bool, pub looping: bool, pub speed: f32 }
 
@@ -53,6 +56,9 @@ pub struct Session {
     proxy_skin: HashMap<String, Vec<([u16; 4], [f32; 4])>>,
     pose_active: bool,
     resend_body: bool,
+    push_grid: Option<hase_core::fit::BodyGrid>,
+    body_uniq: Vec<u32>,
+    pub vrm: Option<VrmRuntime>,
     masks: Option<crate::skin::Masks>,
     pub generic: bool,
     eyes_loaded: String,
@@ -154,7 +160,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -357,6 +363,7 @@ impl Session {
 
     /// Berechnet bei Bedarf Morphs/Fits neu und liefert die anstehenden Render-Updates.
     pub fn refresh(&mut self) -> Vec<MeshUpdate> {
+        if self.vrm.is_some() { return self.refresh_vrm(); }
         let need_body = !self.body_created && !self.hide_body;
         if self.hide_body && self.body_created { self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
         if self.dirty || self.assets_dirty || need_body {
@@ -367,7 +374,7 @@ impl Session {
                 if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
             }
             if morph_changed || self.assets_dirty {
-                if morph_changed { self.pose_rig = None; }
+                if morph_changed { self.pose_rig = None; self.push_grid = None; }
                 if morph_changed {
                     self.floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
                     normals(&self.eval.pos, &self.body.topo.base_tris, &mut self.body_nrm);
@@ -383,6 +390,10 @@ impl Session {
                     let tint = self.state.assets.iter().find(|a| a.id == id).map(|a| a.tint).unwrap_or(if id == EYES_ID { [1.0; 3] } else { [0.9; 3] });
                     let rt = self.proxies.get_mut(&id).unwrap();
                     rt.proxy.fit(&self.eval.pos, &mut rt.fit);
+                    if id.starts_with("clothes/") {
+                        if self.push_grid.is_none() { if self.body_uniq.is_empty() { let mut uniq: Vec<u32> = self.body.topo.vmap.clone(); uniq.sort_unstable(); uniq.dedup(); self.body_uniq = uniq; } self.push_grid = Some(hase_core::fit::BodyGrid::build(&self.eval.pos, &self.body_uniq, 0.03)); }
+                        if self.body_nrm.len() == self.eval.pos.len() { { let uniq = &self.body_uniq; hase_core::fit::push_out(&mut rt.fit, &rt.proxy.adj, &rt.proxy.topo.base_tris, self.push_grid.as_ref().unwrap(), &self.eval.pos, &self.body_nrm, uniq, 0.003); } }
+                    }
                     if id.starts_with("hair/") && !self.state.style.hair.shape_zero() {
                         let tris2: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
                         normals(&rt.fit, &tris2, &mut rt.nrm);
@@ -428,7 +439,7 @@ impl Session {
     }
 
     /// Körperhöhe (Scheitel über Boden) in m – für höhenrelative Kamerafokus-Punkte.
-    pub fn body_height(&self) -> f32 { self.floor_off + self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MIN, f32::max) }
+    pub fn body_height(&self) -> f32 { if let Some(v) = &self.vrm { return v.model.height + v.floor; } self.floor_off + self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MIN, f32::max) }
 
     /// Ersetzt den Zustand ohne Undo-Eintrag (Thumbnail-Worker).
     pub fn set_state_silent(&mut self, st: CharacterState) { self.restore(st); }
@@ -462,7 +473,7 @@ impl Session {
         self.state.body_ref = PkgRef { id: pkg.id.clone(), version: pkg.version.clone(), digest: pkg.digest.clone() };
         self.body = body; self.params = params; self.packages.body = pkg;
         self.skin_tex = if generic { tex } else { self.skin_path().and_then(|p| load_image(&p, 2048).ok()) };
-        self.masks = None; self.skin_dirty = true;
+        self.masks = None; self.skin_dirty = true; self.body_uniq.clear(); self.push_grid = None;
         self.generic = generic; self.body_created = false; self.hide_body = false; self.dirty = true; self.assets_dirty = true;
         self.history = History::new();
         let compat = self.species_indices();
@@ -832,7 +843,8 @@ pub struct ImageRgba2 { pub w: u32, pub h: u32, pub rgba: Vec<u8> }
 // ---------------------------------------------------------------------------------------------------------
 impl Session {
     pub fn load_clip(&mut self, path: &Path) -> Result<(), String> {
-        if self.generic { return Err("Animationsvorschau ist für importierte Körperbasen noch nicht unterstützt (kein Rig/Gewichte aus dem Import).".into()); }
+        if self.vrm.is_some() && !self.vrm.as_ref().unwrap().model.humanoid.contains_key("hips") { return Err("Das Modell hat keine humanoide Zuordnung (hips) – Posen nicht möglich.".into()); }
+        if self.generic && self.vrm.is_none() { return Err("Animationsvorschau ist für importierte Körperbasen noch nicht unterstützt (kein Rig/Gewichte aus dem Import).".into()); }
         let clip = hase_core::pose::Clip::load(path)?;
         self.play = Playback { clip: Some(clip), t: 0.0, playing: true, looping: true, speed: 1.0 };
         self.pose_active = true;
@@ -965,5 +977,110 @@ mod pose_perf {
         for i in 0..100 { s.play.t = i as f32 * 0.01; let _ = s.refresh(); }
         let (v, t) = s.counts();
         eprintln!("POSE_FRAME {:.2} ms pro Frame ({} Vertices, {} Dreiecke)", t0.elapsed().as_secs_f64() * 10.0, v, t);
+    }
+}
+
+
+// ---------------------------------------------------------------------------------------------------------
+// Statisches VRM-/glTF-Modell öffnen
+// ---------------------------------------------------------------------------------------------------------
+impl Session {
+    pub fn open_vrm(&mut self, path: &Path) -> Result<String, String> {
+        use hase_core::pose::PoseRig;
+        let model = hase_core::vrm_model::load(path)?;
+        if model.bones.is_empty() { return Err("Das Modell hat kein Skelett.".into()); }
+        let min_y = model.parts.iter().flat_map(|p| p.pos.iter().map(|v| v[1])).fold(f32::MAX, f32::min);
+        let floor = -min_y;
+        let bones: Vec<hase_core::export::ExBone> = model.bones.iter().map(|b| hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + floor, b.pos[2]] }).collect();
+        let rig = PoseRig::generic(bones, model.rest_rot.clone(), model.vrm_names.clone());
+        let tris: Vec<Vec<[u32; 3]>> = model.parts.iter().map(|p| p.idx.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect()).collect();
+        let info = format!("{}: {} Teile, {} Vertices, {} Bones, {} Ausdrücke{}", model.name, model.parts.len(), model.parts.iter().map(|p| p.pos.len()).sum::<usize>(), model.bones.len(), model.expressions.len(), if model.spring_bones { ", Spring Bones vorhanden (in der Vorschau nicht simuliert)" } else { "" });
+        // MakeHuman-Szene ausblenden
+        self.stop_pose();
+        self.pending.push(MeshUpdate::Remove("body".into()));
+        for (id, rt) in self.proxies.iter_mut() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); rt.created = false; }
+        self.body_created = false;
+        self.clear_markers();
+        self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), created: false, dirty: true, path: path.to_path_buf() });
+        Ok(info)
+    }
+
+    pub fn close_vrm(&mut self) {
+        if let Some(v) = self.vrm.take() { for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } }
+        self.stop_pose();
+        self.dirty = true; self.assets_dirty = true; self.resend_body = true; self.style_dirty = true; self.skin_dirty = true; self.body_created = false;
+    }
+
+    pub fn set_expression(&mut self, name: &str, v: f32) { if let Some(r) = self.vrm.as_mut() { if v.abs() < 1e-4 { r.expr.remove(name); } else { r.expr.insert(name.to_string(), v); } r.dirty = true; } }
+    pub fn set_raw_target(&mut self, part: usize, target: usize, v: f32) { if let Some(r) = self.vrm.as_mut() { if v.abs() < 1e-4 { r.raw.remove(&(part, target)); } else { r.raw.insert((part, target), v); } r.dirty = true; } }
+
+    fn refresh_vrm(&mut self) -> Vec<MeshUpdate> {
+        use hase_core::pose::skin_point;
+        let mut out = std::mem::take(&mut self.pending);
+        let posing = self.play.clip.is_some();
+        let (clip_t, hip_ratio) = (self.play.t, 0.0f32);
+        let _ = hip_ratio;
+        let Some(v) = self.vrm.as_mut() else { return out };
+        let floor = v.floor;
+        if !v.created {
+            for (i, p) in v.model.parts.iter().enumerate() {
+                let mut data = Vec::with_capacity(p.pos.len() * 6);
+                for (q, n) in p.pos.iter().zip(&p.nrm) { data.extend_from_slice(&[q[0], q[1] + floor, q[2], n[0], n[1], n[2]]); }
+                let tex = p.image.as_ref().map(|im| image_from_rgba(im.w, im.h, im.rgba.clone(), 2048));
+                out.push(MeshUpdate::Create(MeshDesc { id: format!("vrm:{i}"), indices: p.idx.clone(), uv: p.uv.clone(), data, texture: tex, tint: [p.color[0], p.color[1], p.color[2]], mask: p.mask, cull_back: !p.double_sided, mat: Default::default() }));
+            }
+            v.created = true; v.dirty = true;
+        }
+        if v.dirty || posing {
+            // Gewichte je (Teil, Target) aus Ausdrücken + rohen Reglern
+            let mut tw: std::collections::BTreeMap<(usize, usize), f32> = v.raw.clone();
+            for (name, val) in &v.expr { if let Some((_, binds)) = v.model.expressions.iter().find(|e| &e.0 == name) { for (pi, ti, w) in binds { *tw.entry((*pi, *ti)).or_default() += val * w; } } }
+            let mats = if let Some(clip) = self.play.clip.as_ref() { Some(v.rig.skin_matrices(Some((clip, clip_t)), v.rig.hips_rest_y() / clip.hips_rest_height().max(1e-3))) } else { None };
+            for (i, p) in v.model.parts.iter().enumerate() {
+                let mut pos: Vec<[f32; 3]> = p.pos.clone();
+                for ((pi, ti), w) in &tw { if *pi == i && w.abs() > 1e-5 { for (k, d) in p.targets[*ti].1.iter().enumerate() { pos[k][0] += w * d[0]; pos[k][1] += w * d[1]; pos[k][2] += w * d[2]; } } }
+                for q in pos.iter_mut() { q[1] += floor; }
+                if let Some(m) = &mats { for (k, q) in pos.iter_mut().enumerate() { *q = skin_point(m, p.joints[k], p.weights[k], *q); } }
+                let mut nrm = Vec::new(); normals(&pos, &v.tris[i], &mut nrm);
+                let mut data = Vec::with_capacity(pos.len() * 6);
+                for (q, n) in pos.iter().zip(&nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
+                out.push(MeshUpdate::Positions { id: format!("vrm:{i}"), data });
+            }
+            v.dirty = false;
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod vrm_open_tests {
+    use super::*;
+
+    #[test]
+    fn open_vrm_express_pose_close() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        let info = s.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
+        assert!(info.contains("Teile"));
+        let up = s.refresh();
+        assert!(up.iter().filter(|u| matches!(u, MeshUpdate::Create(d) if d.id.starts_with("vrm:"))).count() >= 2);
+        assert!(up.iter().any(|u| matches!(u, MeshUpdate::Remove(id) if id == "body")), "MakeHuman-Körper wird ausgeblendet");
+        // Ausdruck wirkt
+        let before = s.refresh();
+        assert!(before.is_empty(), "Ruhezustand erzeugt keine Updates");
+        s.set_expression("blink", 1.0);
+        assert!(s.refresh().iter().any(|u| matches!(u, MeshUpdate::Positions { id, .. } if id.starts_with("vrm:"))));
+        // Pose wirkt und Modell bleibt aufrecht
+        s.load_clip(&repo.join("content/testcandidate/animations/UAL1/Idle_Loop.vrma")).unwrap();
+        s.play.playing = false; s.play.t = 0.3;
+        let up = s.refresh();
+        let top = up.iter().filter_map(|u| match u { MeshUpdate::Positions { data, .. } => Some(data.chunks_exact(6).map(|v| v[1]).fold(f32::MIN, f32::max)), _ => None }).fold(f32::MIN, f32::max);
+        let h = s.body_height();
+        assert!((top - h).abs() < 0.3 * h, "aufrecht: {top} vs {h}");
+        s.close_vrm();
+        let up = s.refresh();
+        assert!(up.iter().any(|u| matches!(u, MeshUpdate::Remove(id) if id.starts_with("vrm:"))));
+        assert!(up.iter().any(|u| matches!(u, MeshUpdate::Create(d) if d.id == "body")), "MakeHuman-Körper kehrt zurück");
     }
 }

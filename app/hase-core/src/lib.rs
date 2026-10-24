@@ -24,3 +24,4 @@ pub mod import;
 pub mod anatomy;
 pub mod export;
 pub mod pose;
+pub mod vrm_model;

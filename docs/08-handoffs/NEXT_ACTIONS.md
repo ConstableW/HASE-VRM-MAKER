@@ -28,3 +28,6 @@
 | 22 | Outfit-Studio vertiefen (Layer, Materialfarben, Passform/Clipping-Ansicht) und Pupillenformen/Irismuster, Haar-Scheitel/Strähnen | OD-026 | – | – | – | offen | Claude |
 | 23 | Owner: Windows-GUI-Test des neuen Stands (Augenstudio, Haar, Haut, Bibliothek, Bereichs-Pick, Details platzieren) | Abnahme | – | Rückmeldung | – | wartet auf Owner | – |
 | 24 | Owner: exportierte VRM in HASEC/Viewer öffnen (Basis und mit Outfit) und Rückmeldung zu Aussehen, Animation, Expressions | Abnahme Export | – | Rückmeldung | – | wartet auf Owner | – |
+
+25. Owner: neue `app/win/hase-editor.exe` testen (Posen, Kleidung, Lippen, Speichern→Bibliothek, Exportieren, Lylia öffnen).
+26. Importierte VRMs editierbar/exportierbar machen (Morph-Sets/Retopologie, Entscheidung Owner); Spring Bones/Haarphysik; Cloth-Fit-Performance.

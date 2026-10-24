@@ -45,12 +45,43 @@ impl App {
         v.sort(); self.export.clips = v; self.export.clips_loaded = true;
     }
 
+    /// Panel für ein geöffnetes VRM-Modell: Informationen, Ausdrücke, einzelne Blendshapes, schließen.
+    pub(crate) fn vrm_panel(&mut self, ui: &mut egui::Ui) {
+        let s = self.session.as_mut().unwrap();
+        let Some(v) = s.vrm.as_ref() else { return };
+        let (name, parts, bones, hum, spring, path) = (v.model.name.clone(), v.model.parts.iter().map(|p| (p.name.clone(), p.pos.len(), p.targets.len())).collect::<Vec<_>>(), v.model.bones.len(), v.model.humanoid.len(), v.model.spring_bones, v.path.clone());
+        let exprs: Vec<String> = v.model.expressions.iter().map(|e| e.0.clone()).collect();
+        let cur: std::collections::BTreeMap<String, f32> = v.expr.clone();
+        ui.heading(&name); ui.separator();
+        ui.colored_label(theme::TEXT2, path.display().to_string());
+        ui.label(format!("{} Teile · {} Bones · {} humanoide Zuordnungen{}", parts.len(), bones, hum, if spring { " · Spring Bones vorhanden" } else { "" }));
+        for (n, vcount, tcount) in &parts { ui.colored_label(theme::TEXT2, format!("• {n}: {vcount} Vertices, {tcount} Blendshapes")); }
+        ui.add_space(4.0);
+        ui.colored_label(theme::WARN, "Nur Ansicht: Körperform, Haare und Kleidung sind in diesem Modell fest eingebacken und nicht verformbar. Spring Bones werden in der Vorschau nicht simuliert. Posen: 3 Finalisieren › Posen & Animation.");
+        ui.separator(); ui.strong("Ausdrücke");
+        let mut set: Option<(String, f32)> = None;
+        for n in &exprs { let mut val = cur.get(n).copied().unwrap_or(0.0); if ui.add(egui::Slider::new(&mut val, 0.0..=1.0).text(n.as_str())).changed() { set = Some((n.clone(), val)); } }
+        if let Some((n, val)) = set { s.set_expression(&n, val); }
+        ui.horizontal(|ui| {
+            if ui.button("Ausdrücke zurücksetzen").clicked() { for n in &exprs { s.set_expression(n, 0.0); } let keys: Vec<(usize, usize)> = s.vrm.as_ref().map(|v| v.raw.keys().copied().collect()).unwrap_or_default(); for (p, t) in keys { s.set_raw_target(p, t, 0.0); } }
+            if ui.button("Modell schließen").on_hover_text("Zurück zum MakeHuman-Charakter").clicked() { s.close_vrm(); }
+        });
+        ui.separator();
+        egui::CollapsingHeader::new("Einzelne Blendshapes").default_open(false).show(ui, |ui| {
+            let list: Vec<(usize, usize, String)> = { let v = s.vrm.as_ref().unwrap(); v.model.parts.iter().enumerate().flat_map(|(pi, p)| p.targets.iter().enumerate().map(move |(ti, t)| (pi, ti, t.0.clone()))).collect() };
+            let raw: std::collections::BTreeMap<(usize, usize), f32> = s.vrm.as_ref().unwrap().raw.clone();
+            let mut chg: Option<(usize, usize, f32)> = None;
+            egui::ScrollArea::vertical().max_height(320.0).id_salt("rawbs").show_rows(ui, 24.0, list.len(), |ui, range| { for r in range { let (pi, ti, n) = &list[r]; let mut val = raw.get(&(*pi, *ti)).copied().unwrap_or(0.0); if ui.add(egui::Slider::new(&mut val, 0.0..=1.0).text(n.as_str())).changed() { chg = Some((*pi, *ti, val)); } } });
+            if let Some((p, t, val)) = chg { s.set_raw_target(p, t, val); }
+        });
+    }
+
     pub(crate) fn anim_panel(&mut self, ui: &mut egui::Ui) {
         if !self.export.clips_loaded { self.scan_clips(); }
         ui.heading("Posen & Animation"); ui.separator();
         {
             let s = self.session.as_mut().unwrap();
-            if s.generic { ui.colored_label(theme::ERR, "Für importierte Körperbasen noch nicht unterstützt (Rig und Gewichte fehlen)."); return; }
+            if s.generic && s.vrm.is_none() { ui.colored_label(theme::ERR, "Für importierte Körperbasen noch nicht unterstützt (Rig und Gewichte fehlen)."); return; }
             ui.horizontal(|ui| {
                 if ui.button("Ruhepose (A-Pose)").clicked() { s.stop_pose(); }
                 if s.play.clip.is_some() {
@@ -79,6 +110,7 @@ impl App {
     pub(crate) fn export_panel(&mut self, ui: &mut egui::Ui) {
         let Some(s) = self.session.as_ref() else { return };
         ui.heading("Exportieren (VRM 1.0)"); ui.separator();
+        if s.vrm.is_some() { ui.colored_label(theme::WARN, "Ein geöffnetes VRM-Modell wird nicht verändert und daher nicht neu exportiert – die Originaldatei ist die Quelle. Exportieren lässt sich ein in HASE gestalteter Charakter (Modell schließen)."); return; }
         let ex = &mut self.export;
         ui.strong("Profil");
         ui.radio_value(&mut ex.with_outfit, false, "Basischarakter ohne Outfit");
