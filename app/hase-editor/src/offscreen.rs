@@ -93,6 +93,7 @@ pub fn run_export(repo: &Path, out: &str, args: &[String]) -> i32 {
     if let Some(sets) = arg(args, "--set") { for kv in sets.split(',') { if let Some((k, v)) = kv.split_once('=') { if let (Some(i), Ok(f)) = (s.params.canonical(k), v.parse::<f32>()) { s.set_param(i, f); } } } }
     if let Some(js) = arg(args, "--style") { if let Ok(v) = serde_json::from_str::<serde_json::Value>(js) { let st = hase_core::state::Style::from_json(&v); s.edit_style(0, |x| *x = st); } }
     let _ = s.refresh();
+    if let Some(p) = arg(args, "--vrm") { if let Err(e) = s.open_vrm(std::path::Path::new(p)) { eprintln!("--vrm: {e}"); return 1; } let _ = s.refresh(); }
     let o = crate::session::ExportOptions { with_outfit: args.iter().any(|a| a == "--outfit"), expressions: true, name: "HASE Export-Test".into(), author: "HASE VRM MAKER".into(), license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: "personalNonProfit".into(), redistribution: true };
     let t0 = std::time::Instant::now();
     let (doc, report) = match s.build_export(&o) { Ok(r) => r, Err(e) => { eprintln!("Export: {e}"); return 1; } };

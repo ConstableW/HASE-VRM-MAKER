@@ -52,3 +52,6 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 
 ## 2026-10-24 – Korrekturrunde nach Owner-Test
 Posen (A→T-Kompensation), Kleidungskollision, Lippenmaske, Header Speichern/Exportieren, statisches VRM-Öffnen (Lylia), Analyse nach VRM-Humanoid-Map. Windows-exe neu gebaut. Offen: Windows-Test, Cloth-Performance, Spring Bones.
+
+## 2026-10-24 – Anprobe auf importierten VRMs
+`dress.rs` (Registrierung, Gewichtsübernahme), Session-Integration (Outfit-Workspace bei geöffnetem Modell, Teileliste, Posen mit Kleidung, Export), VRM-Teile kompaktiert. Test: `test.vrm` (VRoid-Basis) mit Shirt + Shorts.

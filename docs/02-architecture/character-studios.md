@@ -43,3 +43,13 @@ Keine Pupillenformen, Irismuster, Augenweiß-/Augen-Make-up; keine Outfit-Studio
 - **Lippen:** eigene Lippenmaske aus Morph-Footprint (UV 90° gedreht berücksichtigt), kein „Pinselklecks“ mehr.
 - **Header:** „Speichern“ legt in die Bibliothek (`quick_save`), „Exportieren“ springt zu Finalisieren › Export.
 - **VRM öffnen (statisch):** `vrm_model.rs` lädt fremde VRMs (z. B. Lylia_v2.vrm) als Ansichts-/Pose-/Ausdrucksmodell. Körper, Haare, Kleidung sind gebacken, nicht editierbar; Spring Bones werden nicht simuliert; kein Export/Bibliothek für importierte Modelle. PROPOSED nächster Schritt: Editierbarkeit nur über Morph-Sets/Retopologie.
+
+## Anprobe auf importierten Körpern (2026-10-24, `hase-core/src/dress.rs`)
+
+Ziel: nacktes importiertes VRM (z. B. VRoid-Basis) mit MakeHuman-Kleidung anziehen, posen und als VRM exportieren. PROPOSED, am Test-VRM verifiziert (Blender-Import, Validator 0 Fehler), nicht unter Windows getestet.
+
+1. **Registrierung:** MakeHuman-Basis → Haut des Ziels. (a) Skelett-Vorausrichtung: je humanoidem Bone Drehung+Skalierung entlang der Knochenachse, per MH-Gewichten geblendet (gleicht Proportionen und A-/T-Pose aus). (b) Nicht-rigide ICP-Verfeinerung (10 Iterationen, Normalenprüfung, geglättetes Verschiebungsfeld); Kopf, Hände, Augen bleiben bei (a).
+2. **Kleidung:** `.mhclo`-Proxys folgen der abgebildeten Basis; `fit::push_out` (ohne Zweitdurchgang, 4 mm) gegen die Zielhaut; Skin-Gewichte = Gewichte des nächsten Zielhaut-Vertex (rig-unabhängig).
+3. **Hautteile:** Standard = Teile mit ≥ 50 % Körperhöhe; in der Teileliste (Modell-Panel) änderbar, Teile lassen sich ausblenden.
+4. **Export:** Originalteile, Skelett (Rest-Rotationen in die Welt eingebacken → normalisiertes VRM-1.0-Rig), Humanoid, Ausdrücke bleiben; Kleidung kommt dazu. Verlust: Spring Bones und MToon-Einstellungen des Originals.
+5. **Grenzen:** Kopf-/Hand-/Fußkleidung (Hüte, Handschuhe) wird nicht angepasst; im Schritt ohne Skelett (rohe GLB) ist die Anprobe noch nicht möglich; dünne Spalte (Schritt) lassen die aufgemalte Unterwäsche durchscheinen.

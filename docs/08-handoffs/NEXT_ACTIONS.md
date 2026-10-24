@@ -31,3 +31,6 @@
 
 25. Owner: neue `app/win/hase-editor.exe` testen (Posen, Kleidung, Lippen, Speichern→Bibliothek, Exportieren, Lylia öffnen).
 26. Importierte VRMs editierbar/exportierbar machen (Morph-Sets/Retopologie, Entscheidung Owner); Spring Bones/Haarphysik; Cloth-Fit-Performance.
+
+27. Anprobe für Körper OHNE Skelett (rohe GLB/OBJ, z. B. `realistic_female_body.glb`): MH-Basis per ICP auf das Mesh, Skelett + Gewichte aus der abgebildeten Basis ableiten (Sketchfab-Knotenskalierung beachten).
+28. Anprobe verfeinern: Schritt/Achsel-Lücken, Kopf-/Hand-/Fußkleidung, Haut-Teile-Auswahl testen unter Windows.

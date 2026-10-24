@@ -530,7 +530,7 @@ impl App {
     }
 
     fn region_list(&mut self, ui: &mut egui::Ui) {
-        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio { ui.strong("Geöffnetes Modell"); ui.separator(); ui.weak("Körper, Haare und Kleidung sind im Mesh fest enthalten und hier nicht veränderbar."); ui.add_space(6.0); ui.weak("Posen: 3 Finalisieren › Posen & Animation"); return; }
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { ui.strong("Geöffnetes Modell"); ui.separator(); ui.weak("Körper und Haare sind im Mesh fest enthalten und hier nicht veränderbar."); ui.add_space(6.0); ui.weak("Kleidung anprobieren: 2 Outfit"); ui.weak("Posen: 3 Finalisieren › Posen & Animation"); return; }
         match self.ws {
             Workspace::Charakter => {
                 ui.strong("Bereiche");
@@ -629,7 +629,7 @@ impl App {
 
     fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.session.is_none() { ui.label("Lade …"); return; }
-        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio { self.vrm_panel(ui); return; }
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { self.vrm_panel(ui); return; }
         if self.ws == Workspace::Charakter {
             ui.horizontal(|ui| { if ui.selectable_label(!self.expert, "Parameter").clicked() { self.expert = false; } if ui.selectable_label(self.expert, "Erweitert (alle Parameter)").clicked() { self.expert = true; } });
             ui.separator();

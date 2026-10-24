@@ -108,7 +108,7 @@ impl BodyGrid {
 /// Kollisionskorrektur nach dem Fitting: Kleidungs-Vertices, die im Körper stecken (oder weniger als `gap` davor liegen), werden entlang der
 /// Körpernormalen nach außen geschoben; die Verschiebung wird über die Kleidungs-Nachbarschaft geglättet (keine Spitzen).
 /// Rückgabe: Anzahl korrigierter Vertices.
-pub fn push_out(cloth: &mut [[f32; 3]], adj: &[Vec<u32>], tris: &[[u32; 3]], grid: &BodyGrid, body_pos: &[[f32; 3]], body_nrm: &[[f32; 3]], body_verts: &[u32], gap: f32) -> usize {
+pub fn push_out(cloth: &mut [[f32; 3]], adj: &[Vec<u32>], tris: &[[u32; 3]], grid: &BodyGrid, body_pos: &[[f32; 3]], body_nrm: &[[f32; 3]], body_verts: &[u32], gap: f32, second_pass: bool) -> usize {
     let n = cloth.len();
     let mut push = vec![0f32; n]; let mut dir = vec![[0f32; 3]; n];
     let mut cn = Vec::new(); crate::eval::normals(cloth, tris, &mut cn); cn.resize(n, [0.0, 1.0, 0.0]);
@@ -126,6 +126,7 @@ pub fn push_out(cloth: &mut [[f32; 3]], adj: &[Vec<u32>], tris: &[[u32; 3]], gri
         BodyGrid::build(cloth, &ids, 0.02)
     };
     for &bv in body_verts {
+        if !second_pass { break; }
         let b = body_pos[bv as usize];
         let Some((c, d2)) = cg.nearest(cloth, b) else { continue };
         if d2 > 0.035 * 0.035 { continue; }

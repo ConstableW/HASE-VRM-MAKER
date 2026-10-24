@@ -57,7 +57,18 @@ impl App {
         ui.label(format!("{} Teile · {} Bones · {} humanoide Zuordnungen{}", parts.len(), bones, hum, if spring { " · Spring Bones vorhanden" } else { "" }));
         for (n, vcount, tcount) in &parts { ui.colored_label(theme::TEXT2, format!("• {n}: {vcount} Vertices, {tcount} Blendshapes")); }
         ui.add_space(4.0);
-        ui.colored_label(theme::WARN, "Nur Ansicht: Körperform, Haare und Kleidung sind in diesem Modell fest eingebacken und nicht verformbar. Spring Bones werden in der Vorschau nicht simuliert. Posen: 3 Finalisieren › Posen & Animation.");
+        ui.colored_label(theme::WARN, "Körperform und Haare sind in diesem Modell fest eingebacken und nicht verformbar. Spring Bones werden in der Vorschau nicht simuliert. Kleidung anprobieren: 2 Outfit · Posen: 3 Finalisieren.");
+        {
+            let v = s.vrm.as_ref().unwrap();
+            let rows: Vec<(usize, String, bool, bool)> = v.model.parts.iter().enumerate().map(|(i, p)| (i, format!("{} ({})", p.name, p.pos.len()), !v.hidden.contains(&i), v.skin_parts.contains(&i))).collect();
+            let info = v.dress_info.clone();
+            ui.separator(); ui.strong("Teile");
+            ui.colored_label(theme::TEXT2, "„Haut“ = Teile, auf die die Kleidung angepasst wird (Standard: der Körper).");
+            let mut act: Option<(usize, bool, bool)> = None;
+            for (i, n, vis, skin) in rows { ui.horizontal(|ui| { let (mut a, mut b) = (vis, skin); let c1 = ui.checkbox(&mut a, "").on_hover_text("sichtbar").changed(); let c2 = ui.checkbox(&mut b, "Haut").changed(); ui.label(n); if c1 { act = Some((i, true, a)); } if c2 { act = Some((i, false, b)); } }); }
+            if let Some((i, is_vis, val)) = act { if is_vis { s.set_part_hidden(i, !val); } else { s.set_skin_part(i, val); } }
+            if !info.is_empty() { ui.colored_label(theme::TEXT2, info); }
+        }
         ui.separator(); ui.strong("Ausdrücke");
         let mut set: Option<(String, f32)> = None;
         for n in &exprs { let mut val = cur.get(n).copied().unwrap_or(0.0); if ui.add(egui::Slider::new(&mut val, 0.0..=1.0).text(n.as_str())).changed() { set = Some((n.clone(), val)); } }
@@ -110,7 +121,7 @@ impl App {
     pub(crate) fn export_panel(&mut self, ui: &mut egui::Ui) {
         let Some(s) = self.session.as_ref() else { return };
         ui.heading("Exportieren (VRM 1.0)"); ui.separator();
-        if s.vrm.is_some() { ui.colored_label(theme::WARN, "Ein geöffnetes VRM-Modell wird nicht verändert und daher nicht neu exportiert – die Originaldatei ist die Quelle. Exportieren lässt sich ein in HASE gestalteter Charakter (Modell schließen)."); return; }
+        if s.vrm.is_some() { ui.colored_label(theme::TEXT2, "Geöffnetes Modell: Es wird mit seinem eigenen Skelett, Körper, Haaren und Ausdrücken exportiert; anprobierte Kleidung wird hinzugefügt (Profil „mit Outfit“)."); }
         let ex = &mut self.export;
         ui.strong("Profil");
         ui.radio_value(&mut ex.with_outfit, false, "Basischarakter ohne Outfit");
