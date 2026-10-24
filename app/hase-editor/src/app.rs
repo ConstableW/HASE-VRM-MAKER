@@ -14,9 +14,9 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
-enum Workspace { Charakter, Outfit, Finalisieren }
+pub(crate) enum Workspace { Charakter, Outfit, Finalisieren, Studio }
 
-enum Msg { Session(Result<Box<Session>, String>), Asset { id: String, res: Result<LoadedProxy, String> } }
+pub(crate) enum Msg { Session(Result<Box<Session>, String>), Asset { id: String, res: Result<LoadedProxy, String> } }
 
 enum Row { Header(String, usize), Param(usize) }
 
@@ -36,26 +36,27 @@ impl egui_wgpu::CallbackTrait for SceneCallback {
 }
 
 pub struct App {
-    rx: Receiver<Msg>, tx: Sender<Msg>,
-    session: Option<Session>,
-    error: Option<String>,
-    camera: Camera,
-    ws: Workspace,
-    main: Main,
-    region: usize,
-    sub: usize,
-    expert: bool,
-    saved_cam: Option<Camera>,
-    reg_idx: Vec<usize>, reg_key: (usize, usize),
-    filter: String, asset_filter: String,
-    open_groups: HashSet<String>,
-    rows: Vec<Row>, rows_key: (String, usize),
-    loading: HashSet<String>,
-    show_stats: bool,
-    frame_ms: f32, frame_avg: f32,
-    started: Instant,
-    status: String,
-    gpu_name: String,
+    pub(crate) rx: Receiver<Msg>, pub(crate) tx: Sender<Msg>,
+    pub(crate) session: Option<Session>,
+    pub(crate) error: Option<String>,
+    pub(crate) camera: Camera,
+    pub(crate) ws: Workspace,
+    pub(crate) main: Main,
+    pub(crate) region: usize,
+    pub(crate) sub: usize,
+    pub(crate) expert: bool,
+    pub(crate) saved_cam: Option<Camera>,
+    pub(crate) reg_idx: Vec<usize>, reg_key: (usize, usize),
+    pub(crate) filter: String, asset_filter: String,
+    pub(crate) open_groups: HashSet<String>,
+    pub(crate) rows: Vec<Row>, rows_key: (String, usize),
+    pub(crate) loading: HashSet<String>,
+    pub(crate) show_stats: bool,
+    pub(crate) frame_ms: f32, frame_avg: f32,
+    pub(crate) started: Instant,
+    pub(crate) status: String,
+    pub(crate) gpu_name: String,
+    pub(crate) studio: crate::studio::StudioState,
 }
 
 pub fn spawn_session_load(tx: Sender<Msg>, ctx: egui::Context, repo: std::path::PathBuf) {
@@ -81,7 +82,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo);
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default() }
     }
 
     fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -319,11 +320,11 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("HASE VRM MAKER").strong().size(16.0)); ui.weak("Character Studio");
                 ui.add_space(16.0);
-                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB")] {
+                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB"), ("Körper & Spezies", Workspace::Studio, "Körperbasen und Spezies erstellen, importieren, prüfen, speichern")] {
                     let on = self.ws == ws;
                     if ui.add(egui::Button::new(egui::RichText::new(n).size(15.0)).selected(on)).on_hover_text(t).clicked() {
                         self.ws = ws;
-                        self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation };
+                        self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation, Workspace::Studio => Main::Charakter };
                         self.region = usize::MAX; self.sub = 0; self.asset_filter.clear();
                     }
                 }
@@ -380,6 +381,7 @@ impl App {
                 ui.strong("Outfit"); ui.separator();
                 for (i, l) in CLOTHES_KINDS.iter().enumerate() { if ui.selectable_label(self.sub == i, *l).clicked() { self.sub = i; } }
             }
+            Workspace::Studio => self.studio_library(ui),
             Workspace::Finalisieren => { ui.strong("Finalisieren"); ui.separator(); ui.label("Posen · Animation"); ui.label("Vorlagen · Varianten"); ui.label("Export"); }
         }
         ui.separator();
@@ -459,6 +461,7 @@ impl App {
             ui.horizontal(|ui| { if ui.selectable_label(!self.expert, "Parameter").clicked() { self.expert = false; } if ui.selectable_label(self.expert, "Erweitert (alle Parameter)").clicked() { self.expert = true; } });
             ui.separator();
         }
+        if self.ws == Workspace::Studio { self.studio_detail(ui); return; }
         if self.expert && self.ws == Workspace::Charakter { self.params_panel(ui); return; }
         match self.main {
             Main::Charakter => {

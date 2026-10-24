@@ -249,3 +249,20 @@ Maßgebliche Zielwerte und Messregeln: `../07-quality/performance-targets.md`.
 | REQ-PERF-019 | Performance-Regressionstests in CI | PR | P1 |
 | REQ-PERF-020 | Performance ohne Einschränkung der Spezies-/Package-Erweiterbarkeit | OD | P0 |
 
+
+## Körperbasis- und Speziesstudio (OD-027)
+
+| ID | Anforderung | Quelle | Prio |
+|---|---|---|---|
+| REQ-STUDIO-001 | Eigener Arbeitsbereich zum Erstellen/Verwalten von Körperbasen und Spezies im Designsystem | OD | P0 |
+| REQ-STUDIO-002 | Neue Körperbasis aus Vorlage erstellen, duplizieren, weiterentwickeln | OD | P0 |
+| REQ-STUDIO-003 | Externes Modell importieren (Mesh, Materialien, Texturen, optional Rig) mit sichtbarer Voraussetzungsprüfung | OD | P0 |
+| REQ-STUDIO-004 | Anatomische Regionen, Links/Rechts-Zuordnung, Symmetrieachsen, Morph-Import/-Kategorisierung, Korrektur-Morphs definierbar | OD | P0 |
+| REQ-STUDIO-005 | Skelett, Bone-Mapping, Skinning prüfen; Körperbasis als Package speichern | OD | P0 |
+| REQ-STUDIO-006 | Prüfstufen getrennt ausweisen: importiert / geometrisch verwendbar / rig-kompatibel / morph-kompatibel / konfiguriert / als Speziespaket validiert | OD | P0 |
+| REQ-STUDIO-007 | Spezies aus einer oder mehreren kompatiblen Körperbasen plus Merkmalen (Ohren, Haut, Augen, Morphs, Defaults, Grenzen, kompatible Assets, Rig-Erweiterungen) zusammenstellen; nicht auf Humanoide beschränkt | OD | P0 |
+| REQ-STUDIO-008 | Visueller Spezieseditor (Bibliothek, Körperbasis-Auswahl, Viewport, Anatomie-/Rig-Ansicht, Parameterzuordnung, Merkmalsbibliothek, Kompatibilität, Paketinfo/Version, Validierung) | OD | P0 |
+| REQ-STUDIO-009 | Körperbasen/Spezies sind versionierte, duplizierbare, referenzierbare, als Paket exportierbare Ressourcen mit deklarierten Abhängigkeiten | OD | P0 |
+| REQ-STUDIO-010 | Versions-/Migrationsstrategie: Änderungen zerstören bestehende Charaktere nicht unbemerkt | OD | P0 |
+| REQ-STUDIO-011 | Charakter aus Spezies-Vorlage, Charakter als Vorlage/Variante speichern; Umwandlung Charakter → Spezies nur bewusst | OD | P0 |
+| REQ-STUDIO-012 | Normale Abläufe ohne manuelle JSON/Manifest-Bearbeitung; technische Details im Expertenbereich | OD | P0 |

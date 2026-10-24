@@ -19,3 +19,4 @@ pub fn find_repo_root(start: &Path) -> Option<PathBuf> {
         if !p.pop() { return None; }
     }
 }
+pub mod validate;

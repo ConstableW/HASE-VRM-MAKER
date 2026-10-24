@@ -4,6 +4,7 @@ mod offscreen;
 mod regions;
 mod render;
 mod session;
+mod studio;
 mod theme;
 
 fn main() {
