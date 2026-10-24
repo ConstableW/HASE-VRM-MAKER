@@ -182,6 +182,20 @@ impl App {
         }
     }
 
+    pub(crate) fn hair_shape_panel(&mut self, ui: &mut egui::Ui) {
+        let s = self.session.as_mut().unwrap();
+        let h = s.state.style.hair.clone();
+        let mut n = h.clone();
+        ui.add(egui::Slider::new(&mut n.length, -0.6..=0.8).text("Länge (kürzer ↔ länger)"));
+        ui.add(egui::Slider::new(&mut n.vol_top, -0.8..=1.5).text("Volumen Oberkopf"));
+        ui.add(egui::Slider::new(&mut n.vol_front, -0.8..=1.5).text("Volumen Vorderseite / Pony"));
+        ui.add(egui::Slider::new(&mut n.vol_side, -0.8..=1.5).text("Volumen Seiten"));
+        ui.add(egui::Slider::new(&mut n.vol_back, -0.8..=1.5).text("Volumen Hinterkopf"));
+        if ui.button("Form zurücksetzen").clicked() { n.length = 0.0; n.vol_top = 0.0; n.vol_front = 0.0; n.vol_side = 0.0; n.vol_back = 0.0; }
+        ui.weak("Verformt die angepasste Frisur (Länge relativ zur Kopfhaut, Volumen entlang der Haaroberfläche). Kollision mit Schultern/Körper wird nicht berechnet; Scheitel, Strähnen, Locken und Wellen: noch nicht unterstützt.");
+        if n != h { s.edit_style(21, |st| st.hair = n.clone()); }
+    }
+
     pub(crate) fn hair_color_panel(&mut self, ui: &mut egui::Ui) {
         let s = self.session.as_mut().unwrap();
         let h = s.state.style.hair.clone();

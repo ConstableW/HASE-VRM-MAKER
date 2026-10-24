@@ -1,5 +1,5 @@
 //! egui-Anwendung: Parameterpanel, Asset-Bibliotheken, 3D-Viewport mit Orbit-Kamera, Profiling-Overlay.
-use crate::camera::{Camera, PRESETS};
+use crate::camera::{Camera, LIGHTS, PRESETS};
 use crate::theme;
 use crate::regions::{self, Main, CLOTHES_KINDS, REGIONS, TIER_LABELS};
 use crate::render::{MeshUpdate, SceneRenderer};
@@ -13,6 +13,9 @@ use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 use std::time::Instant;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Tool { Orbit, Pan, Zoom, Focus, Region }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Workspace { Charakter, Outfit, Finalisieren, Studio }
@@ -63,6 +66,8 @@ pub struct App {
     pub(crate) eye_side: usize,
     pub(crate) hair_tab: usize,
     pub(crate) lib: crate::library_ui::LibState,
+    pub(crate) tool: Tool,
+    pub(crate) region_energy: Vec<f32>,
     pub(crate) light: usize,
     pub(crate) grid: bool,
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
@@ -92,7 +97,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), tool: Tool::Orbit, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -246,28 +251,50 @@ impl App {
 
     fn viewport(&mut self, ui: &mut egui::Ui) {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
-        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); self.camera.orbit(d.x, d.y); }
+        let tool = self.tool;
+        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Orbit | Tool::Region | Tool::Focus => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
         if resp.dragged_by(egui::PointerButton::Secondary) || resp.dragged_by(egui::PointerButton::Middle) { let d = resp.drag_delta(); self.camera.pan(d.x, d.y); }
         if resp.hovered() { let sc = ui.input(|i| i.smooth_scroll_delta.y); if sc != 0.0 { self.camera.zoom(sc); } }
-        if resp.double_clicked() { self.camera = Camera::default(); }
+        if resp.double_clicked() { self.camera = Camera::default(); self.saved_cam = None; }
         let aspect_pick = (rect.width() / rect.height().max(1.0)).max(0.1);
-        if resp.clicked() && self.ws == Workspace::Studio && self.studio.prep.as_ref().map(|p| p.pick != crate::studio::Pick::None).unwrap_or(false) {
-            if let (Some(pp), Some(s)) = (resp.interact_pointer_pos(), self.session.as_mut()) {
+        let studio_pick = self.ws == Workspace::Studio && self.studio.prep.as_ref().map(|p| p.pick != crate::studio::Pick::None).unwrap_or(false);
+        if resp.clicked() && (studio_pick || matches!(tool, Tool::Region | Tool::Focus)) {
+            if let Some(pp) = resp.interact_pointer_pos() {
                 let (nx, ny) = ((pp.x - rect.left()) / rect.width() * 2.0 - 1.0, 1.0 - (pp.y - rect.top()) / rect.height() * 2.0);
                 let (o, d) = self.camera.ray(nx, ny, aspect_pick);
-                crate::studio::on_pick(s, &mut self.studio, o, d);
+                if studio_pick { if let Some(s) = self.session.as_mut() { crate::studio::on_pick(s, &mut self.studio, o, d); } }
+                else { self.pick_tool(o, d); }
             }
         }
         let updates = self.session.as_mut().map(|s| s.refresh()).unwrap_or_default();
         let aspect = (rect.width() / rect.height().max(1.0)).max(0.1);
-        ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals(aspect) }));
-        // Kamera-Presets
+        ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals_lit(aspect, &LIGHTS[self.light.min(2)], self.grid) }));
+        // Kamera-Presets (rechts)
         let mut y = rect.top() + 8.0;
         for (i, (n, c)) in PRESETS.iter().enumerate() {
             let r = egui::Rect::from_min_size(egui::pos2(rect.right() - 120.0, y), egui::vec2(112.0, 22.0));
             if ui.put(r, egui::Button::new(format!("{} {}", i + 1, n)).small()).clicked() { self.camera = *c; }
             y += 24.0;
         }
+        // Werkzeuge (links)
+        let mut y = rect.top() + 8.0;
+        for (t, n, tip) in [(Tool::Orbit, "Rotieren", "Ziehen dreht die Kamera"), (Tool::Pan, "Bewegen", "Ziehen verschiebt die Ansicht"), (Tool::Zoom, "Zoomen", "Ziehen zoomt"), (Tool::Focus, "Fokus", "Klick auf den Körper zentriert die Kamera dort"), (Tool::Region, "Bereich", "Klick auf eine Körperstelle öffnet den passenden Bereich zum Bearbeiten")] {
+            let r = egui::Rect::from_min_size(egui::pos2(rect.left() + 8.0, y), egui::vec2(84.0, 26.0));
+            if ui.put(r, egui::Button::new(n).selected(self.tool == t)).on_hover_text(tip).clicked() { self.tool = t; }
+            y += 30.0;
+        }
+        // Licht & Hintergrund (oben Mitte)
+        let w = 3.0 * 76.0 + 70.0;
+        let mut x = rect.center().x - w / 2.0;
+        for (i, l) in LIGHTS.iter().enumerate() {
+            let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + 8.0), egui::vec2(72.0, 24.0));
+            if ui.put(r, egui::Button::new(l.name).selected(self.light == i)).clicked() { self.light = i; }
+            x += 76.0;
+        }
+        let r = egui::Rect::from_min_size(egui::pos2(x, rect.top() + 8.0), egui::vec2(66.0, 24.0));
+        if ui.put(r, egui::Button::new("Raster").selected(self.grid)).clicked() { self.grid = !self.grid; }
+        // Kompakte Leistungsanzeige (unten links)
+        ui.painter().text(rect.left_bottom() + egui::vec2(10.0, -10.0), egui::Align2::LEFT_BOTTOM, format!("{:.0} FPS · {:.1} ms{}", 1000.0 / self.frame_avg.max(0.1), self.frame_avg, self.session.as_ref().map(|s| format!(" · Morph {:.2} ms", s.perf.morph_ms)).unwrap_or_default()), egui::FontId::monospace(11.0), egui::Color32::from_rgb(190, 205, 230));
         if self.session.is_none() { ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, if self.error.is_some() { "Fehler beim Laden" } else { "Lade Charakterdaten …" }, egui::FontId::proportional(18.0), egui::Color32::WHITE); }
         if self.show_stats {
             let mut t = format!("Frame {:.1} ms (Ø {:.1}) · {:.0} fps\nGPU: {}", self.frame_ms, self.frame_avg, 1000.0 / self.frame_avg.max(0.1), self.gpu_name);
@@ -287,6 +314,33 @@ impl App {
             self.status = match std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap()) { Ok(_) => format!("Gespeichert: {}", p.display()), Err(e) => format!("Speichern fehlgeschlagen: {e}") };
         }
     }
+    /// Werkzeug „Fokus“/„Bereich“: Klick auf den Körper. Bereich = Region mit der größten Morph-Wirkung an der Stelle.
+    fn pick_tool(&mut self, o: [f32; 3], d: [f32; 3]) {
+        let Some(s) = self.session.as_ref() else { return };
+        let Some((hit, v)) = s.pick(o, d) else { self.status = "Kein Treffer am Körper".into(); return };
+        if self.tool == Tool::Focus { self.focus_point([hit[0], hit[1] + s.floor_offset(), hit[2]]); return; }
+        // Gesamt-„Verformungsenergie“ je Region (einmalig): Σ|Delta| aller zugehörigen Targets
+        if self.region_energy.len() != REGIONS.len() {
+            let mut e = vec![0f32; REGIONS.len()];
+            for def in &s.params.defs { if let Some(r) = regions::region_of(def) { for t in [def.pos, def.neg].into_iter().flatten() { let (a, b) = (s.body.morphs.t_off[t] as usize, s.body.morphs.t_off[t + 1] as usize); e[r] += s.body.morphs.t_delta[a..b].iter().map(|d| (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()).sum::<f32>(); } } }
+            self.region_energy = e;
+        }
+        let mut score: std::collections::HashMap<usize, f32> = std::collections::HashMap::new();
+        for (t, mag) in s.morphs_at_vertex(v, 300) {
+            for def in s.params.defs.iter() { if def.pos == Some(t) || def.neg == Some(t) { if let Some(r) = regions::region_of(def) { *score.entry(r).or_default() += mag; } } }
+        }
+        // Spezifität: Anteil der Gesamtverformung der Region, der an dieser Stelle wirkt
+        let score: Vec<(usize, f32)> = score.into_iter().map(|(r, m)| (r, m / self.region_energy[r].max(1e-6))).collect();
+        match score.into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()) {
+            Some((r, _)) => { let reg = &REGIONS[r]; self.ws = Workspace::Charakter; self.main = reg.main; self.region = r; self.sub = 0; self.focus(reg.cam); self.status = format!("Bereich: {}", reg.label); }
+            None => self.status = "Für diese Stelle gibt es keinen zugeordneten Bearbeitungsbereich".into(),
+        }
+    }
+    fn focus_point(&mut self, p: [f32; 3]) {
+        if self.saved_cam.is_none() { self.saved_cam = Some(self.camera); }
+        self.camera.target = p; self.camera.dist = (self.camera.dist * 0.6).clamp(0.35, 3.0);
+    }
+
     pub(crate) fn continue_load(&mut self, v: serde_json::Value, path: String) {
         let Some(s) = self.session.as_mut() else { return };
         match s.plan_load(&v) {
@@ -556,10 +610,10 @@ impl App {
             }
             Main::Haare => {
                 ui.heading("Haarstudio"); ui.separator();
-                ui.horizontal(|ui| { for (i, t) in ["Auswahl", "Farbe & Material"].iter().enumerate() { if ui.selectable_label(self.hair_tab == i, *t).clicked() { self.hair_tab = i; } } });
-                ui.weak("Regionale Bearbeitung (Länge, Volumen, Scheitel, Pony, Strähnen) und Haarphysik: noch nicht unterstützt.");
+                ui.horizontal(|ui| { for (i, t) in ["Auswahl", "Form", "Farbe & Material"].iter().enumerate() { if ui.selectable_label(self.hair_tab == i, *t).clicked() { self.hair_tab = i; } } });
+                ui.weak("Haarphysik und Strähnen-/Scheitelbearbeitung: noch nicht unterstützt.");
                 ui.separator();
-                if self.hair_tab == 0 { self.hair_grid(ui, ctx); } else { self.hair_color_panel(ui); }
+                match self.hair_tab { 0 => self.hair_grid(ui, ctx), 1 => self.hair_shape_panel(ui), _ => self.hair_color_panel(ui) }
             }
             Main::Stil => match self.sub {
                 0 => { ui.heading("Haut"); ui.separator(); self.skin_style_panel(ui); self.skin_panel(ui, ctx, true); ui.weak("Make-up, Sommersprossen, Narben, Tattoos, Körperbehaarung: noch nicht unterstützt."); }

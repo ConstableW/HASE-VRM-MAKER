@@ -17,8 +17,9 @@ pub struct EyeStyle { pub linked: bool, pub left: EyeSide, pub right: EyeSide, p
 impl Default for EyeStyle { fn default() -> Self { Self { linked: true, left: EyeSide::default(), right: EyeSide::default(), reflection: 0.5, limbal: 0.5 } } }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct HairStyle { pub root: [f32; 3], pub tip: [f32; 3], pub highlight: [f32; 3], pub highlight_amt: f32, pub gloss: f32 }
-impl Default for HairStyle { fn default() -> Self { Self { root: [0.30, 0.19, 0.11], tip: [0.55, 0.36, 0.22], highlight: [0.80, 0.62, 0.38], highlight_amt: 0.0, gloss: 0.3 } } }
+pub struct HairStyle { pub root: [f32; 3], pub tip: [f32; 3], pub highlight: [f32; 3], pub highlight_amt: f32, pub gloss: f32, pub length: f32, pub vol_top: f32, pub vol_front: f32, pub vol_side: f32, pub vol_back: f32 }
+impl Default for HairStyle { fn default() -> Self { Self { root: [0.30, 0.19, 0.11], tip: [0.55, 0.36, 0.22], highlight: [0.80, 0.62, 0.38], highlight_amt: 0.0, gloss: 0.3, length: 0.0, vol_top: 0.0, vol_front: 0.0, vol_side: 0.0, vol_back: 0.0 } } }
+impl HairStyle { pub fn shape_zero(&self) -> bool { self.length == 0.0 && self.vol_top == 0.0 && self.vol_front == 0.0 && self.vol_side == 0.0 && self.vol_back == 0.0 } }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkinStyle { pub gloss: f32 }
@@ -36,7 +37,7 @@ impl Style {
         let side = |e: &EyeSide| json!({"inner": jv3(&e.inner), "outer": jv3(&e.outer), "pupil": e.pupil, "custom": e.custom});
         json!({
             "eyes": {"linked": self.eyes.linked, "left": side(&self.eyes.left), "right": side(&self.eyes.right), "reflection": self.eyes.reflection, "limbal": self.eyes.limbal},
-            "hair": {"root": jv3(&self.hair.root), "tip": jv3(&self.hair.tip), "highlight": jv3(&self.hair.highlight), "highlightAmount": self.hair.highlight_amt, "gloss": self.hair.gloss},
+            "hair": {"root": jv3(&self.hair.root), "tip": jv3(&self.hair.tip), "highlight": jv3(&self.hair.highlight), "highlightAmount": self.hair.highlight_amt, "gloss": self.hair.gloss, "length": self.hair.length, "volTop": self.hair.vol_top, "volFront": self.hair.vol_front, "volSide": self.hair.vol_side, "volBack": self.hair.vol_back},
             "skin": {"gloss": self.skin.gloss}
         })
     }
@@ -45,7 +46,7 @@ impl Style {
         let side = |v: &Value, d: &EyeSide| EyeSide { inner: pv3(&v["inner"], d.inner), outer: pv3(&v["outer"], d.outer), pupil: pf(&v["pupil"], d.pupil), custom: v["custom"].as_bool().unwrap_or(d.custom) };
         Style {
             eyes: EyeStyle { linked: v["eyes"]["linked"].as_bool().unwrap_or(true), left: side(&v["eyes"]["left"], &d.eyes.left), right: side(&v["eyes"]["right"], &d.eyes.right), reflection: pf(&v["eyes"]["reflection"], d.eyes.reflection), limbal: pf(&v["eyes"]["limbal"], d.eyes.limbal) },
-            hair: HairStyle { root: pv3(&v["hair"]["root"], d.hair.root), tip: pv3(&v["hair"]["tip"], d.hair.tip), highlight: pv3(&v["hair"]["highlight"], d.hair.highlight), highlight_amt: pf(&v["hair"]["highlightAmount"], d.hair.highlight_amt), gloss: pf(&v["hair"]["gloss"], d.hair.gloss) },
+            hair: HairStyle { root: pv3(&v["hair"]["root"], d.hair.root), tip: pv3(&v["hair"]["tip"], d.hair.tip), highlight: pv3(&v["hair"]["highlight"], d.hair.highlight), highlight_amt: pf(&v["hair"]["highlightAmount"], d.hair.highlight_amt), gloss: pf(&v["hair"]["gloss"], d.hair.gloss), length: pf(&v["hair"]["length"], 0.0), vol_top: pf(&v["hair"]["volTop"], 0.0), vol_front: pf(&v["hair"]["volFront"], 0.0), vol_side: pf(&v["hair"]["volSide"], 0.0), vol_back: pf(&v["hair"]["volBack"], 0.0) },
             skin: SkinStyle { gloss: pf(&v["skin"]["gloss"], d.skin.gloss) },
         }
     }

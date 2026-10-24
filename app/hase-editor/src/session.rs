@@ -93,6 +93,27 @@ fn default_tint(cat: &Category, name: &str) -> [f32; 3] {
     }
 }
 
+/// Haarform: Länge (Tipps verschieben sich relativ zur Kopfhaut) und Volumen je Region entlang der Haarnormalen.
+fn shape_hair(fit: &mut [[f32; 3]], nrm: &[[f32; 3]], vmap_used: &[u32], h: &hase_core::state::HairStyle) {
+    let (mut ymin, mut ymax, mut zmin, mut zmax) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+    for &v in vmap_used { let p = fit[v as usize]; ymin = ymin.min(p[1]); ymax = ymax.max(p[1]); zmin = zmin.min(p[2]); zmax = zmax.max(p[2]); }
+    let span = (ymax - ymin).max(1e-3); let zc = (zmin + zmax) * 0.5;
+    let sstep = |a: f32, b: f32, x: f32| { let t = ((x - a) / (b - a)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+    let mut seen = std::collections::HashSet::new();
+    for &v in vmap_used {
+        if !seen.insert(v) { continue; }
+        let i = v as usize; let p = fit[i]; let n = nrm[i];
+        let depth = (ymax - p[1]) / span;                 // 0 Scheitel … 1 Spitze
+        let front = sstep(zc, zc + 0.07, p[2]); let back = sstep(zc, zc - 0.07, p[2]);
+        let side = sstep(0.035, 0.09, p[0].abs()) * (1.0 - front) * (1.0 - back);
+        let top = sstep(0.55, 0.0, depth);
+        let vol = h.vol_top * top + h.vol_front * front * sstep(0.7, 0.1, depth) + h.vol_side * side + h.vol_back * back;
+        let mut q = [p[0] + n[0] * vol * 0.02, p[1] + n[1] * vol * 0.02, p[2] + n[2] * vol * 0.02];
+        q[1] -= (ymax - q[1]) * h.length * sstep(0.12, 0.55, depth) * 0.9;
+        fit[i] = q;
+    }
+}
+
 fn eye_mat(st: &hase_core::state::EyeStyle) -> MatParams {
     let r = if st.linked { &st.left } else { &st.right };
     let l = &st.left;
@@ -276,6 +297,8 @@ impl Session {
         let before = self.state.clone();
         f(&mut self.state.style);
         if self.state.style == before.style { return; }
+        let (a, b) = (&before.style.hair, &self.state.style.hair);
+        if (a.length, a.vol_top, a.vol_front, a.vol_side, a.vol_back) != (b.length, b.vol_top, b.vol_front, b.vol_side, b.vol_back) { self.assets_dirty = true; }
         self.history.record(&before, Some(100_000 + key));
         self.style_dirty = true;
     }
@@ -302,7 +325,7 @@ impl Session {
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
         for id in removed { if self.proxies.remove(&id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); } }
         let skin_changed = s.skin != self.state.skin;
-        self.style_dirty = true;
+        self.style_dirty = true; self.assets_dirty = true;
         self.state = s;
         for a in &self.state.assets { if self.proxies.contains_key(&a.id) { self.pending.push(MeshUpdate::Tint { id: format!("proxy:{}", a.id), tint: a.tint }); } }
         if skin_changed { self.skin_tex = self.skin_path().and_then(|p| load_image(&p, 2048).ok()); self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
@@ -345,6 +368,11 @@ impl Session {
                     let tint = self.state.assets.iter().find(|a| a.id == id).map(|a| a.tint).unwrap_or(if id == EYES_ID { [1.0; 3] } else { [0.9; 3] });
                     let rt = self.proxies.get_mut(&id).unwrap();
                     rt.proxy.fit(&self.eval.pos, &mut rt.fit);
+                    if id.starts_with("hair/") && !self.state.style.hair.shape_zero() {
+                        let tris2: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
+                        normals(&rt.fit, &tris2, &mut rt.nrm);
+                        shape_hair(&mut rt.fit, &rt.nrm, &rt.proxy.topo.vmap, &self.state.style.hair);
+                    }
                     rt.yrange = rt.fit.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1]))); rt.yrange = (rt.yrange.0 + self.floor_off, rt.yrange.1 + self.floor_off);
                     let tris: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
                     normals(&rt.fit, &tris, &mut rt.nrm);
@@ -492,6 +520,8 @@ impl Session {
     }
     pub fn remove_marker(&mut self, id: &str) { self.pending.push(MeshUpdate::Remove(format!("marker:{id}"))); self.markers.retain(|m| m != id); }
     pub fn clear_markers(&mut self) { for m in self.markers.clone() { self.remove_marker(&m); } }
+
+    pub fn floor_offset(&self) -> f32 { self.floor_off }
 
     pub fn counts(&self) -> (usize, usize) {
         let v = self.body.topo.vmap.len() + self.proxies.values().map(|p| p.proxy.topo.vmap.len()).sum::<usize>();
