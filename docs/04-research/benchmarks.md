@@ -95,4 +95,4 @@ Zwei Kopien: ca. doppelte Zeiten (Compute 13–16 ms). **Lesehinweis:** Absolute
 | PERF-006/-007/-015/-017/-018/-019/-020 | Architekturregeln, noch nicht im Prototyp | **offen** |
 
 ## 8. Wiederholung auf Zielhardware
-`powershell -File bench/morph-spike/run-benchmark.ps1` (Rust nötig) → JSON in `bench/results/`. Bitte mit GPU-Modell, Treiber, Leistungsplan an Claude zurückgeben bzw. committen; die Auswertung ergänzt Abschnitt 5 um echte Werte.
+**Einfachster Weg:** `bench/win/Benchmark-starten.bat` doppelklicken (fertige Windows-exe, DX12- und Vulkan-Lauf, kein Rust nötig; exe im Container gebaut, **nicht unter Windows getestet**). Alternativ `powershell -File bench/morph-spike/run-benchmark.ps1` (Rust nötig). Ergebnis: JSON in `bench/results/`. Bitte mit GPU-Modell, Treiber, Leistungsplan an Claude zurückgeben bzw. committen; die Auswertung ergänzt Abschnitt 5 um echte Werte.

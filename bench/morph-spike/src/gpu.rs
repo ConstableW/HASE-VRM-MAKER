@@ -38,7 +38,7 @@ impl Rng { fn next(&mut self) -> u64 { self.0 ^= self.0 << 13; self.0 ^= self.0 
 pub struct Setup { pub copies: u32, pub frames: usize, pub w: u32, pub h: u32 }
 
 pub fn run(mesh: &Mesh, morphs: &Morphs, skin: &Skin, setup: Setup) -> Value {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })) {
         Ok(a) => a, Err(e) => return json!({"fehler": format!("kein Adapter: {e}")}),
     };

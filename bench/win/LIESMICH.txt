@@ -1,0 +1,15 @@
+Performance-Benchmark fuer Windows (ohne Rust-Installation)
+-----------------------------------------------------------
+1. Das Repository vollstaendig klonen/aktualisieren (git pull). Der Ordner bench\win muss im Repo bleiben.
+2. Im Ordner bench\win die Datei "Benchmark-starten.bat" doppelklicken. (Windows-SmartScreen: "Weitere Informationen" -> "Trotzdem ausfuehren";
+   die exe ist ungesigniert und aus dem Quellcode in bench\morph-spike gebaut.)
+3. Warten (2-6 Minuten). Ergebnisse stehen danach in bench\results\windows_<RECHNERNAME>_*.json (+ gpu_info, cpu_info).
+4. Dateien committen/pushen oder an Claude geben. Auswertung: docs/04-research/benchmarks.md.
+
+Das Programm schreibt nur in bench\results, oeffnet kein Fenster und benutzt kein Netzwerk. Es rendert Offscreen (1080p, MSAA 4x, Schatten) und misst CPU/GPU-Zeiten.
+
+Pruefsumme (SHA-256) von morph-spike.exe: 1d4b9d6860ee69e911aaaaacc9f432693894be61a88439a6c37953428d61a6f7
+Gebaut am 2026-10-24 im Linux-Container (Rust 1.97.0, cargo-zigbuild 0.24.0, Zig 0.17.0, Ziel x86_64-pc-windows-gnu, release).
+Reproduzieren: cd bench/morph-spike ; cargo zigbuild --release --target x86_64-pc-windows-gnu
+WICHTIG: Die exe wurde im Container NICHT unter Windows ausgefuehrt (kein Windows/Wine/GPU verfuegbar). Die Linux-Variante desselben Codes ist getestet.
+Bei Fehlern bitte die *.err-Dateien in bench\results mitschicken.

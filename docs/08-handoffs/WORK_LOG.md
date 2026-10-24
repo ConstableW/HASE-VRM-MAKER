@@ -38,4 +38,4 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - Ergebnisse `docs/04-research/benchmarks.md` + `bench/results/*.json`: CPU-Morph 64 Targets 0,14 ms, alle 610 1,8 ms, Einzelupdate 0,001 ms; Morph-Daten 13 MB (dicht 93 MB); UI virtualisiert 0,3 ms (nicht virtualisiert 2,4 ms); UI unter Hintergrundlast unverändert; **GPU-Zeiten im Container nicht aussagekräftig (SwiftShader)**.
 - `docs/02-architecture/performance-architecture.md` (10 Bereiche), ADR-0002 (PROPOSED, Stack-Vergleich, Abnahmebedingung Windows-Lauf), R-17, OQ-31.
 - Korrektur: Anzahl Morph-Targets ist **610**, nicht 609.
-
+- Windows-Benchmark als fertige exe (`bench/win/morph-spike.exe`, 10 MB, Cross-Build mit cargo-zigbuild/Zig) + Doppelklick-Starter (`Benchmark-starten.bat`, DX12 und Vulkan) für den Owner; Backend-Wahl via `WGPU_BACKEND`; **nicht unter Windows getestet**.
