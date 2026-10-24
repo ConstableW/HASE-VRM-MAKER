@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.species.cat-demi",
+  "type": "species",
+  "version": "1.0.0",
+  "name": {
+    "de": "Katzen-Demi"
+  },
+  "description": "Menschliches Gesicht, Katzenohren und -schwanz als Bodyparts mit Spring-Chains.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "tags": [
+    "humanoid",
+    "demi"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.bodypart.cat-ears",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.bodypart.cat-tail",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "stub"
+  },
+  "species": {
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "defaults": {
+      "mh:macro-age": 0.35
+    },
+    "limits": {},
+    "traits": {
+      "cat-eyes": {
+        "label": {
+          "de": "Katzenaugen"
+        },
+        "set": {
+          "mh:l-eye-height1": -0.3,
+          "mh:r-eye-height1": -0.3
+        }
+      }
+    },
+    "components": [
+      {
+        "asset": "org.hase.asset.bodypart.cat-ears",
+        "slot": "head.ears"
+      },
+      {
+        "asset": "org.hase.asset.bodypart.cat-tail",
+        "slot": "back.tail"
+      }
+    ],
+    "capabilities": [
+      "trait:spring-extras"
+    ],
+    "presets": []
+  }
+}

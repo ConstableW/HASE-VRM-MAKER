@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hase.example/schemas/package-1.0.json",
+  "title": "HASE Package Manifest (hase-package.json) v1.0 – PROPOSED",
+  "type": "object",
+  "required": ["schemaVersion", "id", "type", "version", "name", "license"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": "1.0" },
+    "id": { "$ref": "#/$defs/packageId" },
+    "type": { "enum": ["body", "species", "asset"] },
+    "version": { "$ref": "#/$defs/semver" },
+    "name": { "$ref": "#/$defs/i18n" },
+    "description": { "$ref": "#/$defs/i18n" },
+    "authors": { "type": "array", "items": { "type": "string" } },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "license": {
+      "type": "object",
+      "required": ["spdx"],
+      "properties": {
+        "spdx": { "type": "string", "minLength": 1, "description": "SPDX-Ausdruck, z. B. CC0-1.0 oder CC-BY-4.0 OR MIT" },
+        "attribution": { "type": ["string", "null"] },
+        "redistribution": { "type": "boolean", "default": true }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "license"],
+        "properties": {
+          "path": { "type": "string" },
+          "source": { "type": "string" },
+          "author": { "type": "string" },
+          "license": { "type": "string" },
+          "retrieved": { "type": "string" },
+          "generator": { "type": "string", "description": "Werkzeug/Modell bei KI- oder Skript-erzeugten Dateien" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "requires": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "optional": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "conflicts": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": { "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "size": { "type": "integer", "minimum": 0 } },
+        "additionalProperties": false
+      }
+    },
+    "dev": {
+      "type": "object",
+      "description": "Nur für Beispiele/Entwicklung im Repository; Validator verbietet das Feld in veröffentlichten Packages.",
+      "properties": { "fileRoot": { "type": "string" }, "status": { "enum": ["stub", "specimen", "complete"] } }
+    },
+    "extensions": { "type": "object", "propertyNames": { "pattern": "^x-[a-z0-9_.-]+$" } },
+    "body": { "$ref": "#/$defs/body" },
+    "species": { "$ref": "#/$defs/species" },
+    "asset": { "$ref": "#/$defs/asset" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "body" } } }, "then": { "required": ["body"], "not": { "anyOf": [{ "required": ["species"] }, { "required": ["asset"] }] } } },
+    { "if": { "properties": { "type": { "const": "species" } } }, "then": { "required": ["species"], "not": { "anyOf": [{ "required": ["body"] }, { "required": ["asset"] }] } } },
+    { "if": { "properties": { "type": { "const": "asset" } } }, "then": { "required": ["asset"], "not": { "anyOf": [{ "required": ["body"] }, { "required": ["species"] }] } } }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "packageId": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$", "description": "Reverse-DNS, z. B. org.hase.body.humanoid-mh08" },
+    "interfaceId": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$" },
+    "semver": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$" },
+    "range": { "type": "string", "pattern": "^(\\^|~|>=|<=|>|<|=)?\\s*\\d+(\\.\\d+){0,2}(\\s+(<|<=|>|>=)\\s*\\d+(\\.\\d+){0,2})*$", "description": "SemVer-Bereich: ^1.2, ~1.2.3, >=1.0 <2.0, 1.2.3" },
+    "i18n": { "oneOf": [{ "type": "string" }, { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" } }] },
+    "dependency": {
+      "type": "object",
+      "required": ["id", "range"],
+      "properties": { "id": { "$ref": "#/$defs/packageId" }, "range": { "$ref": "#/$defs/range" } },
+      "additionalProperties": false
+    },
+    "interfaceRef": {
+      "type": "object",
+      "required": ["id", "range"],
+      "properties": { "id": { "$ref": "#/$defs/interfaceId" }, "range": { "$ref": "#/$defs/range" } },
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+:[a-z0-9._-]+$", "description": "Namespace:Name, z. B. mh:head-age" },
+        "kind": { "enum": ["signed-pair", "unit", "macro"] },
+        "label": { "$ref": "#/$defs/i18n" },
+        "group": { "type": "string" },
+        "targets": { "type": "object", "properties": { "negative": { "type": "string" }, "positive": { "type": "string" }, "unit": { "type": "string" } }, "additionalProperties": false },
+        "range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "default": { "type": "number" },
+        "symmetry": { "type": "object", "properties": { "mirrorOf": { "type": "string" }, "side": { "enum": ["left", "right"] } }, "additionalProperties": false }
+      },
+      "additionalProperties": false
+    },
+    "body": {
+      "type": "object",
+      "required": ["provides", "topology", "skeleton", "slots"],
+      "properties": {
+        "provides": {
+          "type": "object",
+          "required": ["interface", "version"],
+          "properties": {
+            "interface": { "$ref": "#/$defs/interfaceId" },
+            "version": { "$ref": "#/$defs/semver" },
+            "capabilities": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        "topology": {
+          "type": "object",
+          "required": ["id", "family", "vertexCount"],
+          "properties": {
+            "id": { "type": "string" },
+            "family": { "type": "string", "description": "Topologie-Familie; gleiche Familie = Morphs/Weights/Fits direkt übertragbar" },
+            "vertexCount": { "type": "integer", "minimum": 1 },
+            "baseMesh": { "type": "string" },
+            "visibleGroups": { "type": "array", "items": { "type": "string" } },
+            "hiddenGroups": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        "skeleton": {
+          "type": "object",
+          "required": ["profile", "rig", "humanoidMap"],
+          "properties": {
+            "profile": { "type": "string" },
+            "rig": { "type": "string" },
+            "weights": { "type": "string" },
+            "jointFit": { "type": "object", "properties": { "strategy": { "enum": ["vertex-cubes", "landmarks", "delta-targets"] }, "source": { "type": "string" } }, "additionalProperties": false },
+            "humanoidMap": { "type": "object", "additionalProperties": { "type": "string" } },
+            "extraBones": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        "morphs": {
+          "type": "object",
+          "properties": {
+            "namespace": { "type": "string" },
+            "targetRoot": { "type": "string" },
+            "targetFormat": { "type": "string" },
+            "source": { "type": "string", "description": "Datei, aus der weitere Parameter generiert werden (z. B. target.json)" },
+            "parameters": { "type": "array", "items": { "$ref": "#/$defs/parameter" } }
+          },
+          "additionalProperties": false
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "enum": ["hair", "eyes", "eyebrows", "eyelashes", "clothing", "accessory", "bodypart", "material"] },
+              "exclusive": { "type": "boolean", "default": true },
+              "layer": { "type": "integer" },
+              "anchor": { "type": "string", "description": "Bone- oder Landmarken-Name für Anbauteile" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fit": { "type": "object", "properties": { "methods": { "type": "array", "items": { "enum": ["mhclo-barycentric", "weight-transfer", "rigid-attach", "none"] } }, "coverageCulling": { "type": "boolean" } }, "additionalProperties": false },
+        "export": { "type": "object", "properties": { "vrm1": { "type": "object", "properties": { "humanoid": { "enum": ["complete", "partial", "none"] }, "notes": { "type": "string" } }, "additionalProperties": false } } }
+      },
+      "additionalProperties": false
+    },
+    "species": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "targets": { "type": "object", "required": ["bodyInterface"], "properties": { "bodyInterface": { "$ref": "#/$defs/interfaceRef" } }, "additionalProperties": false },
+        "defaults": { "type": "object", "description": "Parameter-Startwerte (Parameter-ID → Wert)", "additionalProperties": { "type": "number" } },
+        "limits": { "type": "object", "description": "Parameter-ID → [min, max]; schränkt Body-Bereich ein", "additionalProperties": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 } },
+        "traits": { "type": "object", "description": "Wiederverwendbare Parameterbündel", "additionalProperties": { "type": "object", "properties": { "label": { "$ref": "#/$defs/i18n" }, "set": { "type": "object", "additionalProperties": { "type": "number" } } }, "additionalProperties": false } },
+        "components": {
+          "type": "array",
+          "description": "Automatisch angebrachte Asset-Packages (Ohren, Schwanz …)",
+          "items": { "type": "object", "required": ["asset"], "properties": { "asset": { "$ref": "#/$defs/packageId" }, "slot": { "type": "string" }, "optional": { "type": "boolean" } }, "additionalProperties": false }
+        },
+        "capabilities": { "type": "array", "items": { "type": "string" } },
+        "presets": { "type": "array", "items": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "label": { "$ref": "#/$defs/i18n" }, "parameters": { "type": "object", "additionalProperties": { "type": "number" } }, "assets": { "type": "array", "items": { "$ref": "#/$defs/packageId" } } }, "additionalProperties": false } }
+      },
+      "additionalProperties": false
+    },
+    "asset": {
+      "type": "object",
+      "required": ["kind", "targets"],
+      "properties": {
+        "kind": { "enum": ["hair", "eyes", "eyebrows", "eyelashes", "clothing", "accessory", "bodypart", "morphset", "material", "animation", "pose", "preset"] },
+        "targets": {
+          "type": "object",
+          "required": ["bodyInterface"],
+          "properties": { "bodyInterface": { "$ref": "#/$defs/interfaceRef" }, "species": { "type": "array", "items": { "$ref": "#/$defs/packageId" }, "description": "Optional: auf diese Spezies beschränkt" } },
+          "additionalProperties": false
+        },
+        "occupies": { "type": "array", "items": { "type": "string" }, "description": "Slot-IDs aus dem Body-Package" },
+        "layer": { "type": "integer" },
+        "requiresCapabilities": { "type": "array", "items": { "type": "string" } },
+        "fit": {
+          "type": "object",
+          "properties": { "method": { "enum": ["mhclo-barycentric", "weight-transfer", "rigid-attach", "none"] }, "definition": { "type": "string" }, "mesh": { "type": "string" }, "basemesh": { "type": "string" } },
+          "additionalProperties": false
+        },
+        "materials": {
+          "type": "array",
+          "items": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "shader": { "enum": ["mtoon1", "pbr"] }, "baseColor": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 4 }, "texture": { "type": "string" }, "alphaMode": { "enum": ["opaque", "mask", "blend"] }, "tintable": { "type": "boolean" } }, "additionalProperties": false }
+        },
+        "extraBones": { "type": "array", "items": { "type": "object", "required": ["name", "parent"], "properties": { "name": { "type": "string" }, "parent": { "type": "string" }, "springChain": { "type": "boolean" } }, "additionalProperties": false } },
+        "morphs": { "type": "object", "properties": { "namespace": { "type": "string" }, "parameters": { "type": "array", "items": { "$ref": "#/$defs/parameter" } } }, "additionalProperties": false },
+        "files": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

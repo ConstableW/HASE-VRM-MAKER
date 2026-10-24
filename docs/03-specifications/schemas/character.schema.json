@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hase.example/schemas/character-1.0.json",
+  "title": "HASE Character Project (character.hase.json) v1.0 – PROPOSED",
+  "type": "object",
+  "required": ["formatVersion", "id", "name", "body", "species", "parameters", "lock"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "formatVersion": { "const": "1.0" },
+    "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "name": { "type": "string" },
+    "created": { "type": "string" },
+    "modified": { "type": "string" },
+    "body": { "$ref": "#/$defs/ref" },
+    "species": { "$ref": "#/$defs/ref" },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "instance"],
+        "properties": {
+          "ref": { "$ref": "#/$defs/ref" },
+          "instance": { "type": "string" },
+          "slot": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true },
+          "params": { "type": "object", "description": "Instanz-Parameter, z. B. tint, scale", "additionalProperties": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "parameters": { "type": "object", "description": "Sparse: Parameter-ID → Wert. Fehlende Werte = Species-/Body-Default.", "additionalProperties": { "type": "number" } },
+    "symmetry": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "overrides": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
+    "deltaLayers": {
+      "type": "array",
+      "description": "Nicht-parametrische Expert-Edits relativ zur evaluierten Basis (R-05)",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "basis", "file"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["sculpt", "weights", "uv", "morph"] },
+          "basis": { "type": "string", "description": "Digest des parametrischen Zustands, auf den das Delta aufbaut" },
+          "file": { "type": "string" },
+          "invalidation": { "enum": ["keep", "reproject", "warn"], "default": "warn" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "materialOverrides": { "type": "object", "additionalProperties": { "type": "object" } },
+    "expressions": { "type": "object", "additionalProperties": { "type": "object" } },
+    "vrmMeta": { "type": "object", "description": "VRMC_vrm.meta-Eingaben; Lizenzfelder werden gegen Package-Lizenzen geprüft", "additionalProperties": true },
+    "lock": {
+      "type": "array",
+      "description": "Exakt aufgelöste Packages (Reproduzierbarkeit, REQ-EXP-007)",
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "digest"],
+        "properties": { "id": { "type": "string" }, "version": { "type": "string" }, "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "required": ["id", "range"],
+      "properties": { "id": { "type": "string" }, "range": { "type": "string" } },
+      "additionalProperties": false
+    }
+  }
+}

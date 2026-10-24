@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.clothing.tshirt-basic",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "T-Shirt (basic)"
+  },
+  "description": "Beispiel-Kleidung, an die Basis gebunden.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "specimen",
+    "fileRoot": "content/testcandidate/downloads/clothes/toigo_basic_tucked_t-shirt"
+  },
+  "asset": {
+    "kind": "clothing",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "occupies": [
+      "clothing.top"
+    ],
+    "layer": 10,
+    "fit": {
+      "method": "mhclo-barycentric",
+      "definition": "toigo_basic_tucked_t-shirt.mhclo",
+      "mesh": "t_shirt_basic_tucked.obj",
+      "basemesh": "hm08"
+    },
+    "materials": [
+      {
+        "id": "shirt",
+        "shader": "mtoon1",
+        "texture": "T-shirt_basic.png",
+        "alphaMode": "opaque",
+        "tintable": true,
+        "baseColor": [
+          0.95,
+          0.6,
+          0.68
+        ]
+      }
+    ]
+  },
+  "provenance": [
+    {
+      "path": "toigo_basic_tucked_t-shirt.mhclo",
+      "source": "https://static.makehumancommunity.org/assets/assetpacks/shirts01.html",
+      "author": "MargaretToigo",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    }
+  ]
+}

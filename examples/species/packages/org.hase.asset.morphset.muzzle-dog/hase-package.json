@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.morphset.muzzle-dog",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "Hundeschnauze (Morphset)"
+  },
+  "description": "Zusätzliche Morph-Targets auf der Basistopologie (Stub: Targets noch zu erstellen).",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "stub"
+  },
+  "asset": {
+    "kind": "morphset",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "occupies": [
+      "head.muzzle"
+    ],
+    "morphs": {
+      "namespace": "muzzle",
+      "parameters": [
+        {
+          "id": "muzzle:length",
+          "kind": "unit",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0,
+          "targets": {
+            "unit": "muzzle-length"
+          }
+        },
+        {
+          "id": "muzzle:width",
+          "kind": "unit",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0,
+          "targets": {
+            "unit": "muzzle-width"
+          }
+        }
+      ]
+    },
+    "files": {
+      "targets": "data/targets/"
+    }
+  }
+}

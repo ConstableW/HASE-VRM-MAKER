@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.bodypart.pointed-ears",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "Spitze Ohren"
+  },
+  "description": "Ohren-Aufsatz (Stub: Mesh noch zu erstellen).",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "stub"
+  },
+  "asset": {
+    "kind": "bodypart",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      },
+      "species": [
+        "org.hase.species.elf"
+      ]
+    },
+    "occupies": [
+      "head.ears"
+    ],
+    "fit": {
+      "method": "rigid-attach",
+      "mesh": "data/pointed-ears.glb"
+    },
+    "morphs": {
+      "namespace": "ears",
+      "parameters": [
+        {
+          "id": "ears:length",
+          "kind": "unit",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0.5,
+          "targets": {
+            "unit": "ears-length"
+          }
+        }
+      ]
+    }
+  }
+}

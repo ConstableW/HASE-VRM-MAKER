@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.clothing.wool-pants",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "Wollhose"
+  },
+  "description": "Beispiel-Kleidung.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "specimen",
+    "fileRoot": "content/testcandidate/downloads/clothes/toigo_wool_pants"
+  },
+  "asset": {
+    "kind": "clothing",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "occupies": [
+      "clothing.bottom"
+    ],
+    "layer": 10,
+    "fit": {
+      "method": "mhclo-barycentric",
+      "definition": "toigo_wool_pants.mhclo",
+      "mesh": "pants_wool.obj",
+      "basemesh": "hm08"
+    },
+    "materials": [
+      {
+        "id": "pants",
+        "shader": "mtoon1",
+        "texture": "Pants_wool.png",
+        "alphaMode": "opaque",
+        "tintable": true,
+        "baseColor": [
+          0.3,
+          0.4,
+          0.65
+        ]
+      }
+    ]
+  },
+  "provenance": [
+    {
+      "path": "toigo_wool_pants.mhclo",
+      "source": "https://static.makehumancommunity.org/assets/assetpacks/pants01.html",
+      "author": "MargaretToigo",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    }
+  ]
+}

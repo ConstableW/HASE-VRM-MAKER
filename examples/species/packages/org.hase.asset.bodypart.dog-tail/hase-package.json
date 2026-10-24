@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.bodypart.dog-tail",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "Hundeschwanz"
+  },
+  "description": "Stub.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "stub"
+  },
+  "asset": {
+    "kind": "bodypart",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "occupies": [
+      "back.tail"
+    ],
+    "fit": {
+      "method": "rigid-attach",
+      "mesh": "data/dog-tail.glb"
+    },
+    "extraBones": [
+      {
+        "name": "tail_01",
+        "parent": "pelvis",
+        "springChain": true
+      },
+      {
+        "name": "tail_02",
+        "parent": "tail_01",
+        "springChain": true
+      },
+      {
+        "name": "tail_03",
+        "parent": "tail_02",
+        "springChain": true
+      },
+      {
+        "name": "tail_04",
+        "parent": "tail_03",
+        "springChain": true
+      }
+    ],
+    "requiresCapabilities": [
+      "spring-extras"
+    ]
+  }
+}

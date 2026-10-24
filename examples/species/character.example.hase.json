@@ -1,0 +1,99 @@
+{
+  "$schema": "../../docs/03-specifications/schemas/character.schema.json",
+  "formatVersion": "1.0",
+  "id": "3f1c2a54-7b0e-4f3a-9c1d-5d6a2b8e9f10",
+  "name": "Beispiel: Junge Frau (Testcandidate B)",
+  "created": "2026-10-24",
+  "modified": "2026-10-24",
+  "body": {
+    "id": "org.hase.body.humanoid-mh08",
+    "range": "^1.0"
+  },
+  "species": {
+    "id": "org.hase.species.human",
+    "range": "^1.0"
+  },
+  "assets": [
+    {
+      "ref": {
+        "id": "org.hase.asset.hair.short02",
+        "range": "^1.0"
+      },
+      "instance": "hair-1",
+      "slot": "hair",
+      "params": {
+        "tint": [
+          0.5,
+          0.3,
+          0.18
+        ]
+      }
+    },
+    {
+      "ref": {
+        "id": "org.hase.asset.clothing.tshirt-basic",
+        "range": "^1.0"
+      },
+      "instance": "top-1",
+      "slot": "clothing.top",
+      "params": {
+        "tint": [
+          0.95,
+          0.6,
+          0.68
+        ]
+      }
+    },
+    {
+      "ref": {
+        "id": "org.hase.asset.clothing.wool-pants",
+        "range": "^1.0"
+      },
+      "instance": "bottom-1",
+      "slot": "clothing.bottom",
+      "params": {
+        "tint": [
+          0.3,
+          0.4,
+          0.65
+        ]
+      }
+    }
+  ],
+  "parameters": {
+    "mh:macro-gender": 0.0,
+    "mh:macro-age": 0.3,
+    "mh:macro-race-caucasian": 1.0
+  },
+  "symmetry": {
+    "enabled": true
+  },
+  "deltaLayers": [],
+  "lock": [
+    {
+      "id": "org.hase.asset.clothing.tshirt-basic",
+      "version": "1.0.0",
+      "digest": "sha256:a55aae3af76f71f9206ca35cd5f27b309acc3d348af981d39b1dc21f8c7c3d12"
+    },
+    {
+      "id": "org.hase.asset.clothing.wool-pants",
+      "version": "1.0.0",
+      "digest": "sha256:0f5401278b63be6212943d367f84d44088740cc2ec3692fc6e1083328ad608f8"
+    },
+    {
+      "id": "org.hase.asset.hair.short02",
+      "version": "1.0.0",
+      "digest": "sha256:622addcb9a911f989447ef12c0f1d8fe24b29855ccfdbd44488c379cd204f455"
+    },
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "version": "1.0.0",
+      "digest": "sha256:680b420ee6f3220ec4e47e75b44e07a7498187d35126eec93705906dddaf483f"
+    },
+    {
+      "id": "org.hase.species.human",
+      "version": "1.0.0",
+      "digest": "sha256:cd83677e5a1814035ab6c64c07ef34ecc5c2f8e82c2a7d801a3f2ade1ab79fe3"
+    }
+  ]
+}

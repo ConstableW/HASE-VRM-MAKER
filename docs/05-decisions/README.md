@@ -7,8 +7,8 @@
 | ADR-0001 | Dokumentationsstruktur und Statuskonventionen | PROPOSED (siehe Datei) |
 | ADR-0002 | Technologie-Stack (Sprache, Renderer, UI, Plugin-Sandbox) | reserviert, Recherche vorhanden, Vorlage an Owner folgt |
 | ADR-0003 | Interner Datenaustausch / Character-Intermediate und Export-Architektur | reserviert |
-| ADR-0004 | Geometrie- und Morph-Modell, Topologie-Familien | reserviert |
-| ADR-0005 | Package-System (Manifest, Versionierung, Auflösung, Sicherheit) | reserviert |
+| ADR-0004 | Body Archetype, Species und Topologie-Familien | PROPOSED |
+| ADR-0005 | Package-System (Manifest, Versionierung, Auflösung, Sicherheit) | PROPOSED |
 | ADR-0006 | Fitting, Rigging, Retargeting | reserviert |
 | ADR-0007 | Asset-Pipeline und Provenienz | reserviert |
 | ADR-0008 | Blender-Integration | reserviert |

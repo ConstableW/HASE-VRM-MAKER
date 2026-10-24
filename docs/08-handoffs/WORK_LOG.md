@@ -24,3 +24,10 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 - **Owner-Test (2026-10-23):** `avatar_a_quaternius_female.vrm` in HASEC geöffnet; Laufen, Tanzen und Springen mit den CC0-VRMA funktionieren (erster Nachweis in einem realen VRM-Player; RESEARCHED durch Owner-Aussage, ohne Screenshot).
 - Avatar B v2: MToon-1.0-Materialien (Tönung für Shirt/Hose/Haare), Smooth Shading (Datei 39→19 MB), 12 VRM-Expressions (blink/blinkLeft/blinkRight, aa/ih/ou/ee/oh, happy/sad/relaxed/surprised) aus MakeHuman-Targets, auf Körper, Brauen und Wimpern angewendet (`previews/avatar_b_expressions.png`). Owner-Test in HASEC: Avatar B lädt, sitzende Animation korrekt. Bekannte Grenzen: Mund öffnet kaum (Basismesh ohne Mundraum), Blender-Vorschau zeigt MToon-Alpha nicht (Augen-Hornhaut ist in der Textur transparent, in Viewern korrekt).
 - Avatar B v3: Owner-Screenshot (Tanz in HASEC) zeigte Haut-Durchschimmern an Schultern/Achseln. Fix: von Shirt/Hose verdeckte Körperflächen werden entfernt (2.338 Flächen, MakeHuman-Verfahren); Posen-Rendering ohne Durchschimmern (`previews/avatar_b_poses_dance_sit.png`). Owner-Urteil zur Optik: „PC-Spiel aus den 2000ern, so schlimm isses ned“ → akzeptabel als Platzhalter bis RC.
+
+## 2026-10-24 – Species-/Package-System (Erstfassung)
+- Architektur: `docs/02-architecture/species-system.md` (Ebenen, Topologie-Stufen T0/T1/T2, Entscheidungsregel Archetype), `package-system.md` (Typen, Identität/Digest, Auflösung, Sicherheit, SDK/Builder-Konzept).
+- Spezifikationen: `docs/03-specifications/` – `package-manifest.md`, `species-schema.md`, `asset-schema.md`, `compatibility-rules.md` (C1…C9), `project-format.md`; normative JSON-Schemas `schemas/package.schema.json`, `schemas/character.schema.json`.
+- Beispiele: 14 Packages (Body `humanoid-mh08` aus Testcandidate-Daten, Spezies Mensch/Elf/Katzen-Demi/Hunde-Demi, Assets Haar/Shirt/Hose + Stubs für Ohren/Schwanz/Schnauze) und `character.example.hase.json` mit Lock.
+- Prototyp-Validator `tools/validate/validate_packages.py`: Schema + Kompatibilitätsregeln + Lock-Digests, 8 negative Selbsttests bestanden.
+- ADR-0004, ADR-0005 (PROPOSED).

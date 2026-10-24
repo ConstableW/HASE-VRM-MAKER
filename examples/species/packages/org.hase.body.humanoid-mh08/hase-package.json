@@ -1,0 +1,377 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.body.humanoid-mh08",
+  "type": "body",
+  "version": "1.0.0",
+  "name": {
+    "de": "Humanoider Körper (MakeHuman-Topologie hm08)",
+    "en": "Humanoid body (MakeHuman hm08 topology)"
+  },
+  "description": "Referenz-Body-Package aus den MPFB2-CC0-Daten des Testcandidates: 19.158-Vertex-Quad-Basismesh, 53-Bone-Rig (UE-Mannequin-Namen), Gewichte, 609 Morph-Targets.",
+  "authors": [
+    "MakeHuman community (Daten)",
+    "HASE VRM MAKER (Zusammenstellung)"
+  ],
+  "tags": [
+    "humanoid",
+    "reference"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "provenance": [
+    {
+      "path": "data/base.obj",
+      "source": "https://github.com/makehumancommunity/mpfb2/blob/master/src/mpfb/data/3dobjs/base.obj",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    },
+    {
+      "path": "data/targets/",
+      "source": "https://github.com/makehumancommunity/mpfb2/tree/master/src/mpfb/data/targets",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    },
+    {
+      "path": "data/rigs/",
+      "source": "https://github.com/makehumancommunity/mpfb2/tree/master/src/mpfb/data/rigs/standard",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "fileRoot": "content/testcandidate/mpfb2-cc0",
+    "status": "specimen"
+  },
+  "body": {
+    "provides": {
+      "interface": "org.hase.iface.humanoid-mh08",
+      "version": "1.0.0",
+      "capabilities": [
+        "topology:mh08",
+        "skeleton:ue-mannequin-53",
+        "humanoid:vrm1-complete",
+        "morph:mh",
+        "fit:mhclo",
+        "spring-extras"
+      ]
+    },
+    "topology": {
+      "id": "mh08-19158",
+      "family": "mh08",
+      "vertexCount": 19158,
+      "baseMesh": "data/base.obj",
+      "visibleGroups": [
+        "body"
+      ],
+      "hiddenGroups": [
+        "helper-tights",
+        "helper-skirt",
+        "helper-hair",
+        "helper-genital",
+        "helper-l-eye",
+        "helper-r-eye"
+      ]
+    },
+    "skeleton": {
+      "profile": "hase.skel.ue-mannequin-53",
+      "rig": "data/rigs/rig.game_engine.json",
+      "weights": "data/rigs/weights.game_engine.json",
+      "jointFit": {
+        "strategy": "vertex-cubes",
+        "source": "base.obj joint-* groups"
+      },
+      "humanoidMap": {
+        "hips": "pelvis",
+        "spine": "spine_01",
+        "chest": "spine_02",
+        "upperChest": "spine_03",
+        "neck": "neck_01",
+        "head": "head",
+        "leftShoulder": "clavicle_l",
+        "leftUpperArm": "upperarm_l",
+        "leftLowerArm": "lowerarm_l",
+        "leftHand": "hand_l",
+        "rightShoulder": "clavicle_r",
+        "rightUpperArm": "upperarm_r",
+        "rightLowerArm": "lowerarm_r",
+        "rightHand": "hand_r",
+        "leftUpperLeg": "thigh_l",
+        "leftLowerLeg": "calf_l",
+        "leftFoot": "foot_l",
+        "leftToes": "ball_l",
+        "rightUpperLeg": "thigh_r",
+        "rightLowerLeg": "calf_r",
+        "rightFoot": "foot_r",
+        "rightToes": "ball_r",
+        "leftThumbMetacarpal": "thumb_01_l",
+        "leftThumbProximal": "thumb_02_l",
+        "leftThumbDistal": "thumb_03_l",
+        "leftIndexProximal": "index_01_l",
+        "leftIndexIntermediate": "index_02_l",
+        "leftIndexDistal": "index_03_l",
+        "leftMiddleProximal": "middle_01_l",
+        "leftMiddleIntermediate": "middle_02_l",
+        "leftMiddleDistal": "middle_03_l",
+        "leftRingProximal": "ring_01_l",
+        "leftRingIntermediate": "ring_02_l",
+        "leftRingDistal": "ring_03_l",
+        "leftLittleProximal": "pinky_01_l",
+        "leftLittleIntermediate": "pinky_02_l",
+        "leftLittleDistal": "pinky_03_l",
+        "rightThumbMetacarpal": "thumb_01_r",
+        "rightThumbProximal": "thumb_02_r",
+        "rightThumbDistal": "thumb_03_r",
+        "rightIndexProximal": "index_01_r",
+        "rightIndexIntermediate": "index_02_r",
+        "rightIndexDistal": "index_03_r",
+        "rightMiddleProximal": "middle_01_r",
+        "rightMiddleIntermediate": "middle_02_r",
+        "rightMiddleDistal": "middle_03_r",
+        "rightRingProximal": "ring_01_r",
+        "rightRingIntermediate": "ring_02_r",
+        "rightRingDistal": "ring_03_r",
+        "rightLittleProximal": "pinky_01_r",
+        "rightLittleIntermediate": "pinky_02_r",
+        "rightLittleDistal": "pinky_03_r"
+      },
+      "extraBones": []
+    },
+    "morphs": {
+      "namespace": "mh",
+      "targetRoot": "data/targets",
+      "targetFormat": "mpfb-target-gz",
+      "source": "data/targets/target.json",
+      "parameters": [
+        {
+          "id": "mh:macro-gender",
+          "kind": "macro",
+          "label": {
+            "de": "Geschlecht"
+          },
+          "group": "macro",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0.5
+        },
+        {
+          "id": "mh:macro-age",
+          "kind": "macro",
+          "label": {
+            "de": "Alter"
+          },
+          "group": "macro",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0.5
+        },
+        {
+          "id": "mh:macro-race-caucasian",
+          "kind": "macro",
+          "label": {
+            "de": "Typ A"
+          },
+          "group": "macro",
+          "range": [
+            0,
+            1
+          ],
+          "default": 0.33
+        },
+        {
+          "id": "mh:head-age",
+          "kind": "signed-pair",
+          "label": "Kopf: Alter",
+          "group": "head",
+          "targets": {
+            "negative": "head/head-age-decr",
+            "positive": "head/head-age-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0
+        },
+        {
+          "id": "mh:head-scale-vert",
+          "kind": "signed-pair",
+          "label": "Kopf: Höhe",
+          "group": "head",
+          "targets": {
+            "negative": "head/head-scale-vert-decr",
+            "positive": "head/head-scale-vert-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0
+        },
+        {
+          "id": "mh:jaw-drop",
+          "kind": "signed-pair",
+          "label": "Kiefer",
+          "group": "mouth",
+          "targets": {
+            "negative": "chin/chin-jaw-drop-decr",
+            "positive": "chin/chin-jaw-drop-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0
+        },
+        {
+          "id": "mh:l-eye-height1",
+          "kind": "signed-pair",
+          "label": "Auge links: Höhe 1",
+          "group": "eyes",
+          "targets": {
+            "negative": "eyes/l-eye-height1-decr",
+            "positive": "eyes/l-eye-height1-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0,
+          "symmetry": {
+            "mirrorOf": "mh:r-eye-height1",
+            "side": "left"
+          }
+        },
+        {
+          "id": "mh:r-eye-height1",
+          "kind": "signed-pair",
+          "label": "Auge rechts: Höhe 1",
+          "group": "eyes",
+          "targets": {
+            "negative": "eyes/r-eye-height1-decr",
+            "positive": "eyes/r-eye-height1-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0,
+          "symmetry": {
+            "mirrorOf": "mh:l-eye-height1",
+            "side": "right"
+          }
+        },
+        {
+          "id": "mh:mouth-angles",
+          "kind": "signed-pair",
+          "label": "Mundwinkel",
+          "group": "mouth",
+          "targets": {
+            "negative": "mouth/mouth-angles-down",
+            "positive": "mouth/mouth-angles-up"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0
+        },
+        {
+          "id": "mh:mouth-scale-horiz",
+          "kind": "signed-pair",
+          "label": "Mund: Breite",
+          "group": "mouth",
+          "targets": {
+            "negative": "mouth/mouth-scale-horiz-decr",
+            "positive": "mouth/mouth-scale-horiz-incr"
+          },
+          "range": [
+            -1,
+            1
+          ],
+          "default": 0
+        }
+      ]
+    },
+    "slots": [
+      {
+        "id": "hair",
+        "kind": "hair",
+        "anchor": "head"
+      },
+      {
+        "id": "eyes",
+        "kind": "eyes",
+        "anchor": "head"
+      },
+      {
+        "id": "eyebrows",
+        "kind": "eyebrows",
+        "anchor": "head"
+      },
+      {
+        "id": "eyelashes",
+        "kind": "eyelashes",
+        "anchor": "head"
+      },
+      {
+        "id": "clothing.top",
+        "kind": "clothing",
+        "layer": 10
+      },
+      {
+        "id": "clothing.bottom",
+        "kind": "clothing",
+        "layer": 10
+      },
+      {
+        "id": "clothing.feet",
+        "kind": "clothing",
+        "layer": 10
+      },
+      {
+        "id": "head.ears",
+        "kind": "bodypart",
+        "anchor": "head"
+      },
+      {
+        "id": "back.tail",
+        "kind": "bodypart",
+        "anchor": "pelvis"
+      },
+      {
+        "id": "head.muzzle",
+        "kind": "bodypart",
+        "anchor": "head"
+      },
+      {
+        "id": "accessory.head",
+        "kind": "accessory",
+        "exclusive": false,
+        "anchor": "head"
+      }
+    ],
+    "fit": {
+      "methods": [
+        "mhclo-barycentric",
+        "rigid-attach",
+        "weight-transfer"
+      ],
+      "coverageCulling": true
+    },
+    "export": {
+      "vrm1": {
+        "humanoid": "complete",
+        "notes": "52 Humanoid-Bones gemappt; Extra-Bones (Ohren/Schwanz) als Spring-Chains."
+      }
+    }
+  }
+}

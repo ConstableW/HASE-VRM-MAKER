@@ -1,0 +1,74 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.species.elf",
+  "type": "species",
+  "version": "1.0.0",
+  "name": {
+    "de": "Elf"
+  },
+  "description": "Mensch-Proportionen, spitze Ohren (Bodypart), schlankerer Körperbau.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "tags": [
+    "humanoid",
+    "fantasy"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.bodypart.pointed-ears",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "specimen"
+  },
+  "species": {
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "defaults": {
+      "mh:macro-age": 0.35
+    },
+    "limits": {
+      "mh:head-scale-vert": [
+        -0.2,
+        1.0
+      ]
+    },
+    "traits": {
+      "slender": {
+        "label": {
+          "de": "Schlank"
+        },
+        "set": {
+          "mh:head-scale-vert": 0.15
+        }
+      }
+    },
+    "components": [
+      {
+        "asset": "org.hase.asset.bodypart.pointed-ears",
+        "slot": "head.ears"
+      }
+    ],
+    "capabilities": [
+      "trait:pointed-ears"
+    ],
+    "presets": []
+  }
+}

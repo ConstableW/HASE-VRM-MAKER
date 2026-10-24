@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.species.human",
+  "type": "species",
+  "version": "1.0.0",
+  "name": {
+    "de": "Mensch"
+  },
+  "description": "Standardspezies auf der humanoiden Basis.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "tags": [
+    "humanoid"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "specimen"
+  },
+  "species": {
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "defaults": {
+      "mh:macro-gender": 0.0,
+      "mh:macro-age": 0.5
+    },
+    "limits": {},
+    "traits": {},
+    "components": [],
+    "capabilities": [],
+    "presets": [
+      {
+        "id": "young-female",
+        "label": {
+          "de": "Junge Frau"
+        },
+        "parameters": {
+          "mh:macro-gender": 0.0,
+          "mh:macro-age": 0.3
+        }
+      },
+      {
+        "id": "adult-male",
+        "label": {
+          "de": "Erwachsener Mann"
+        },
+        "parameters": {
+          "mh:macro-gender": 1.0,
+          "mh:macro-age": 0.55
+        }
+      }
+    ]
+  }
+}

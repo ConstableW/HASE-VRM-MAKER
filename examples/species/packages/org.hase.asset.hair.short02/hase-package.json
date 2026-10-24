@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.asset.hair.short02",
+  "type": "asset",
+  "version": "1.0.0",
+  "name": {
+    "de": "Kurzhaar 02"
+  },
+  "description": "MakeHuman-System-Asset.",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "specimen",
+    "fileRoot": "content/testcandidate/downloads/hair/short02"
+  },
+  "asset": {
+    "kind": "hair",
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "occupies": [
+      "hair"
+    ],
+    "fit": {
+      "method": "mhclo-barycentric",
+      "definition": "short02.mhclo",
+      "mesh": "short02.obj",
+      "basemesh": "hm08"
+    },
+    "materials": [
+      {
+        "id": "hair",
+        "shader": "mtoon1",
+        "texture": "short02_diffuse.png",
+        "alphaMode": "mask",
+        "tintable": true,
+        "baseColor": [
+          0.5,
+          0.3,
+          0.18
+        ]
+      }
+    ]
+  },
+  "provenance": [
+    {
+      "path": "short02.mhclo",
+      "source": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+      "author": "makehuman_system",
+      "license": "CC0-1.0",
+      "retrieved": "2026-10-23"
+    }
+  ]
+}

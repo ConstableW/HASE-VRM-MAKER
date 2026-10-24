@@ -30,3 +30,4 @@
 | OQ-25 | Zielwerte für Polygon-/Textur-/Bone-Budgets je Zielprofil (VRChat, VTuber-Apps, Spiele-Engines) | Research + OQ-06 | offen |
 | OQ-26 | **GESCHLOSSEN 2026-10-23 (OD-022).** Rechtsstatus KI-Assets: Owner akzeptiert „State of the Art“; Rechte an von Claude generierten Assets liegen laut Owner-Position beim Projekt/Owner. Rechtliche Unsicherheit bleibt dokumentiert (ADR-0010); Provenienzpflicht bleibt | – | erledigt |
 | OQ-27 | **ENTSCHIEDEN 2026-10-23 (OD-023).** Basis = MakeHuman/MPFB2-CC0-Daten (Körper, Targets, Rig, Proxys) plus Quaternius-CC0; Aufbereitung per bpy-Skripte (`tools/assets/`). Austausch bis Release Candidate zulässig | – | erledigt |
+| OQ-30 | Trait-Import über Spezies-Grenzen (`uses`), Konfliktauflösung zweier Komponenten im selben Slot, Migrations-Map-Format | Spezifikation K3 (Folge), SP-06 | offen |

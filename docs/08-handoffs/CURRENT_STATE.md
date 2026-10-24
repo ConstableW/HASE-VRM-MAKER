@@ -1,12 +1,12 @@
 # CURRENT_STATE
 
-*Zuletzt aktualisiert: 2026-10-23 (Arbeitslauf 1, spät)*
+*Zuletzt aktualisiert: 2026-10-24*
 
 ## Projektphase
 Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testcandidate-Aufbereitung (OD-023, OD-024). Produktcode: keiner. Alle Arbeit direkt auf `main` (kein Feature-Branch).
 
 ## Verifizierter Istzustand (alles auf `main`)
-- **Konzeptdokumente:** `docs/` vollständig gerüstet; ausgearbeitet: Anforderungen (146 IDs), Owner-Entscheidungen OD-001…024, Zerlegung, Risiken, offene Fragen, Roadmap, Architekturüberblick, drei Rechercheberichte + Asset-Recherche, ADR-0001/-0009/-0010.
+- **Konzeptdokumente:** `docs/` vollständig gerüstet; ausgearbeitet: Anforderungen (146 IDs), Owner-Entscheidungen OD-001…024, Zerlegung, Risiken, offene Fragen, Roadmap, Architekturüberblick, drei Rechercheberichte + Asset-Recherche, ADR-0001/-0004/-0005/-0009/-0010; **Species-/Package-System-Erstfassung** (Architektur, Schemas, Beispiele, Validator, 2026-10-24).
 - **Testcandidate (`content/testcandidate/`):**
   - `avatar_a_quaternius_female.vrm` (Quaternius-Basischarakter + Haare, VRM 1.0)
   - `avatar_b_makehuman.vrm` (MakeHuman-CC0-Pipeline: Macro-Morph, Rig aus Gelenk-Würfeln, Gewichte, 6 Proxys; 73k Tris)

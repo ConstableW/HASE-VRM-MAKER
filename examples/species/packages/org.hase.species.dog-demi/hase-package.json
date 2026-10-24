@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "schemaVersion": "1.0",
+  "id": "org.hase.species.dog-demi",
+  "type": "species",
+  "version": "1.0.0",
+  "name": {
+    "de": "Hunde-Demi"
+  },
+  "description": "Wie Katzen-Demi, zusätzlich Schnauze als Morphset (benötigt Muzzle-Morphs, Stub).",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "tags": [
+    "humanoid",
+    "demi"
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "attribution": null,
+    "redistribution": true
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.bodypart.dog-ears",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.bodypart.dog-tail",
+      "range": "^1.0"
+    },
+    {
+      "id": "org.hase.asset.morphset.muzzle-dog",
+      "range": "^1.0"
+    }
+  ],
+  "files": [],
+  "dev": {
+    "status": "stub"
+  },
+  "species": {
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "defaults": {
+      "mh:macro-age": 0.4
+    },
+    "limits": {},
+    "traits": {},
+    "components": [
+      {
+        "asset": "org.hase.asset.bodypart.dog-ears",
+        "slot": "head.ears"
+      },
+      {
+        "asset": "org.hase.asset.bodypart.dog-tail",
+        "slot": "back.tail"
+      },
+      {
+        "asset": "org.hase.asset.morphset.muzzle-dog",
+        "optional": true
+      }
+    ],
+    "capabilities": [
+      "trait:spring-extras",
+      "trait:muzzle"
+    ],
+    "presets": []
+  }
+}
