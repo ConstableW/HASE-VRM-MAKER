@@ -62,6 +62,7 @@ pub struct App {
     pub(crate) eye_tab: usize,
     pub(crate) eye_side: usize,
     pub(crate) hair_tab: usize,
+    pub(crate) lib: crate::library_ui::LibState,
     pub(crate) light: usize,
     pub(crate) grid: bool,
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
@@ -91,7 +92,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, light: 0, grid: true, pending_load: None, pending_body: None }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), light: 0, grid: true, pending_load: None, pending_body: None }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -355,14 +356,16 @@ impl eframe::App for App {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Laden").clicked() { self.load_dialog(); }
                     if ui.button("Speichern").clicked() { self.save_dialog(); }
-                    ui.add_enabled(false, egui::Button::new("Bibliothek")).on_disabled_hover_text("Charakterbibliothek: noch nicht implementiert");
+                    if ui.button("Bibliothek").clicked() { self.lib.open = true; }
                     ui.separator();
                     self.ws_button(ui, "Körperbasen & Spezies", Workspace::Studio, "Authoring-Werkzeug: Körperbasen und Spezies erstellen, importieren, prüfen, speichern");
                     ui.weak("Werkzeuge");
                 });
             });
         });
-        if self.ws == Workspace::Charakter && !self.expert { egui::Panel::bottom("presetbar").min_size(64.0).show(ui, |ui| self.preset_bar(ui)); }
+        self.lib_pending();
+        self.lib_window(&ctx);
+        if self.ws == Workspace::Charakter && !self.expert { egui::Panel::bottom("presetbar").min_size(130.0).show(ui, |ui| self.preset_bar(ui)); }
         egui::Panel::left("regions").default_size(190.0).min_size(150.0).show(ui, |ui| self.region_list(ui));
         egui::Panel::right("detail").default_size(400.0).min_size(300.0).show(ui, |ui| self.detail_panel(ui, &ctx));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport(ui));
@@ -464,22 +467,6 @@ impl App {
             });
             ui.checkbox(&mut s.symmetric, "Symmetrie (links = rechts)");
         }
-    }
-
-    /// Untere Leiste: Spezies-Presets (Kacheln ohne Vorschaubild, bis die Thumbnail-Erzeugung existiert).
-    fn preset_bar(&mut self, ui: &mut egui::Ui) {
-        let Some(s) = self.session.as_mut() else { return };
-        let Some(spi) = s.species_opt() else { return };
-        let sp = s.packages.species[spi].clone();
-        ui.horizontal(|ui| {
-            ui.strong("Presets");
-            ui.weak("(Vorschaubilder: noch nicht implementiert)");
-        });
-        ui.horizontal_wrapped(|ui| {
-            for p in &sp.presets { if ui.add(egui::Button::new(&p.label).min_size(egui::vec2(110.0, 36.0))).clicked() { s.apply_map(&p.params); } }
-            for t in &sp.traits { if ui.add(egui::Button::new(format!("+ {}", t.label)).min_size(egui::vec2(110.0, 36.0))).on_hover_text("Merkmal anwenden").clicked() { s.apply_map(&t.set); } }
-            if sp.presets.is_empty() && sp.traits.is_empty() { ui.weak("Diese Spezies hat noch keine Presets."); }
-        });
     }
 
     fn species_panel(&mut self, ui: &mut egui::Ui) {

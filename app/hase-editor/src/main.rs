@@ -3,6 +3,8 @@ mod camera;
 mod offscreen;
 mod regions;
 mod studios;
+mod library;
+mod library_ui;
 mod render;
 mod session;
 mod studio;

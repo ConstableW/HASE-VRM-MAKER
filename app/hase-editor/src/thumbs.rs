@@ -10,9 +10,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-const RENDER_VERSION: &str = "t5";
+const RENDER_VERSION: &str = "t6";
 
-pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam: Camera, pub w: u32, pub h: u32, pub body: BodyPackage }
+pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam_kind: String, pub w: u32, pub h: u32, pub body: BodyPackage }
 pub struct ThumbDone { pub key: String, pub w: u32, pub h: u32, pub rgba: Vec<u8> }
 
 pub struct ThumbService {
@@ -24,10 +24,21 @@ pub struct ThumbService {
     pub rendered: usize,
 }
 
-pub fn make_key(state: &CharacterState, body_digest: &str, cam: &Camera, w: u32, h: u32, params: &hase_core::params::Catalog) -> String {
+/// Kamera je Ansichtsart relativ zur Körpergröße `hh` des dargestellten Zustands.
+pub fn cam_for(kind: &str, hh: f32) -> Camera {
+    let k = (hh / 1.75).clamp(0.3, 1.5);
+    match kind {
+        "eye" => Camera { yaw: 0.0, pitch: 0.0, dist: 0.26 * k.max(0.6), target: [0.0, 0.935 * hh, 0.0], fov: 0.62 },
+        "hair" => Camera { yaw: 0.45, pitch: 0.05, dist: 0.75 * k.max(0.6), target: [0.0, 0.915 * hh, 0.0], fov: 0.62 },
+        "head" => Camera { yaw: 0.0, pitch: 0.02, dist: 0.62 * k.max(0.6), target: [0.0, 0.91 * hh, 0.0], fov: 0.62 },
+        _ => Camera { yaw: 0.3, pitch: 0.05, dist: 3.2 * k.max(0.6), target: [0.0, 0.52 * hh, 0.0], fov: 0.62 },
+    }
+}
+
+pub fn make_key(state: &CharacterState, body_digest: &str, cam_kind: &str, w: u32, h: u32, params: &hase_core::params::Catalog) -> String {
     let mut j = state.to_json(params, &state.body_ref.id);
     j["style"] = state.style.to_json();
-    let s = format!("{RENDER_VERSION}|{body_digest}|{j}|{:.3},{:.3},{:.3},{:?}|{w}x{h}", cam.yaw, cam.dist, cam.pitch, cam.target);
+    let s = format!("{RENDER_VERSION}|{body_digest}|{j}|{cam_kind}|{w}x{h}");
     sha256_hex(s.as_bytes())[..32].to_string()
 }
 
@@ -79,7 +90,8 @@ fn worker(repo: PathBuf, dir: PathBuf, rx: Receiver<ThumbJob>, tx: Sender<ThumbD
         sess.ensure_assets_blocking();
         let updates = sess.refresh();
         let aspect = job.w as f32 / job.h as f32;
-        if let Ok(rgba) = off.render(updates, job.cam.globals_lit(aspect, &LIGHTS[0], false), job.w, job.h) {
+        let cam = cam_for(&job.cam_kind, sess.body_height());
+        if let Ok(rgba) = off.render(updates, cam.globals_lit(aspect, &LIGHTS[0], false), job.w, job.h) {
             if let Some(img) = image::RgbaImage::from_raw(job.w, job.h, rgba.clone()) { let _ = img.save(dir.join(format!("{}.png", job.key))); }
             let _ = tx.send(ThumbDone { key: job.key, w: job.w, h: job.h, rgba });
             ctx.request_repaint();

@@ -1,6 +1,5 @@
 //! Augenstudio, Haarstudio, Haut-/Stilbereiche und gemeinsame Kachel-Komponenten (mit Thumbnails).
 use crate::app::App;
-use crate::camera::Camera;
 use crate::theme;
 use crate::thumbs::{make_key, ThumbJob};
 use eframe::egui;
@@ -29,28 +28,15 @@ pub const HAIR_COLORS: &[(&str, [f32; 3], [f32; 3])] = &[
 ];
 
 impl App {
-    /// Kamera für Vorschaubilder; Höhenskalierung relativ zur Körpergröße.
-    fn thumb_cam(&self, kind: &str) -> Camera {
-        let hh = self.session.as_ref().map(|s| s.body_height()).unwrap_or(1.75);
-        let k = (hh / 1.75).clamp(0.3, 1.5);
-        match kind {
-            "eye" => Camera { yaw: 0.0, pitch: 0.0, dist: 0.26 * k.max(0.6), target: [0.0, 0.935 * hh, 0.0], fov: 0.62 },
-            "hair" => Camera { yaw: 0.45, pitch: 0.05, dist: 0.75 * k.max(0.6), target: [0.0, 0.915 * hh, 0.0], fov: 0.62 },
-            "head" => Camera { yaw: 0.0, pitch: 0.02, dist: 0.62 * k.max(0.6), target: [0.0, 0.91 * hh, 0.0], fov: 0.62 },
-            _ => Camera { yaw: 0.3, pitch: 0.05, dist: 3.2, target: [0.0, 0.9 * k, 0.0], fov: 0.62 },
-        }
-    }
-
     /// Vorschaukachel: zeigt ein (ggf. noch gerendertes) Thumbnail des Zustands `st`; Klick liefert `true`.
     pub(crate) fn tile(&mut self, ui: &mut egui::Ui, size: egui::Vec2, st: CharacterState, cam_kind: &str, label: &str, selected: bool) -> bool {
         let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
         let Some(s) = self.session.as_ref() else { return false };
-        let cam = self.thumb_cam(cam_kind);
         let (w, h) = (192u32, (192.0 * size.y / size.x) as u32);
-        let key = make_key(&st, &s.packages.body.digest, &cam, w, h, &s.params);
+        let key = make_key(&st, &s.packages.body.digest, cam_kind, w, h, &s.params);
         let body = s.packages.body.clone();
         let ctx = ui.ctx().clone();
-        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam, w, h, body });
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w, h, body });
         let p = ui.painter();
         let fill = if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 };
         p.rect_filled(rect, 6.0, fill);

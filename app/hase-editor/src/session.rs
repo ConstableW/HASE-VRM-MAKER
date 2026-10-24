@@ -239,6 +239,18 @@ impl Session {
         self.history.record(&before, None); self.dirty = true;
     }
 
+    /// Neuer Charakter: Standardwerte der aktuellen Spezies, keine Assets, Standard-Stil.
+    pub fn new_character(&mut self) {
+        let before = self.state.clone();
+        let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
+        for id in ids { self.remove_asset(&id); }
+        self.state.style = Default::default();
+        self.state.values = self.params.defaults();
+        if let Some(i) = self.species_opt() { let sp = self.packages.species[i].clone(); for (k, v) in &sp.defaults { if let Some(j) = self.params.canonical(k) { self.state.values[j] = self.clamp_to_species(j, *v); } } }
+        self.history.record(&before, None);
+        self.style_dirty = true; self.dirty = true;
+    }
+
     pub fn reset_params(&mut self) { let before = self.state.clone(); self.state.values = self.params.defaults(); self.history.record(&before, None); self.dirty = true; }
 
     pub fn apply_species(&mut self, idx: usize) {
