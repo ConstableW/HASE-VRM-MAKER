@@ -42,3 +42,4 @@ Chronologisch, zusammengefasst, kein Chatverlauf.
 
 ## 2026-10-24 – Erster lauffähiger Editor
 - Workspace `app/` (hase-core: OBJ/Morph/Parameter/Evaluator/Fit/Packages/Assets/State; hase-editor: wgpu-Renderer, Orbit-Kamera, egui-UI, Offscreen-Screenshot). Offscreen-Rendering via SwiftShader verifiziert (Morph-Varianten Geschlecht/Alter/Kopf/Kleidung plausibel). Windows-exe per cargo-zigbuild (`app/win/`). GUI-Interaktion im Container nicht testbar. Doku: `docs/02-architecture/geometry-morphing.md`.
+- UI 2.0 Schritt 1: Arbeitsbereiche Charakter/Outfit/Finalisieren, Bereichsliste mit Kamerafokus, Regionen-Regler, Standardcharakter unbekleidet. Echte GUI headless getestet (Xvfb + Lavapipe, simulierte Klicks). `docs/01-product/ux-concept.md`.

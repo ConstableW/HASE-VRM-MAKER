@@ -1,5 +1,6 @@
 //! egui-Anwendung: Parameterpanel, Asset-Bibliotheken, 3D-Viewport mit Orbit-Kamera, Profiling-Overlay.
 use crate::camera::{Camera, PRESETS};
+use crate::regions::{self, Main, CLOTHES_KINDS, REGIONS, TIER_LABELS};
 use crate::render::{MeshUpdate, SceneRenderer};
 use crate::session::{load_proxy_blocking, LoadedProxy, Session, EYES_ID};
 use eframe::egui;
@@ -12,10 +13,10 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 use std::time::Instant;
 
-enum Msg { Session(Result<Box<Session>, String>), Asset { id: String, res: Result<LoadedProxy, String> } }
-
 #[derive(Clone, Copy, PartialEq)]
-enum Tab { Charakter, Haare, Kleidung, Gesicht, Haut }
+enum Workspace { Charakter, Outfit, Finalisieren }
+
+enum Msg { Session(Result<Box<Session>, String>), Asset { id: String, res: Result<LoadedProxy, String> } }
 
 enum Row { Header(String, usize), Param(usize) }
 
@@ -39,8 +40,13 @@ pub struct App {
     session: Option<Session>,
     error: Option<String>,
     camera: Camera,
-    tab: Tab,
-    right: Tab,
+    ws: Workspace,
+    main: Main,
+    region: usize,
+    sub: usize,
+    expert: bool,
+    saved_cam: Option<Camera>,
+    reg_idx: Vec<usize>, reg_key: (usize, usize),
     filter: String, asset_filter: String,
     open_groups: HashSet<String>,
     rows: Vec<Row>, rows_key: (String, usize),
@@ -55,7 +61,7 @@ pub struct App {
 pub fn spawn_session_load(tx: Sender<Msg>, ctx: egui::Context, repo: std::path::PathBuf) {
     std::thread::spawn(move || {
         let r = Session::load(&repo).map(|mut s| {
-            s.default_assets_blocking(&["eyebrows/mindfront_eyebrows_01", "eyelashes/mindfront_eyelashes_01", "hair/short02", "clothes/toigo_basic_tucked_t-shirt", "clothes/toigo_wool_pants"]);
+            s.default_assets_blocking(&["eyebrows/mindfront_eyebrows_01", "eyelashes/mindfront_eyelashes_01", "hair/short02"]);
             Box::new(s)
         });
         let _ = tx.send(Msg::Session(r));
@@ -77,7 +83,7 @@ impl App {
         style.spacing.slider_width = 150.0;
         cc.egui_ctx.set_global_style(style);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo);
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), tab: Tab::Charakter, right: Tab::Haare, filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: true, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name }
     }
 
     fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -146,8 +152,8 @@ impl App {
         ui.horizontal(|ui| {
             ui.checkbox(&mut s.symmetric, "Symmetrie");
             if ui.button("Alle zurücksetzen").clicked() { s.reset_params(); }
-            if ui.add_enabled(s.history.can_undo(), egui::Button::new("↶")).on_hover_text("Rückgängig (Strg+Z)").clicked() { s.undo(); }
-            if ui.add_enabled(s.history.can_redo(), egui::Button::new("↷")).on_hover_text("Wiederholen (Strg+Y)").clicked() { s.redo(); }
+            if ui.add_enabled(s.history.can_undo(), egui::Button::new("Rückgängig")).on_hover_text("Rückgängig (Strg+Z)").clicked() { s.undo(); }
+            if ui.add_enabled(s.history.can_redo(), egui::Button::new("Wiederholen")).on_hover_text("Wiederholen (Strg+Y)").clicked() { s.redo(); }
         });
         ui.horizontal(|ui| { ui.label("Suche:"); if ui.text_edit_singleline(&mut self.filter).changed() { self.rows_key.1 = usize::MAX; } if ui.small_button("✕").clicked() { self.filter.clear(); self.rows_key.1 = usize::MAX; } });
         ui.separator();
@@ -175,11 +181,11 @@ impl App {
         if let Some((i, v)) = set { s.set_param(i, v); }
     }
 
-    fn assets_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, cats: &[Category]) {
+    fn assets_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, cats: &[Category], kind: Option<usize>) {
         let Some(s) = self.session.as_mut() else { return };
         ui.horizontal(|ui| { ui.label("Suche:"); ui.text_edit_singleline(&mut self.asset_filter); });
         let f = self.asset_filter.to_lowercase();
-        let list: Vec<usize> = s.assets.assets.iter().enumerate().filter(|(_, a)| cats.contains(&a.category) && (f.is_empty() || a.name.to_lowercase().contains(&f))).map(|(i, _)| i).collect();
+        let list: Vec<usize> = s.assets.assets.iter().enumerate().filter(|(_, a)| cats.contains(&a.category) && kind.map(|k| regions::clothes_kind(&a.name) == k).unwrap_or(true) && (f.is_empty() || a.name.to_lowercase().contains(&f))).map(|(i, _)| i).collect();
         ui.weak(format!("{} Einträge (nur Assets mit geklärter Lizenz; {} gesperrt)", list.len(), s.assets.skipped_locked));
         ui.separator();
         let mut click: Option<usize> = None;
@@ -208,13 +214,14 @@ impl App {
         }
     }
 
-    fn skin_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn skin_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, skin: bool) {
         let Some(s) = self.session.as_mut() else { return };
+        if skin {
         ui.label("Hautton");
         let mut pick = None;
         egui::ScrollArea::vertical().id_salt("skins").max_height(300.0).show(ui, |ui| { for (n, _) in &s.assets.skins { if ui.selectable_label(s.state.skin == *n, n.replace('_', " ")).clicked() { pick = Some(n.clone()); } } });
         if let Some(n) = pick { s.set_skin(&n); }
-        ui.separator();
+        return; }
         ui.label("Augenfarbe");
         let mut eye = None;
         for (n, _) in &s.assets.eye_colors { if ui.selectable_label(s.state.eyes == *n, n.as_str()).clicked() { eye = Some(n.clone()); } }
@@ -310,24 +317,168 @@ impl eframe::App for App {
             });
         });
         egui::Panel::bottom("status").show(ui, |ui| { ui.horizontal(|ui| { ui.label(&self.status); if let Some(e) = &self.error { ui.colored_label(egui::Color32::LIGHT_RED, e); } ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.weak("HASE VRM MAKER – Entwicklungsstand (Testcandidate)"); }); }); });
-        egui::Panel::left("params").default_size(360.0).min_size(280.0).show(ui, |ui| {
-            ui.horizontal(|ui| { for (t, n) in [(Tab::Charakter, "Charakter"), (Tab::Gesicht, "Gesicht/Haut")] { if ui.selectable_label(self.tab == t || (t == Tab::Gesicht && self.tab == Tab::Haut), n).clicked() { self.tab = if t == Tab::Gesicht { Tab::Haut } else { t }; } } });
-            ui.separator();
-            if self.tab == Tab::Haut { self.skin_panel(ui, &ctx); } else { self.params_panel(ui); }
+        egui::Panel::top("nav").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("HASE VRM MAKER").strong().size(16.0)); ui.weak("Character Studio");
+                ui.add_space(16.0);
+                for (n, ws, t) in [("1  Charakter", Workspace::Charakter, "Anatomie & Merkmale"), ("2  Outfit", Workspace::Outfit, "Kleidung & Accessoires"), ("3  Finalisieren", Workspace::Finalisieren, "Presets, Export & DB")] {
+                    let on = self.ws == ws;
+                    if ui.add(egui::Button::new(egui::RichText::new(n).size(15.0)).selected(on)).on_hover_text(t).clicked() {
+                        self.ws = ws;
+                        self.main = match ws { Workspace::Charakter => Main::Charakter, Workspace::Outfit => Main::Kleidung, Workspace::Finalisieren => Main::Animation };
+                        self.region = usize::MAX; self.sub = 0; self.asset_filter.clear();
+                    }
+                }
+            });
         });
-        egui::Panel::right("assets").default_size(300.0).min_size(220.0).show(ui, |ui| {
-            ui.horizontal(|ui| { for (t, n) in [(Tab::Haare, "Haare"), (Tab::Kleidung, "Kleidung"), (Tab::Gesicht, "Brauen/Wimpern")] { if ui.selectable_label(self.tab_right() == t, n).clicked() { self.set_right(t); } } });
-            ui.separator();
-            let cats: Vec<Category> = match self.tab_right() { Tab::Haare => vec![Category::Hair], Tab::Kleidung => vec![Category::Clothes], _ => vec![Category::Eyebrows, Category::Eyelashes] };
-            self.assets_panel(ui, &ctx, &cats);
-        });
+        egui::Panel::left("regions").default_size(190.0).min_size(150.0).show(ui, |ui| self.region_list(ui));
+        egui::Panel::right("detail").default_size(400.0).min_size(300.0).show(ui, |ui| self.detail_panel(ui, &ctx));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport(ui));
         if self.started.elapsed().as_secs() < 5 || self.session.as_ref().map(|s| s.perf.total_ms > 0.0).unwrap_or(false) { /* UI-Zeit nur für Overlay */ }
         let _ = t0;
     }
 }
 
+
 impl App {
-    fn tab_right(&self) -> Tab { self.right }
-    fn set_right(&mut self, t: Tab) { self.right = t; }
+    fn nav_button(&mut self, ui: &mut egui::Ui, m: Main) {
+        if ui.selectable_label(self.main == m, egui::RichText::new(m.label()).size(15.0)).clicked() { self.main = m; self.region = usize::MAX; self.sub = 0; self.asset_filter.clear(); }
+    }
+
+    fn focus(&mut self, mut cam: Camera) {
+        if self.saved_cam.is_none() { self.saved_cam = Some(self.camera); }
+        // Fokuspunkte sind für 1,75 m Körperhöhe definiert → auf aktuelle Höhe skalieren
+        if let Some(s) = self.session.as_ref() { let k = (s.body_height() / 1.75).clamp(0.3, 1.5); cam.target[1] *= k; cam.dist *= k.max(0.6); }
+        self.camera = cam;
+    }
+
+    fn region_list(&mut self, ui: &mut egui::Ui) {
+        match self.ws {
+            Workspace::Charakter => {
+                ui.strong("Bereiche");
+                ui.separator();
+                let mut go: Option<(Main, usize, usize, Camera)> = None;
+                let sec = |ui: &mut egui::Ui, t: &str| { ui.add_space(4.0); ui.weak(t); };
+                egui::ScrollArea::vertical().auto_shrink([false; 2]).max_height(ui.available_height() - 90.0).show(ui, |ui| {
+                    sec(ui, "CHARAKTER");
+                    for (i, l) in ["Spezies & Presets", "Alter, Geschlecht & Typ"].iter().enumerate() { if ui.selectable_label(self.main == Main::Charakter && self.sub == i, *l).clicked() { go = Some((Main::Charakter, usize::MAX, i, regions::CAM_BODY)); } }
+                    for (m, t) in [(Main::Gesicht, "GESICHT"), (Main::Koerper, "KÖRPER")] {
+                        sec(ui, t);
+                        for (i, r) in regions::regions_of(m) { if ui.selectable_label(self.main == m && self.region == i, r.label).clicked() { go = Some((m, i, 0, r.cam)); } }
+                    }
+                    sec(ui, "HAARE & STIL");
+                    if ui.selectable_label(self.main == Main::Haare, "Frisur").clicked() { go = Some((Main::Haare, usize::MAX, 0, regions::CAM_HEAD)); }
+                    for (i, l) in ["Haut", "Augenfarbe", "Brauen & Wimpern"].iter().enumerate() { if ui.selectable_label(self.main == Main::Stil && self.sub == i, *l).clicked() { go = Some((Main::Stil, usize::MAX, i, if i == 0 { regions::CAM_BODY } else { regions::CAM_HEAD })); } }
+                });
+                if let Some((m, r, sub, c)) = go { self.main = m; self.region = r; self.sub = sub; self.focus(c); }
+            }
+            Workspace::Outfit => {
+                ui.strong("Outfit"); ui.separator();
+                for (i, l) in CLOTHES_KINDS.iter().enumerate() { if ui.selectable_label(self.sub == i, *l).clicked() { self.sub = i; } }
+            }
+            Workspace::Finalisieren => { ui.strong("Finalisieren"); ui.separator(); ui.label("Posen · Animation"); ui.label("Vorlagen · Varianten"); ui.label("Export"); }
+        }
+        ui.separator();
+        if let Some(c) = self.saved_cam { if ui.button("Eigene Kamera").on_hover_text("Zur manuell eingestellten Ansicht zurück").clicked() { self.camera = c; self.saved_cam = None; } }
+        if let Some(s) = self.session.as_mut() {
+            ui.horizontal(|ui| {
+                if ui.add_enabled(s.history.can_undo(), egui::Button::new("Rückgängig")).on_hover_text("Strg+Z").clicked() { s.undo(); }
+                if ui.add_enabled(s.history.can_redo(), egui::Button::new("Wiederholen")).on_hover_text("Strg+Y").clicked() { s.redo(); }
+            });
+            ui.checkbox(&mut s.symmetric, "Symmetrie (links = rechts)");
+        }
+    }
+
+    fn species_panel(&mut self, ui: &mut egui::Ui) {
+        let Some(s) = self.session.as_mut() else { return };
+        ui.horizontal(|ui| {
+            ui.label("Spezies:");
+            let cur = s.species_index();
+            let mut sel = cur;
+            egui::ComboBox::from_id_salt("species").selected_text(s.packages.species[cur].label.clone()).show_ui(ui, |ui| {
+                for (i, sp) in s.packages.species.iter().enumerate() { ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
+            });
+            if sel != cur { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
+        });
+        let sp = s.packages.species[s.species_index()].clone();
+        if !sp.presets.is_empty() { ui.label("Presets"); ui.horizontal_wrapped(|ui| { for p in &sp.presets { if ui.button(&p.label).clicked() { s.apply_map(&p.params); } } }); }
+        if !sp.traits.is_empty() { ui.label("Merkmale"); ui.horizontal_wrapped(|ui| { for t in &sp.traits { if ui.button(&t.label).on_hover_text("Setzt die zugehörigen Parameter").clicked() { s.apply_map(&t.set); } } }); }
+        if !sp.components.is_empty() { ui.label("Komponenten"); for c in &sp.components { ui.weak(format!("{}{}", c.asset.rsplit('.').next().unwrap_or(&c.asset), if c.stub { " (Stub: noch keine Geometrie)" } else { "" })); } }
+        if ui.button("Alle Parameter zurücksetzen").clicked() { s.reset_params(); }
+    }
+
+    /// Regler einer Region/Auswahl in Unterabschnitten (Form / Proportionen / Position).
+    fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool) {
+        let Some(s) = self.session.as_mut() else { return };
+        let key = (if macros { 9999 } else { region.unwrap_or(10_000) }, s.params.defs.len());
+        if key != self.reg_key {
+            self.reg_idx = (0..s.params.defs.len()).filter(|&i| { let d = &s.params.defs[i]; if macros { d.group == "Makro" } else { match region { Some(r) => regions::region_of(d) == Some(r), None => d.group != "Makro" && regions::region_of(d).is_none() } } }).collect();
+            self.reg_idx.sort_by_key(|&i| (regions::tier(&s.params.defs[i]), s.params.defs[i].label.clone()));
+            self.reg_key = key;
+        }
+        if self.reg_idx.is_empty() { ui.weak("Keine Parameter in diesem Bereich."); return; }
+        let idx = self.reg_idx.clone();
+        if ui.button("Bereich zurücksetzen").clicked() { s.reset_indices(&idx); }
+        let mut set: Option<(usize, f32)> = None;
+        egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+            let mut last = usize::MAX;
+            for &i in &idx {
+                let d = &s.params.defs[i];
+                if !macros { let t = regions::tier(d); if t != last { ui.add_space(6.0); ui.strong(TIER_LABELS[t]); last = t; } }
+                let mut v = s.state.values[i];
+                let resp = ui.add(egui::Slider::new(&mut v, d.min..=d.max).text(d.label.as_str()).fixed_decimals(2));
+                if resp.changed() { set = Some((i, v)); }
+                if resp.double_clicked() { set = Some((i, d.default)); }
+            }
+        });
+        if let Some((i, v)) = set { s.set_param(i, v); }
+    }
+
+    fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.session.is_none() { ui.label("Lade …"); return; }
+        if self.ws == Workspace::Charakter {
+            ui.horizontal(|ui| { if ui.selectable_label(!self.expert, "Parameter").clicked() { self.expert = false; } if ui.selectable_label(self.expert, "Erweitert (alle Parameter)").clicked() { self.expert = true; } });
+            ui.separator();
+        }
+        if self.expert && self.ws == Workspace::Charakter { self.params_panel(ui); return; }
+        match self.main {
+            Main::Charakter => {
+                if self.sub == 0 { ui.heading("Spezies & Presets"); ui.separator(); self.species_panel(ui); }
+                else { ui.heading("Alter, Geschlecht & Typ"); ui.separator(); self.region_sliders(ui, None, true); }
+            }
+            Main::Gesicht | Main::Koerper => {
+                if self.region == usize::MAX {
+                    ui.heading(format!("{} · Übersicht", self.main.label())); ui.separator();
+                    ui.label("Wähle links einen Bereich. Die Kamera fokussiert automatisch; „Eigene Kamera“ stellt deine Ansicht wieder her.");
+                    if self.main == Main::Koerper {
+                        ui.add_space(8.0);
+                        ui.colored_label(egui::Color32::from_rgb(230, 190, 90), "Hinweis: Das anatomische Brustmodell (Volumen, Breite, Ansatzhöhe, Projektion, Form, Schwerkraft) ist noch nicht umgesetzt. Bereich „Brust“ zeigt derzeit nur die vorhandenen MakeHuman-Targets.");
+                    }
+                } else {
+                    ui.heading(REGIONS[self.region].label); ui.separator();
+                    if REGIONS[self.region].label == "Augen" { ui.weak("Iris-, Pupillen- und Materialbearbeitung: noch nicht unterstützt (Stil → Augen: Augenfarbe)."); }
+                    self.region_sliders(ui, Some(self.region), false);
+                }
+            }
+            Main::Haare => {
+                ui.heading("Frisur"); ui.separator();
+                ui.weak("Frisuren-Presets mit Grundfarbe. Regionale Länge/Volumen/Locken, Farbverläufe und Material: noch nicht unterstützt (Package-Capabilities geplant).");
+                self.assets_panel(ui, ctx, &[Category::Hair], None);
+            }
+            Main::Stil => match self.sub {
+                0 => { ui.heading("Haut"); ui.separator(); self.skin_panel(ui, ctx, true); ui.weak("Make-up, Narben, Tattoos, Körperbehaarung: noch nicht unterstützt."); }
+                1 => { ui.heading("Augenfarbe"); ui.separator(); self.skin_panel(ui, ctx, false); }
+                _ => { ui.heading("Brauen & Wimpern"); ui.separator(); self.assets_panel(ui, ctx, &[Category::Eyebrows, Category::Eyelashes], None); }
+            },
+            Main::Kleidung => {
+                ui.heading(format!("Outfit · {}", CLOTHES_KINDS[self.sub.min(4)])); ui.separator();
+                ui.weak("Kleidung ist vom Charakter getrennt: der Körper bleibt unverändert, Teile werden an die Körperform angepasst.");
+                self.assets_panel(ui, ctx, &[Category::Clothes], Some(self.sub.min(4)));
+            }
+            Main::Animation => {
+                ui.heading("Finalisieren"); ui.separator();
+                ui.weak("Noch nicht implementiert: Animations-/Posenvorschau (VRMA), Charaktervorlagen-Bibliothek mit Varianten, VRM-Export (auch unbekleideter Basischarakter). Speichern/Laden: Menü Datei.");
+            }
+        }
+    }
 }

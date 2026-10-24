@@ -11,7 +11,7 @@ pub fn run(repo: &Path, out: &str, args: &[String]) -> i32 {
     let mut s = match Session::load(repo) { Ok(s) => s, Err(e) => { eprintln!("{e}"); return 1; } };
     if let Some(i) = arg(args, "--species").and_then(|x| x.parse::<usize>().ok()) { s.apply_species(i); }
     if let Some(sk) = arg(args, "--skin") { s.set_skin(sk); }
-    let assets = arg(args, "--assets").unwrap_or("eyebrows/mindfront_eyebrows_01,eyelashes/mindfront_eyelashes_01,hair/short02,clothes/toigo_basic_tucked_t-shirt,clothes/toigo_wool_pants");
+    let assets = arg(args, "--assets").unwrap_or("eyebrows/mindfront_eyebrows_01,eyelashes/mindfront_eyelashes_01,hair/short02");
     let list: Vec<&str> = assets.split(',').filter(|x| !x.is_empty()).collect();
     s.default_assets_blocking(&list);
     if let Some(sets) = arg(args, "--set") {

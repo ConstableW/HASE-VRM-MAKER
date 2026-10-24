@@ -155,6 +155,14 @@ impl Session {
         self.dirty = true;
     }
 
+    /// Setzt nur die angegebenen Parameter auf ihren Standard (eine Undo-Stufe).
+    pub fn reset_indices(&mut self, idx: &[usize]) {
+        let before = self.state.clone();
+        for &i in idx { self.state.values[i] = self.params.defs[i].default; }
+        self.history.record(&before, None);
+        self.dirty = true;
+    }
+
     pub fn reset_params(&mut self) { let before = self.state.clone(); self.state.values = self.params.defaults(); self.history.record(&before, None); self.dirty = true; }
 
     pub fn apply_species(&mut self, idx: usize) {
@@ -251,6 +259,9 @@ impl Session {
         }
         std::mem::take(&mut self.pending)
     }
+
+    /// Körperhöhe (Scheitel über Boden) in m – für höhenrelative Kamerafokus-Punkte.
+    pub fn body_height(&self) -> f32 { self.floor_off + self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MIN, f32::max) }
 
     pub fn counts(&self) -> (usize, usize) {
         let v = self.body.topo.vmap.len() + self.proxies.values().map(|p| p.proxy.topo.vmap.len()).sum::<usize>();

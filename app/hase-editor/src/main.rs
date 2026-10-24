@@ -1,6 +1,7 @@
 mod app;
 mod camera;
 mod offscreen;
+mod regions;
 mod render;
 mod session;
 
