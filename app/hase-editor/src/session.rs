@@ -1017,7 +1017,14 @@ impl Session {
         // Merkmale
         for b in &self.sh.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
         for g in &self.sh.generated.parts {
-            materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            if g.name == "Hair" {
+                let tip = self.sh.features.get("hair").map(|f| f.color2).unwrap_or(g.color);
+                let gt = hair_gradient(g.color, tip);
+                images.push(hase_core::export::ExImage { name: "HairGradient".into(), w: gt.w, h: gt.h, rgba: gt.levels[0].clone() });
+                materials.push(ExMaterial { name: "Feature_Hair".into(), color: [1.0, 1.0, 1.0, 1.0], image: Some(images.len() - 1), mask: false });
+            } else {
+                materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            }
             meshes.push(ExMesh { name: g.name.clone(), pos: g.pos.clone(), nrm: g.nrm.clone(), uv: g.uv.clone(), idx: g.idx.clone(), joints: g.joints.clone(), weights: g.weights.clone(), material: materials.len() - 1, targets: vec![] });
         }
         if !self.sh.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", self.sh.generated.parts.len(), self.sh.generated.bones.len(), self.sh.generated.springs.len())); }
@@ -1641,7 +1648,14 @@ impl Session {
         let mut bones: Vec<ExBone> = m.bones.iter().map(|b| ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }).collect();
         for b in &self.sh.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
         for g in &self.sh.generated.parts {
-            materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            if g.name == "Hair" {
+                let tip = self.sh.features.get("hair").map(|f| f.color2).unwrap_or(g.color);
+                let gt = hair_gradient(g.color, tip);
+                images.push(hase_core::export::ExImage { name: "HairGradient".into(), w: gt.w, h: gt.h, rgba: gt.levels[0].clone() });
+                materials.push(ExMaterial { name: "Feature_Hair".into(), color: [1.0, 1.0, 1.0, 1.0], image: Some(images.len() - 1), mask: false });
+            } else {
+                materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            }
             meshes.push(ExMesh { name: g.name.clone(), pos: g.pos.clone(), nrm: g.nrm.clone(), uv: g.uv.clone(), idx: g.idx.clone(), joints: g.joints.clone(), weights: g.weights.clone(), material: materials.len() - 1, targets: vec![] });
         }
         if !self.sh.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", self.sh.generated.parts.len(), self.sh.generated.bones.len(), self.sh.generated.springs.len())); }
