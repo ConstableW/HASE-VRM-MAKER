@@ -40,3 +40,5 @@
 
 31. Vision OD-028: Reihenfolge siehe `../01-product/vision.md` (Erschaffen auf Anime-Basis → Speichern → Haare erstellen → Spezies-Merkmale/Tierohren → Outfit → Formate → Stilüberführung).
 32. Merkmale per Pinsel formen (Ohrspitze ziehen), adaptive Unterteilung bei großen Formänderungen, Augen/Lider als eigene Module mit Anbindung an die Kopfform, Hair-Generator, Spring-Bone-Simulation in der Vorschau.
+
+33. **Kurskorrektur (Owner 2026-10-25):** Jede Spezies bekommt ein eigenes Charaktermodell (Körperbasis); Werkzeuge (Regler, Formen, Merkmale, Outfit, Export) arbeiten auf der Basis der gewählten Spezies, **eine** Oberfläche. Vorrang haben die Körperbasen und die Bindung Spezies ↔ Körperbasis (Speziesauswahl wechselt die Basis), nicht Feinschliff an Werkzeugen. Die Landmarken-Verformung (`avatar.rs`) bleibt als Parameterkatalog für importierte Körperbasen (`parametric`); ihr Einsatz auf der MakeHuman-Basis wurde bewusst zurückgenommen (Netz reißt an Lidern, wirkt gegen die Targets).

@@ -68,12 +68,11 @@ impl App {
                     let r = icon_tile(ui, Icon::Project, "Projekt", sz, false, "Datei: Laden, Speichern unter, Modell öffnen");
                     egui::Popup::menu(&r).show(|ui| {
                         ui.set_min_width(240.0);
-                        if ui.button("Neuer Charakter (realistisch, MakeHuman-Basis)").clicked() { if let Some(s) = self.session.as_mut() { if s.vrm.is_some() { s.close_vrm(); } s.new_character(); } self.lib.current = None; ui.close(); }
-                        if ui.button("Neuer Anime-/VTuber-Charakter …").on_hover_text("Basis wählen (z. B. ein VRoid-Export) und von Grund auf gestalten").clicked() { if let Some(s) = self.session.as_ref() { self.bases = crate::anime_bases::list(&s.repo); } self.base_picker = true; ui.close(); }
+                        if ui.button("Neuer Charakter").clicked() { if let Some(s) = self.session.as_mut() { if s.vrm.is_some() { s.close_vrm(); } s.new_character(); } self.lib.current = None; ui.close(); }
                         if ui.button("Aus Datei laden …").clicked() { self.load_dialog(); ui.close(); }
                         if ui.button("Als Datei speichern …").clicked() { self.save_dialog(); ui.close(); }
                         ui.separator();
-                        if ui.button("VRM/GLB als Basis öffnen …").on_hover_text("Datei ansehen und als Ausgangsform für neue Charaktere verwenden").clicked() { self.open_vrm_dialog(); ui.close(); }
+                        if ui.button("Referenzmodell öffnen (VRM/GLB) …").on_hover_text("Fremdes Modell ansehen, posen, Kleidung anprobieren – kein Ausgangspunkt für neue Charaktere").clicked() { self.open_vrm_dialog(); ui.close(); }
                         ui.separator();
                         if ui.button("Beenden").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
                     });
@@ -109,16 +108,11 @@ impl App {
         match self.ws {
             Workspace::Studio => { card(ui, Some((Icon::Species, "Körperbasen & Spezies")), |ui| self.studio_library(ui)); return; }
             _ if vrm && self.ws != Workspace::Outfit && self.ws != Workspace::Finalisieren => {
-                let h = ui.available_height();
-                card(ui, Some((Icon::Areas, "Avatar erstellen")), |ui| {
-                    let list_h = (ui.available_height() - 84.0).max(100.0);
-                    egui::ScrollArea::vertical().id_salt("navlist_vrm").max_height(list_h).auto_shrink([false, false]).show(ui, |ui| { ui.spacing_mut().item_spacing.y = 2.0; self.avatar_area_list(ui); });
-                    ui_kit::hr(ui); ui.add_space(4.0);
-                    ui.spacing_mut().item_spacing.y = 4.0;
-                    if ui.add_sized([ui.available_width(), 28.0], egui::Button::new("Ansicht zurücksetzen")).clicked() { self.camera = crate::camera::Camera::default(); self.saved_cam = None; }
-                    if ui.add_sized([ui.available_width(), 28.0], egui::Button::new("Alle Regler zurücksetzen")).clicked() { if let Some(s) = self.session.as_mut() { let all: Vec<usize> = (0..hase_core::avatar::DEFS.len()).collect(); s.avatar_reset(&all); } }
+                card(ui, Some((Icon::Overview, "Referenzmodell")), |ui| {
+                    ui.colored_label(theme::TEXT2, "Ein fremdes Modell zur Ansicht: Posen, Ausdrücke, Kleidung anprobieren, exportieren. Eigene Charaktere entstehen auf der humanoiden Basis.");
+                    ui.add_space(8.0);
+                    if ui_kit::primary_button(ui, "Referenz schließen").clicked() { if let Some(s) = self.session.as_mut() { s.close_vrm(); } }
                 });
-                let _ = h;
                 return;
             }
             _ => {}
@@ -253,7 +247,9 @@ impl App {
             }
             if open {
                 ui.add_space(6.0);
-                if vrm { self.avatar_rows(ui, r.label); } else if r.label == "Augen" && !fine { self.eye_studio(ui); } else { self.region_sliders(ui, Some(i), false, fine); }
+                if vrm { self.avatar_rows(ui, r.label); } else {
+                    if r.label == "Augen" && !fine { self.eye_studio(ui); } else { self.region_sliders(ui, Some(i), false, fine); }
+                }
                 ui.add_space(8.0);
             }
         }
@@ -266,7 +262,7 @@ impl App {
         round_mask(&p, rect, 10.0, theme::BG);
         p.rect_stroke(rect, CornerRadius::same(10), Stroke::new(1.0, theme::LINE), StrokeKind::Inside);
         // Werkzeuge links
-        let avatar = self.session.is_some();
+        let avatar = self.session.as_ref().map(|s| s.vrm.is_none()).unwrap_or(false);
         let mut y = rect.top() + 12.0;
         let mut tools = vec![(Tool::Pan, Icon::Move, "Bewegen", "Ziehen verschiebt die Ansicht"), (Tool::Orbit, Icon::Rotate, "Rotieren", "Ziehen dreht die Kamera"), (Tool::Zoom, Icon::Zoom, "Zoomen", "Ziehen zoomt (auch Mausrad)"), (Tool::Focus, Icon::Focus, "Fokus", "Klick auf den Körper zentriert die Kamera dort"), (Tool::Region, Icon::Region, "Bereich", "Klick auf eine Körperstelle öffnet den passenden Bearbeitungsbereich")];
         if avatar { tools.push((Tool::Sculpt, Icon::Sculpt, "Formen", "Geometrie direkt formen: ziehen, aufblasen, glätten, skalieren (mit Symmetrie)")); }
@@ -414,13 +410,13 @@ impl App {
     pub(crate) fn avatar_rows(&mut self, ui: &mut egui::Ui, region: &str) {
         let idx: Vec<usize> = hase_core::avatar::DEFS.iter().enumerate().filter(|(_, d)| d.region == region).map(|(i, _)| i).collect();
         let Some(s) = self.session.as_mut() else { return };
-        let Some(vr) = s.vrm.as_ref() else { return };
-        let (vals, mut linked) = (vr.avatar.vals.clone(), vr.avatar.eye_linked);
+        let vrm = s.vrm.is_some();
+        let (vals, mut linked) = if let Some(vr) = s.vrm.as_ref() { (vr.avatar.vals.clone(), vr.avatar.eye_linked) } else { (s.style_vals.clone(), s.state.style.eyes.linked) };
         let has_sides = idx.iter().any(|&i| hase_core::avatar::mirror(i).is_some());
-        if has_sides {
+        if has_sides && vrm {
             if ui.checkbox(&mut linked, "Links und rechts gemeinsam bearbeiten").changed() { if let Some(v) = s.vrm.as_mut() { v.avatar.eye_linked = linked; } }
             ui.add_space(2.0);
-        }
+        } else if has_sides { ui.colored_label(theme::TEXT2, if linked { "Links/rechts gemeinsam (Schalter im Augenstudio)" } else { "Links/rechts getrennt" }); }
         let mut set: Option<(usize, f32)> = None;
         for &i in &idx {
             let d = &hase_core::avatar::DEFS[i];
@@ -430,7 +426,7 @@ impl App {
         }
         if let Some((i, v)) = set { s.avatar_set(i, v); }
         ui.add_space(4.0);
-        if ui.add(egui::Button::new(egui::RichText::new("Bereich zurücksetzen").size(12.5))).clicked() { s.avatar_reset(&idx); }
+        if ui.add(egui::Button::new(egui::RichText::new("Stilregler zurücksetzen").size(12.5))).clicked() { s.avatar_reset(&idx); }
     }
 
     /// Farben je Teilegruppe (Haut, Haare, Iris …).

@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+#[derive(Clone, Debug)]
 pub struct ExBone { pub name: String, pub parent: Option<usize>, pub pos: [f32; 3] }
 pub struct ExMaterial { pub name: String, pub color: [f32; 4], pub image: Option<usize>, pub mask: bool }
 pub struct ExImage { pub name: String, pub w: u32, pub h: u32, pub rgba: Vec<u8> }

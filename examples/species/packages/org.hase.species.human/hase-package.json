@@ -3,16 +3,17 @@
   "schemaVersion": "1.0",
   "id": "org.hase.species.human",
   "type": "species",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": {
-    "de": "Mensch"
+    "de": "Humanoid"
   },
-  "description": "Standardspezies auf der humanoiden Basis.",
+  "description": "Neutrale humanoide Standardspezies auf der humanoiden Basis (Ausgangspunkt für realistische, Anime-, VTuber- und Fantasy-Figuren).",
   "authors": [
     "HASE VRM MAKER"
   ],
   "tags": [
-    "humanoid"
+    "humanoid",
+    "neutral"
   ],
   "license": {
     "spdx": "CC0-1.0",

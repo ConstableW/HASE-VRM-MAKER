@@ -149,7 +149,9 @@ pub fn deform(m: &VrmModel, prep: &Prep, orig: &[Vec<[f32; 3]>], ob: &[[f32; 3]]
                         // Augen je Seite
                         for (side, c, sfx) in [(1.0f32, lm.eye_l, "l"), (-1.0, lm.eye_r, "r")] {
                             let r = u * 0.62;
-                            let w = fall(dist(p, c), r);
+                            // Plateau im Augenbereich (Lider, Augapfel bewegen sich gemeinsam), danach weicher Abfall
+                            let dd = dist(p, c);
+                            let w = if dd < r * 0.5 { 1.0 } else { fall((dd - r * 0.5) / 0.5, r) };
                             if w > 0.0 {
                                 let (sz, wd, ht, sp, tl) = (v(&format!("eye-size-{sfx}")), v(&format!("eye-width-{sfx}")), v(&format!("eye-height-{sfx}")), v(&format!("eye-spacing-{sfx}")), v(&format!("eye-tilt-{sfx}")));
                                 let s = 1.0 + 0.8 * sz * w;

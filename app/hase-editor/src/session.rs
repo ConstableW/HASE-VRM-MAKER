@@ -75,6 +75,10 @@ pub struct Session {
     pub vrm: Option<VrmRuntime>,
     pub sh: Shared,
     pub mh_sculpt: std::collections::BTreeMap<u32, [f32; 3]>,
+    /// Stil-/Proportionsregler (Landmarken-Verformung) auf der MakeHuman-Basis
+    pub style_vals: Vec<f32>,
+    style_layer: std::collections::BTreeMap<u32, [f32; 3]>,
+    sty_dirty: bool,
     mh_stroke: Option<MhStroke>,
     mh_hist: Vec<(usize, Vec<(u32, [f32; 3], [f32; 3])>)>,
     mh_redo: Vec<(usize, Vec<(u32, [f32; 3], [f32; 3])>)>,
@@ -180,7 +184,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), style_vals: hase_core::avatar::defaults(), style_layer: Default::default(), sty_dirty: false, mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -412,6 +416,7 @@ impl Session {
                 self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
                 if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; if st.full { for (v, d) in &self.mh_sculpt { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
             }
+            if self.sty_dirty || (morph_changed && !self.style_layer.is_empty()) { self.recompute_style(); morph_changed = true; }
             body_moved = morph_changed;
             if morph_changed || self.assets_dirty {
                 if morph_changed { self.pose_rig = None; self.push_grid = None; }
@@ -426,10 +431,12 @@ impl Session {
                 }
                 let t1 = Instant::now();
                 let ids: Vec<String> = self.proxies.keys().cloned().collect();
+                let style_vals = self.style_vals.clone();
                 for id in ids {
                     let tint = self.state.assets.iter().find(|a| a.id == id).map(|a| a.tint).unwrap_or(if id == EYES_ID { [1.0; 3] } else { [0.9; 3] });
                     let rt = self.proxies.get_mut(&id).unwrap();
                     rt.proxy.fit(&self.eval.pos, &mut rt.fit);
+                    if id == EYES_ID { style_eyes(&style_vals, &mut rt.fit); }
                     if id.starts_with("clothes/") {
                         if self.push_grid.is_none() { if self.body_uniq.is_empty() { let mut uniq: Vec<u32> = self.body.topo.vmap.clone(); uniq.sort_unstable(); uniq.dedup(); self.body_uniq = uniq; } self.push_grid = Some(hase_core::fit::BodyGrid::build(&self.eval.pos, &self.body_uniq, 0.03)); }
                         if self.body_nrm.len() == self.eval.pos.len() { { let uniq = &self.body_uniq; hase_core::fit::push_out(&mut rt.fit, &rt.proxy.adj, &rt.proxy.topo.base_tris, self.push_grid.as_ref().unwrap(), &self.eval.pos, &self.body_nrm, uniq, 0.003, true); } }
@@ -1161,6 +1168,7 @@ impl Session {
 
     // ---- Avatar-Erstellung (parametrische Verformung der geöffneten Basis)
     pub fn avatar_set(&mut self, i: usize, val: f32) {
+        if self.vrm.is_none() { return self.style_set(i, val); }
         let Some(v) = self.vrm.as_mut() else { return };
         let d = &hase_core::avatar::DEFS[i];
         let val = val.clamp(d.min, d.max);
@@ -1295,7 +1303,8 @@ impl Session {
     pub fn sculpt_count(&self) -> usize {
         if self.vrm.is_none() { return self.mh_sculpt.len(); } self.vrm.as_ref().map(|v| v.avatar.sculpt.iter().map(|m| m.len()).sum()).unwrap_or(0) }
 
-    pub fn avatar_reset(&mut self, idx: &[usize]) { if let Some(v) = self.vrm.as_mut() { for &i in idx { v.avatar.vals[i] = hase_core::avatar::DEFS[i].def; } v.avatar.changed = true; } }
+    pub fn avatar_reset(&mut self, idx: &[usize]) {
+        if self.vrm.is_none() { for &i in idx { self.style_vals[i] = hase_core::avatar::DEFS[i].def; } self.sty_dirty = true; return; } if let Some(v) = self.vrm.as_mut() { for &i in idx { v.avatar.vals[i] = hase_core::avatar::DEFS[i].def; } v.avatar.changed = true; } }
     pub fn avatar_pending(&self) -> bool { self.vrm.as_ref().map(|v| v.avatar.changed || v.avatar.dress_due.is_some()).unwrap_or(false) }
     pub fn set_part_tint(&mut self, part: usize, rgb: [f32; 3]) {
         let Some(v) = self.vrm.as_mut() else { return };
@@ -1869,7 +1878,7 @@ impl Session {
     pub fn shared_json(&self) -> serde_json::Value {
         let feats: serde_json::Map<String, serde_json::Value> = self.sh.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect();
         let sculpt: Vec<serde_json::Value> = self.mh_sculpt.iter().flat_map(|(v, d)| [serde_json::json!(v), serde_json::json!((d[0] * 1e5).round() / 1e5), serde_json::json!((d[1] * 1e5).round() / 1e5), serde_json::json!((d[2] * 1e5).round() / 1e5)]).collect();
-        serde_json::json!({"features": feats, "mhSculpt": sculpt})
+        serde_json::json!({"features": feats, "mhSculpt": sculpt, "style": hase_core::avatar::to_map(&self.style_vals)})
     }
     pub fn apply_shared_json(&mut self, j: &serde_json::Value) {
         self.sh.features.clear();
@@ -1882,6 +1891,8 @@ impl Session {
         }
         self.sh.feat_dirty = true;
         if self.vrm.is_none() {
+            let sm: std::collections::BTreeMap<String, f32> = j["style"].as_object().map(|o| o.iter().filter_map(|(k, x)| Some((k.clone(), x.as_f64()? as f32))).collect()).unwrap_or_default();
+            self.style_vals = hase_core::avatar::from_map(&sm); self.sty_dirty = true;
             self.mh_reset_sculpt();
             let nums: Vec<f64> = j["mhSculpt"].as_array().into_iter().flatten().filter_map(|x| x.as_f64()).collect();
             for c in nums.chunks_exact(4) { let v = c[0] as u32; if (v as usize) < self.eval.pos.len() { self.mh_set(v, [c[1] as f32, c[2] as f32, c[3] as f32]); } }
@@ -1932,5 +1943,95 @@ mod mh_tool_tests {
         s2.apply_shared_json(&j); s2.refresh();
         assert_eq!(s2.sculpt_count(), s.sculpt_count());
         assert!(s2.feature("tail").enabled);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Stil-/Proportionsregler auf der MakeHuman-Basis (Landmarken-Verformung, gleiche Regler wie `avatar.rs`)
+// ---------------------------------------------------------------------------------------------------------
+impl Session {
+    pub fn style_value(&self, i: usize) -> f32 { self.style_vals[i] }
+    pub fn style_active(&self) -> bool { self.style_vals.iter().zip(hase_core::avatar::DEFS).any(|(v, d)| (v - d.def).abs() > 1e-5) }
+    pub fn style_set(&mut self, i: usize, val: f32) {
+        let d = &hase_core::avatar::DEFS[i];
+        let val = val.clamp(d.min, d.max);
+        self.style_vals[i] = val;
+        if self.state.style.eyes.linked { if let Some(m) = hase_core::avatar::mirror(i) { self.style_vals[m] = val; } }
+        self.sty_dirty = true;
+    }
+
+    /// Berechnet die Verschiebungsebene der Stilregler neu (Reihenfolge: Morphs → Stilregler → Formung).
+    fn recompute_style(&mut self) {
+        self.sty_dirty = false;
+        let n = self.eval.pos.len();
+        // Morph-Zustand ohne Stil- und Formungsebene
+        let mut pos_m = self.eval.pos.clone();
+        for (v, d) in &self.style_layer { let q = &mut pos_m[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        for (v, d) in &self.mh_sculpt { let q = &mut pos_m[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        let mut new_layer: std::collections::BTreeMap<u32, [f32; 3]> = Default::default();
+        if self.style_active() {
+            if self.rig.is_none() { self.rig = hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj).ok(); }
+            if let Some(rig) = self.rig.as_ref() {
+                let fo = -self.body.topo.vmap.iter().map(|&v| pos_m[v as usize][1]).fold(f32::MAX, f32::min);
+                let lifted: Vec<[f32; 3]> = pos_m.iter().map(|p| [p[0], p[1] + fo, p[2]]).collect();
+                let bones = rig.bones(&pos_m, fo);
+                let map = hase_core::export::humanoid_map();
+                let mut humanoid = std::collections::BTreeMap::new();
+                let mut vrm_names: Vec<Option<String>> = vec![None; bones.len()];
+                for (vn, ue) in &map { if let Some(i) = bones.iter().position(|b| b.name.eq_ignore_ascii_case(ue)) { humanoid.insert(vn.clone(), i); vrm_names[i] = Some(vn.clone()); } }
+                let pelvis = bones.iter().position(|b| b.name == "pelvis").unwrap_or(0) as u16;
+                let (mut jo, mut we) = (Vec::with_capacity(n), Vec::with_capacity(n));
+                for w in rig.weights.iter().take(n) { let (j, x) = hase_core::export::pack_weights(w, pelvis); jo.push(j); we.push(x); }
+                let nb = bones.len();
+                let height = lifted.iter().map(|p| p[1]).fold(0.0, f32::max);
+                let part = hase_core::vrm_model::VrmPart { name: "Body".into(), pos: lifted.clone(), nrm: vec![[0.0, 1.0, 0.0]; n], uv: vec![[0.0, 0.0]; n], idx: vec![], joints: jo, weights: we, image: None, color: [1.0; 4], mask: false, double_sided: false, mat_name: "Body".into(), targets: vec![] };
+                let model = hase_core::vrm_model::VrmModel { name: "mh".into(), parts: vec![part], bones: bones.clone(), humanoid, expressions: vec![], spring_bones: false, rigless: false, identity_rest: true, height, rest_rot: vec![[0.0, 0.0, 0.0, 1.0]; nb], vrm_names };
+                // Landmarken auf der Hautgeometrie (ohne Hilfsvertices)
+                let used: std::collections::BTreeSet<u32> = self.body.topo.vmap.iter().copied().collect();
+                let skin: Vec<[f32; 3]> = used.iter().map(|&v| lifted[v as usize]).collect();
+                let sn = skin.len();
+                let host = hase_core::vrm_model::VrmPart { name: "Body".into(), pos: skin, nrm: vec![[0.0, 1.0, 0.0]; sn], uv: vec![[0.0, 0.0]; sn], idx: vec![], joints: vec![[0; 4]; sn], weights: vec![[1.0, 0.0, 0.0, 0.0]; sn], image: None, color: [1.0; 4], mask: false, double_sided: false, mat_name: "Body".into(), targets: vec![] };
+                let mini = hase_core::vrm_model::VrmModel { name: "mh".into(), parts: vec![host], bones: bones.clone(), humanoid: model.humanoid.clone(), expressions: vec![], spring_bones: false, rigless: false, identity_rest: true, height, rest_rot: model.rest_rot.clone(), vrm_names: model.vrm_names.clone() };
+                let eyes = self.proxies.get(EYES_ID).filter(|rt| !rt.fit.is_empty()).and_then(|rt| {
+                    let (mut l, mut r) = (([0f32; 3], 0f32), ([0f32; 3], 0f32));
+                    for p in &rt.fit { let t = if p[0] > 0.0 { &mut l } else { &mut r }; for c in 0..3 { t.0[c] += p[c]; } t.1 += 1.0; }
+                    if l.1 > 0.0 && r.1 > 0.0 { Some(([l.0[0] / l.1, l.0[1] / l.1 + fo, l.0[2] / l.1], [r.0[0] / r.1, r.0[1] / r.1 + fo, r.0[2] / r.1])) } else { None }
+                });
+                let prep = hase_core::avatar::prepare_with(&mini, eyes);
+                let ob: Vec<[f32; 3]> = bones.iter().map(|b| b.pos).collect();
+                let d = hase_core::avatar::deform(&model, &prep, &[lifted.clone()], &ob, &self.style_vals);
+                for (v, q) in d.pos[0].iter().enumerate() {
+                    let delta = [q[0] - lifted[v][0], q[1] - lifted[v][1], q[2] - lifted[v][2]];
+                    if delta.iter().any(|c| c.abs() > 1e-6) { new_layer.insert(v as u32, delta); }
+                }
+            }
+        }
+        // Ergebnis: eval.pos = Morphs + Stilebene + Formung
+        let mut out = pos_m;
+        for (v, d) in &new_layer { let q = &mut out[*v as usize]; for c in 0..3 { q[c] += d[c]; } }
+        for (v, d) in &self.mh_sculpt { let q = &mut out[*v as usize]; for c in 0..3 { q[c] += d[c]; } }
+        self.eval.pos = out;
+        self.style_layer = new_layer;
+        self.pose_rig = None; self.push_grid = None;
+    }
+}
+
+/// Stilregler für Augen wirken auch auf die Augäpfel (Größe, Breite, Winkel um den jeweiligen Augenmittelpunkt; die Lage folgt bereits der Basis).
+fn style_eyes(vals: &[f32], fit: &mut [[f32; 3]]) {
+    let v = |id: &str| hase_core::avatar::index_of(id).map(|i| vals[i]).unwrap_or(0.0);
+    if ["eye-size-l", "eye-size-r", "eye-width-l", "eye-width-r", "eye-tilt-l", "eye-tilt-r"].iter().all(|k| v(k).abs() < 1e-4) { return; }
+    let (mut l, mut r) = (([0f32; 3], 0f32), ([0f32; 3], 0f32));
+    for p in fit.iter() { let t = if p[0] > 0.0 { &mut l } else { &mut r }; for c in 0..3 { t.0[c] += p[c]; } t.1 += 1.0; }
+    if l.1 < 1.0 || r.1 < 1.0 { return; }
+    let cl = [l.0[0] / l.1, l.0[1] / l.1, l.0[2] / l.1];
+    let cr = [r.0[0] / r.1, r.0[1] / r.1, r.0[2] / r.1];
+    for p in fit.iter_mut() {
+        let (side, c, sfx) = if p[0] > 0.0 { (1.0f32, cl, "l") } else { (-1.0, cr, "r") };
+        let (sz, wd, tl) = (v(&format!("eye-size-{sfx}")), v(&format!("eye-width-{sfx}")), v(&format!("eye-tilt-{sfx}")));
+        let (s, sx) = (1.0 + 0.8 * sz, 1.0 + 0.5 * wd);
+        let (dx, dy, dz) = ((p[0] - c[0]) * sx * s, (p[1] - c[1]) * s, (p[2] - c[2]) * (1.0 + 0.25 * sz));
+        let a = tl * 0.6 * side;
+        let (ca, sa) = (a.cos(), a.sin());
+        *p = [c[0] + dx * ca - dy * sa, c[1] + dx * sa + dy * ca, c[2] + dz];
     }
 }
