@@ -2120,6 +2120,20 @@ mod mh_tool_tests {
     }
 
     #[test]
+    fn character_json_keeps_species_variations() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        let i = s.packages.species.iter().position(|x| x.id.ends_with("dwarf")).unwrap();
+        s.select_species(i).unwrap(); s.set_variation("var-nasengroesse", 1.2); s.refresh();
+        let j = s.shared_json();
+        let st = s.state.clone();
+        let mut s2 = Session::load(&repo).unwrap();
+        s2.set_state_silent(st); s2.apply_shared_json(&j); s2.refresh();
+        assert_eq!(s2.var_vals.get("var-nasengroesse").copied(), Some(1.2));
+        assert_eq!(s2.eval.pos.iter().zip(&s.eval.pos).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Charakter lädt mit gleicher Form");
+    }
+
+    #[test]
     fn species_undo_restores_geometry() {
         let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
         let mut s = Session::load(&repo).unwrap();
