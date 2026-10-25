@@ -152,22 +152,26 @@ impl App {
     fn species_card(&mut self, ui: &mut egui::Ui) {
         if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(true) { return; }
         card(ui, Some((Icon::Species, "Spezies")), |ui| {
+            // Spezies-Kacheln (Vorschau mit den Standardwerten der Spezies)
             {
-                let s = self.session.as_mut().unwrap();
-                let compat = s.species_selectable();
-                let cur = s.species_opt().unwrap_or(usize::MAX);
-                let mut sel = cur;
-                let pos = compat.iter().position(|&i| i == cur);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let w = ui.available_width() - 2.0 * 30.0 - 8.0;
-                    if ui.add_sized([30.0, 28.0], egui::Button::new("‹")).clicked() { if let Some(p) = pos { sel = compat[(p + compat.len() - 1) % compat.len()]; } }
-                    egui::ComboBox::from_id_salt("species").width(w - 14.0).selected_text(s.species_opt().map(|i| s.packages.species[i].label.clone()).unwrap_or_else(|| "(keine Spezies)".into())).show_ui(ui, |ui| {
-                        for &i in &compat { let sp = &s.packages.species[i]; ui.selectable_value(&mut sel, i, format!("{}{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" }, if !sp.body_id.is_empty() && sp.body_id != s.packages.body.id { "  · eigene Körperbasis" } else { "" })); }
-                    });
-                    if ui.add_sized([30.0, 28.0], egui::Button::new("›")).clicked() { if let Some(p) = pos { sel = compat[(p + 1) % compat.len()]; } }
+                let items: Vec<(usize, String, std::collections::BTreeMap<String, f32>, bool)> = { let s = self.session.as_ref().unwrap(); let cur = s.species_opt(); s.species_selectable().into_iter().map(|i| { let sp = &s.packages.species[i]; (i, format!("{}{}", sp.label, if sp.stub { " (Stub)" } else { "" }), sp.defaults.clone(), cur == Some(i)) }).collect() };
+                let cols = 3usize; let gap = 6.0;
+                let tw = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
+                let mut pick = None;
+                egui::ScrollArea::vertical().id_salt("speciesgrid").max_height(250.0).auto_shrink([false, true]).show(ui, |ui| {
+                    for row in items.chunks(cols) {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = gap;
+                            for (i, label, defs, on) in row {
+                                let st = { let s = self.session.as_ref().unwrap(); let mut st = s.state.clone(); st.values = s.params.defaults(); drop(s); st };
+                                let st = { let s = self.session.as_ref().unwrap(); let mut st = st; for (k, v) in defs { if let Some(j) = s.params.canonical(k) { st.values[j] = *v; } } st };
+                                if self.tile_card(ui, tw, tw * 1.15, st, "head", label, *on) { pick = Some(*i); }
+                            }
+                        });
+                    }
                 });
-                if sel != cur && sel != usize::MAX { if let Err(e) = s.select_species(sel) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
+                if let Some(i) = pick { if let Err(e) = self.session.as_mut().unwrap().select_species(i) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
+                if !self.studio.msg.is_empty() { ui.colored_label(theme::WARN, self.studio.msg.clone()); }
             }
             // Variationen der Spezies (bewusst definierte Regler)
             let vars: Vec<(String, String, f32, f32, f32)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].shape.variations.iter().map(|v| (v.id.clone(), v.label.clone(), v.min, v.max, s.var_vals.get(&v.id).copied().unwrap_or(0.0))).collect()).unwrap_or_default() };
