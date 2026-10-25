@@ -69,3 +69,6 @@ Speziesauswahl als Kachelraster; Spezies mit Komponenten (Katzen-/Hunde-Demi, El
 
 ## 2026-10-25 – Eigene Geometrie der Beispiel-Spezies
 Beispiel-Spezies können `shape.json` im Paketordner tragen (Digest = Manifest + Shape). Hunde-/Katzen-Demi haben eine prozedural erzeugte Schnauze eingebacken und den Regler „Schnauzenlänge“ (`cargo test --release generate_species_shapes -- --ignored` erzeugt die Dateien; KI-generiert, keine fremden Meshes). Screenshot `docs/07-quality/screens/dog-demi-muzzle.png`. Noch rudimentär (nur Schnauze); Elf/weitere Spezies folgen.
+
+## 2026-10-25 – Elf-Geometrie, Spezies teilen
+Elf: Kinnspitze (eingebacken + Regler), Preset-Index-Korrektur (Elf = 4), seitliche Elfenohren. Spezies-Export/-Import als `.hasespecies` (Manifest + Spezieskörper; Import vergibt neue ID bei Kollision) im Spezies-Studio; Test `user_species_roundtrip` deckt Export→Import ab. Nicht teilbar sind bisher die referenzierten Assets/Körperbasen (nur IDs).

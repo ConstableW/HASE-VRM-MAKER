@@ -168,16 +168,21 @@ impl Species {
         out
     }
     /// Schreibt die Spezies als installierbares Package (`hase-package.json`) nach `user-content/packages/<id>/`.
-    pub fn write(&self, repo: &Path, body: &BodyPackage) -> Result<PathBuf, String> {
-        let dir = self.dir.clone().unwrap_or_else(|| user_dir(repo).join(&self.id));
-        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    /// Schreibt die Spezies (Manifest + Spezieskörper) als einzelne teilbare Datei (`.hasespecies`).
+    pub fn export_file(&self, body: &BodyPackage, path: &Path) -> Result<(), String> {
+        let doc = serde_json::json!({"format": "hase-species/1", "manifest": self.manifest_json(body), "shape": self.shape.to_json()});
+        std::fs::write(path, serde_json::to_string(&doc).unwrap()).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Manifest (hase-package.json) dieser Spezies.
+    pub fn manifest_json(&self, body: &BodyPackage) -> Value {
         let presets: Vec<Value> = self.presets.iter().map(|p| serde_json::json!({"id": p.id, "label": {"de": p.label}, "parameters": p.params})).collect();
         let traits: serde_json::Map<String, Value> = self.traits.iter().map(|t| (t.id.clone(), serde_json::json!({"label": {"de": t.label}, "set": t.set}))).collect();
         let limits: serde_json::Map<String, Value> = self.limits.iter().map(|(k, v)| (k.clone(), serde_json::json!([v[0], v[1]]))).collect();
         let comps: Vec<Value> = self.components.iter().map(|c| serde_json::json!({"asset": c.asset, "slot": c.slot})).collect();
         let mut requires = vec![serde_json::json!({"id": body.id, "range": format!("^{}", body.version.split('.').next().unwrap_or("1")) + ".0"})];
         for c in &self.components { requires.push(serde_json::json!({"id": c.asset, "range": "^1.0"})); }
-        let m = serde_json::json!({
+        serde_json::json!({
             "schemaVersion": "1.0", "id": self.id, "type": "species", "version": self.version,
             "name": {"de": self.label}, "description": self.description, "authors": ["Benutzer"], "tags": ["user"],
             "license": {"spdx": "CC0-1.0", "attribution": null, "redistribution": true},
@@ -186,7 +191,13 @@ impl Species {
                 "targets": {"bodyInterface": {"id": body.interface, "range": "^1.0"}},
                 "defaults": self.defaults, "limits": limits, "traits": traits, "components": comps, "capabilities": [], "presets": presets
             }
-        });
+        })
+    }
+
+    pub fn write(&self, repo: &Path, body: &BodyPackage) -> Result<PathBuf, String> {
+        let dir = self.dir.clone().unwrap_or_else(|| user_dir(repo).join(&self.id));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let m = self.manifest_json(body);
         let sf = dir.join("shape.json");
         if self.shape.is_empty() { let _ = std::fs::remove_file(&sf); } else { std::fs::write(&sf, self.shape.to_json().to_string()).map_err(|e| format!("{}: {e}", sf.display()))?; }
         let f = dir.join("hase-package.json");
@@ -214,6 +225,15 @@ mod tests {
         assert_eq!(back.defaults.get("mh:macro-age"), Some(&0.7));
         assert_eq!(back.presets.len(), sp.presets.len());
         assert_eq!(bump_version("1.2.3", 1), "1.3.0");
+        // Export → Import (neue ID bei Kollision)
+        let f = std::env::temp_dir().join("hase-test-export.hasespecies");
+        sp.shape.features = Some(vec!["ears".into()]);
+        sp.export_file(&p.body, &f).unwrap();
+        let d2 = import_species_file(&repo, &f, &[sp.id.clone()]).unwrap();
+        let p2 = Packages::load(&repo).unwrap();
+        let imp = p2.species.iter().find(|x| x.dir.as_deref() == Some(d2.as_path())).expect("importiert");
+        assert!(imp.id.ends_with("-2") && imp.shape.features.as_deref() == Some(&["ears".to_string()][..]) && imp.defaults.get("mh:macro-age") == Some(&0.7));
+        std::fs::remove_dir_all(d2).unwrap(); let _ = std::fs::remove_file(f);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
@@ -246,4 +266,24 @@ pub fn save_body_config(dir: &Path, cfg: &Value, status: &str, capabilities: Vec
     m["body"]["provides"]["capabilities"] = serde_json::json!(capabilities);
     if status == "configured" { m["body"]["provides"]["interface"] = Value::String(format!("{}.iface", m["id"].as_str().unwrap_or("user.body"))); m["description"] = Value::String("Importierte, aufbereitete Körperbasis (Regionen, Bones, Symmetrie zugeordnet).".into()); }
     std::fs::write(&f, serde_json::to_string_pretty(&m).unwrap()).map_err(|e| e.to_string())
+}
+
+/// Importiert eine `.hasespecies`-Datei als eigene Spezies (neue ID bei Kollision). Liefert die Paketordner-Pfade.
+pub fn import_species_file(repo: &Path, path: &Path, existing_ids: &[String]) -> Result<PathBuf, String> {
+    let t = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let doc: Value = serde_json::from_str(&t).map_err(|e| e.to_string())?;
+    if doc["format"] != "hase-species/1" { return Err("Keine HASE-Spezies-Datei (hase-species/1)".into()); }
+    let mut m = doc["manifest"].clone();
+    if m["type"] != "species" { return Err("Manifest ist keine Spezies".into()); }
+    let base_id = m["id"].as_str().ok_or("ID fehlt")?.trim_start_matches("user.species.").to_string();
+    let (mut id, mut k) = (format!("user.species.{}", slug(&base_id)), 1);
+    while existing_ids.iter().any(|x| *x == id) { k += 1; id = format!("user.species.{}-{k}", slug(&base_id)); }
+    m["id"] = Value::String(id.clone());
+    m["dev"] = serde_json::json!({"status": "user", "imported": true});
+    let dir = user_dir(repo).join(&id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let shape = SpeciesShape::from_json(&doc["shape"]);
+    if !shape.is_empty() { std::fs::write(dir.join("shape.json"), shape.to_json().to_string()).map_err(|e| e.to_string())?; }
+    std::fs::write(dir.join("hase-package.json"), serde_json::to_string_pretty(&m).unwrap()).map_err(|e| e.to_string())?;
+    Ok(dir)
 }

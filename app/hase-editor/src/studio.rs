@@ -94,6 +94,23 @@ impl App {
             sp.description = format!("Kopie von {}. {}", s.packages.species[self.studio.sel].label, sp.description);
             match sp.write(&s.repo, &s.packages.body) { Ok(dir) => { sp.digest = hase_core::packages::package_digest(&dir); sp.dir = Some(dir); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = "Dupliziert".into(); } Err(e) => self.studio.msg = e }
         }
+        ui.horizontal(|ui| {
+            if ui.button("Exportieren …").on_hover_text("Ausgewählte Spezies als .hasespecies-Datei (Manifest + Spezieskörper) speichern").clicked() {
+                let sp = s.packages.species[self.studio.sel].clone();
+                if let Some(path) = rfd::FileDialog::new().set_file_name(format!("{}.hasespecies", hase_core::packages::slug(&sp.label))).add_filter("HASE-Spezies", &["hasespecies"]).save_file() {
+                    self.studio.msg = match sp.export_file(&s.packages.body, &path) { Ok(()) => format!("Exportiert: {}", path.display()), Err(e) => e };
+                }
+            }
+            if ui.button("Importieren …").on_hover_text("Spezies aus .hasespecies-Datei als eigene Spezies hinzufügen").clicked() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("HASE-Spezies", &["hasespecies"]).pick_file() {
+                    let ids: Vec<String> = s.packages.species.iter().map(|x| x.id.clone()).collect();
+                    self.studio.msg = match hase_core::packages::import_species_file(&s.repo, &path, &ids).and_then(|d| hase_core::packages::Packages::load(&s.repo).map(|p| (d, p))) {
+                        Ok((d, p)) => { s.packages.species = p.species; format!("Importiert: {}", d.display()) }
+                        Err(e) => e,
+                    };
+                }
+            }
+        });
         if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
     }
 
