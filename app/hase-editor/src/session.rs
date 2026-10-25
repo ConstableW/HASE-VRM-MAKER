@@ -17,7 +17,13 @@ pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::pac
 /// Geöffnetes statisches VRM-/glTF-Modell (Ansehen, Posen, Ausdrücke).
 pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, shown: Vec<bool>, dirty: bool, pub path: PathBuf, pub hidden: std::collections::BTreeSet<usize>, pub skin_parts: std::collections::BTreeSet<usize>, dress: Option<VrmDress>, pub dress_info: String, pub avatar: AvatarState, pub tints: std::collections::BTreeMap<usize, [f32; 3]>, pub base_id: Option<String>, pub base_sha: String }
 
-pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant>, pub features: std::collections::BTreeMap<String, hase_core::features::FeatureState>, pub feat_changed: bool, pub generated: hase_core::features::Generated, pub gen_rev: u64, feat_shown: Vec<String>, feat_rev_seen: u64, pub sculpt: hase_core::sculpt::Layer, deformed: Vec<Vec<[f32; 3]>>, pub brush: hase_core::sculpt::Brush, stroke: Option<Stroke>, sculpt_touched: Vec<(usize, u32)>, sculpt_changed: bool, hist: Vec<AvEdit>, redo: Vec<AvEdit>, last_edit: Option<(usize, Instant)>, adj: Vec<Option<Vec<Vec<u32>>>> }
+/// Zustand, der für beide Basisarten gilt (Merkmale, Pinsel).
+#[derive(Default)]
+pub struct Shared { pub features: std::collections::BTreeMap<String, hase_core::features::FeatureState>, pub generated: hase_core::features::Generated, pub gen_rev: u64, pub feat_rev_seen: u64, pub feat_shown: Vec<String>, pub feat_dirty: bool, pub brush: hase_core::sculpt::Brush }
+
+pub struct MhStroke { center: [f32; 3], verts: Vec<(u32, f32, f32)>, before: Vec<(u32, [f32; 3])> }
+
+pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant>, pub sculpt: hase_core::sculpt::Layer, deformed: Vec<Vec<[f32; 3]>>, stroke: Option<Stroke>, sculpt_touched: Vec<(usize, u32)>, sculpt_changed: bool, hist: Vec<AvEdit>, redo: Vec<AvEdit>, last_edit: Option<(usize, Instant)>, adj: Vec<Option<Vec<Vec<u32>>>> }
 
 pub enum AvEdit { Params { before: Vec<f32>, after: Vec<f32> }, Stroke { changes: Vec<(usize, u32, [f32; 3], [f32; 3])> } }
 
@@ -67,6 +73,12 @@ pub struct Session {
     push_grid: Option<hase_core::fit::BodyGrid>,
     body_uniq: Vec<u32>,
     pub vrm: Option<VrmRuntime>,
+    pub sh: Shared,
+    pub mh_sculpt: std::collections::BTreeMap<u32, [f32; 3]>,
+    mh_stroke: Option<MhStroke>,
+    mh_hist: Vec<(usize, Vec<(u32, [f32; 3], [f32; 3])>)>,
+    mh_redo: Vec<(usize, Vec<(u32, [f32; 3], [f32; 3])>)>,
+    mh_adj: Option<Vec<Vec<u32>>>,
     masks: Option<crate::skin::Masks>,
     pub generic: bool,
     eyes_loaded: String,
@@ -168,7 +180,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -293,6 +305,7 @@ impl Session {
     pub fn new_character(&mut self) {
         if self.vrm.as_ref().map(|v| v.base_id.is_some()).unwrap_or(false) { self.reset_avatar(); return; }
         let before = self.state.clone();
+        self.sh.features.clear(); self.sh.feat_dirty = true; self.mh_reset_sculpt();
         let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
         for id in ids { self.remove_asset(&id); }
         self.state.style = Default::default();
@@ -352,9 +365,20 @@ impl Session {
     /// Ersetzt den gesamten Zustand (Datei laden).
     pub fn apply_state(&mut self, st: CharacterState) { let before = self.state.clone(); self.history.record(&before, None); self.restore(st); }
     pub fn undo(&mut self) {
-        if self.vrm.is_some() { self.avatar_undo(); return; } if let Some(s) = self.history.undo(&self.state) { self.restore(s); } }
+        if self.vrm.is_some() { self.avatar_undo(); return; }
+        if self.mh_hist.last().map(|e| e.0 == self.history.undo_len()).unwrap_or(false) { let e = self.mh_hist.pop().unwrap(); self.mh_apply(&e.1, true); self.mh_redo.push(e); return; }
+        if let Some(s) = self.history.undo(&self.state) { self.restore(s); }
+    }
     pub fn redo(&mut self) {
-        if self.vrm.is_some() { self.avatar_redo(); return; } if let Some(s) = self.history.redo(&self.state) { self.restore(s); } }
+        if self.vrm.is_some() { self.avatar_redo(); return; }
+        if self.mh_redo.last().map(|e| e.0 == self.history.undo_len()).unwrap_or(false) { let e = self.mh_redo.pop().unwrap(); self.mh_apply(&e.1, false); self.mh_hist.push(e); return; }
+        if let Some(s) = self.history.redo(&self.state) { self.restore(s); }
+    }
+    /// Sofortige Auswertung der Parameter (nur für Arbeits-/Worker-Kontexte).
+    fn apply_eval_now(&mut self) {
+        self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
+        if let Some(st) = self.eval.apply(&self.body, &self.desired) { if st.full { for (v, d) in &self.mh_sculpt { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } }
+    }
     fn restore(&mut self, s: CharacterState) {
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
         for id in removed { if self.proxies.remove(&id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); } }
@@ -380,13 +404,15 @@ impl Session {
         if self.vrm.is_some() { return self.refresh_vrm(); }
         let need_body = !self.body_created && !self.hide_body;
         if self.hide_body && self.body_created { self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
+        let mut body_moved = false;
         if self.dirty || self.assets_dirty || need_body {
             let t0 = Instant::now();
             let mut morph_changed = need_body || std::mem::take(&mut self.resend_body);
             if self.dirty {
                 self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
-                if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
+                if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; if st.full { for (v, d) in &self.mh_sculpt { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
             }
+            body_moved = morph_changed;
             if morph_changed || self.assets_dirty {
                 if morph_changed { self.pose_rig = None; self.push_grid = None; }
                 if morph_changed {
@@ -429,6 +455,8 @@ impl Session {
             self.perf.total_ms = t0.elapsed().as_secs_f64() * 1e3;
             self.dirty = false; self.assets_dirty = false;
         }
+        if body_moved || self.sh.feat_dirty { self.mh_regen_features(); }
+        self.mh_emit_features();
         if self.skin_dirty && self.body_created {
             self.skin_dirty = false;
             if let Some(base) = self.skin_tex.clone() {
@@ -720,7 +748,7 @@ impl Session {
         if self.generic { return Err("Export für importierte Körperbasen ist noch nicht unterstützt (Rig-/Gewichtsübernahme aus dem Import fehlt).".into()); }
         let floor = self.floor_off;
         let mut report: Vec<String> = Vec::new();
-        let (bones, vert_w) = load_rig(&self.packages.body.data_root, &self.body.obj, &self.eval.pos, floor)?;
+        let (mut bones, vert_w) = load_rig(&self.packages.body.data_root, &self.body.obj, &self.eval.pos, floor)?;
         let pelvis = bones.iter().position(|b| b.name == "pelvis").unwrap_or(0) as u16;
         let mut nrm_body = Vec::new();
         normals(&self.eval.pos, &self.body.topo.base_tris, &mut nrm_body);
@@ -852,7 +880,15 @@ impl Session {
         if self.state.style.skin.has_details() { report.push("Hinweis: Make-up/Sommersprossen/Details sind in die Hauttextur eingerechnet (nicht mehr einzeln editierbar im VRM).".into()); }
         report.push("Hinweis: Material-Glanz/Reflexion der Augen wird nicht exportiert; Pupillen-/Irisfarben sind in die Augentextur eingebacken.".into());
         let meta = ExMeta { name: o.name.clone(), author: o.author.clone(), copyright: "Basismesh, Targets, Rig, Haare, Augen, Kleidung: MakeHuman/MPFB2-Community-Assets (CC0 1.0); Zusammenstellung mit HASE VRM MAKER".into(), license_url: o.license_url.clone(), commercial: o.commercial.clone(), redistribution: o.redistribution };
-        Ok((ExDoc { meshes, materials, images, bones, humanoid, expressions, meta, springs: vec![] }, report))
+        // Merkmale
+        for b in &self.sh.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
+        for g in &self.sh.generated.parts {
+            materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            meshes.push(ExMesh { name: g.name.clone(), pos: g.pos.clone(), nrm: g.nrm.clone(), uv: g.uv.clone(), idx: g.idx.clone(), joints: g.joints.clone(), weights: g.weights.clone(), material: materials.len() - 1, targets: vec![] });
+        }
+        if !self.sh.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", self.sh.generated.parts.len(), self.sh.generated.bones.len(), self.sh.generated.springs.len())); }
+        let springs = self.sh.generated.springs.clone();
+        Ok((ExDoc { meshes, materials, images, bones, humanoid, expressions, meta, springs }, report))
     }
 }
 
@@ -887,7 +923,14 @@ impl Session {
         let Some(clip) = self.play.clip.as_ref() else { return };
         if self.rig.is_none() { match hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj) { Ok(r) => self.rig = Some(r), Err(_) => return } }
         let floor = self.floor_off;
-        if self.pose_rig.is_none() { let bones = self.rig.as_ref().unwrap().bones(&self.eval.pos, floor); self.pose_rig = Some(PoseRig::new(bones)); }
+        if self.pose_rig.is_none() {
+            let mut bones = self.rig.as_ref().unwrap().bones(&self.eval.pos, floor);
+            let map = hase_core::export::humanoid_map();
+            let mut names: Vec<Option<String>> = bones.iter().map(|b| map.iter().find(|(_, ue)| ue.eq_ignore_ascii_case(&b.name)).map(|(v, _)| v.clone())).collect();
+            for g in &self.sh.generated.bones { bones.push(hase_core::export::ExBone { name: g.name.clone(), parent: g.parent, pos: g.pos }); names.push(None); }
+            let n = bones.len();
+            self.pose_rig = Some(PoseRig::generic(bones, vec![[0.0, 0.0, 0.0, 1.0]; n], names));
+        }
         let pr = self.pose_rig.as_ref().unwrap();
         let hip_scale = pr.hips_rest_y() / clip_hip_height(clip);
         let m = pr.skin_matrices(Some((clip, self.play.t)), hip_scale);
@@ -921,6 +964,15 @@ impl Session {
             let tris: Vec<[u32; 3]> = rt.proxy.topo.base_tris.clone();
             let mut pn = Vec::new(); normals(&pos, &tris, &mut pn);
             self.pending.push(MeshUpdate::Positions { id: format!("proxy:{id}"), data: Self::interleave(&pos, &pn, &rt.proxy.topo.vmap, 0.0) });
+        }
+        // Merkmale (Ohren/Schweif/Hörner) folgen der Pose
+        for (k, g) in self.sh.generated.parts.iter().enumerate() {
+            let pos: Vec<[f32; 3]> = g.pos.iter().enumerate().map(|(j, q)| skin_point(&m, g.joints[j], g.weights[j], *q)).collect();
+            let tris: Vec<[u32; 3]> = g.idx.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect();
+            let mut nn = Vec::new(); normals(&pos, &tris, &mut nn);
+            let mut data = Vec::with_capacity(pos.len() * 6);
+            for (q, n) in pos.iter().zip(&nn) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
+            self.pending.push(MeshUpdate::Positions { id: format!("feat:{k}"), data });
         }
     }
 }
@@ -1027,7 +1079,7 @@ impl Session {
         let skin_parts: std::collections::BTreeSet<usize> = model.parts.iter().enumerate().filter(|(_, p)| { let (lo, hi) = p.pos.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q[1]), a.1.max(q[1]))); hi - lo >= 0.5 * model.height }).map(|(i, _)| i).collect();
         for rt in self.proxies.values_mut() { rt.created = false; }
         self.proxy_skin.clear(); self.assets_dirty = true;
-        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None, features: Default::default(), feat_changed: false, generated: Default::default(), gen_rev: 0, feat_shown: vec![], feat_rev_seen: 0, sculpt: vec![Default::default(); model_ref.parts.len()], deformed: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), brush: Default::default(), stroke: None, sculpt_touched: vec![], sculpt_changed: false, hist: vec![], redo: vec![], last_edit: None, adj: vec![None; model_ref.parts.len()] } };
+        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None, sculpt: vec![Default::default(); model_ref.parts.len()], deformed: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), stroke: None, sculpt_touched: vec![], sculpt_changed: false, hist: vec![], redo: vec![], last_edit: None, adj: vec![None; model_ref.parts.len()] } };
         self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new(), avatar, tints: Default::default(), base_id: None, base_sha: String::new() });
         let info = if rigless_info.is_empty() { info } else { format!("{info} · {rigless_info}") };
         Ok(info)
@@ -1036,7 +1088,7 @@ impl Session {
     /// Körper ohne Skelett: MakeHuman-Basis auf das Mesh abbilden, Skelett und Gewichte aus der abgebildeten Basis übernehmen.
     fn rig_rigless(&mut self, model: &mut hase_core::vrm_model::VrmModel) -> Result<String, String> {
         use hase_core::export::{humanoid_map, pack_weights, ExBone};
-        if self.dirty { self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired); self.eval.apply(&self.body, &self.desired); self.dirty = false; }
+        if self.dirty { self.apply_eval_now(); self.dirty = false; }
         if self.rig.is_none() { self.rig = Some(hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj)?); }
         if self.body_uniq.is_empty() { let mut uniq: Vec<u32> = self.body.topo.vmap.clone(); uniq.sort_unstable(); uniq.dedup(); self.body_uniq = uniq; }
         let floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
@@ -1084,7 +1136,7 @@ impl Session {
     fn ensure_dress(&mut self) -> Result<(), String> {
         use hase_core::dress::{register, Target};
         if self.vrm.as_ref().map(|v| v.dress.is_some()).unwrap_or(true) { return Ok(()); }
-        if self.dirty { self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired); self.eval.apply(&self.body, &self.desired); self.dirty = false; }
+        if self.dirty { self.apply_eval_now(); self.dirty = false; }
         if self.rig.is_none() { self.rig = Some(hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj)?); }
         if self.body_uniq.is_empty() { let mut uniq: Vec<u32> = self.body.topo.vmap.clone(); uniq.sort_unstable(); uniq.dedup(); self.body_uniq = uniq; }
         let floor_off = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
@@ -1137,12 +1189,13 @@ impl Session {
         match &e { AvEdit::Params { after, .. } => v.avatar.vals = after.clone(), AvEdit::Stroke { changes } => { for (pi, vi, _, new) in changes { if new.iter().all(|c| c.abs() < 1e-9) { v.avatar.sculpt[*pi].remove(vi); } else { v.avatar.sculpt[*pi].insert(*vi, *new); } } } }
         v.avatar.hist.push(e); v.avatar.changed = true; v.avatar.last_edit = None;
     }
-    pub fn can_undo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_undo() } else { self.history.can_undo() } }
-    pub fn can_redo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_redo() } else { self.history.can_redo() } }
+    pub fn can_undo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_undo() } else { self.history.can_undo() || !self.mh_hist.is_empty() } }
+    pub fn can_redo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_redo() } else { self.history.can_redo() || !self.mh_redo.is_empty() } }
 
     // ---- Direkte Formung
     /// Strahl (Weltraum inkl. Boden) gegen die sichtbaren Teile; liefert den Treffer in Modellkoordinaten.
     pub fn avatar_pick(&self, o: [f32; 3], d: [f32; 3]) -> Option<[f32; 3]> {
+        if self.vrm.is_none() { return self.mh_pick(o, d); }
         let v = self.vrm.as_ref()?;
         let o = [o[0], o[1] - v.floor, o[2]];
         let mut best: Option<f32> = None;
@@ -1152,12 +1205,14 @@ impl Session {
         }
         best.map(|t| [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t])
     }
-    pub fn sculpt_floor(&self) -> f32 { self.vrm.as_ref().map(|v| v.floor).unwrap_or(0.0) }
+    pub fn sculpt_floor(&self) -> f32 {
+        if self.vrm.is_none() { return self.floor_off; } self.vrm.as_ref().map(|v| v.floor).unwrap_or(0.0) }
 
     pub fn sculpt_begin(&mut self, hit: [f32; 3]) {
+        if self.vrm.is_none() { return self.mh_begin(hit); }
         use hase_core::sculpt::*;
         let Some(v) = self.vrm.as_mut() else { return };
-        let b = v.avatar.brush;
+        let b = self.sh.brush;
         let mut verts = Vec::new(); let mut before = Vec::new();
         for (pi, p) in v.model.parts.iter().enumerate() {
             if v.hidden.contains(&pi) { continue; }
@@ -1172,10 +1227,11 @@ impl Session {
 
     /// Ziehen: Verschiebung `delta` (Modellkoordinaten) gegenüber dem Greifpunkt.
     pub fn sculpt_grab(&mut self, delta: [f32; 3]) {
+        if self.vrm.is_none() { return self.mh_grab(delta); }
         use hase_core::sculpt::*;
         let Some(v) = self.vrm.as_mut() else { return };
         let Some(st) = v.avatar.stroke.as_ref() else { return };
-        let k = v.avatar.brush.strength;
+        let k = self.sh.brush.strength;
         let total = mul(delta, k);
         let mut touched = Vec::with_capacity(st.verts.len());
         for (idx, (pi, vi, w1, w2)) in st.verts.iter().enumerate() {
@@ -1189,10 +1245,11 @@ impl Session {
 
     /// Inkrementelle Pinsel (Aufblasen, Skalieren, Glätten); `amount` in Metern (Vorzeichen = Richtung).
     pub fn sculpt_step(&mut self, amount: f32) {
+        if self.vrm.is_none() { return self.mh_step(amount); }
         use hase_core::sculpt::*;
         let Some(v) = self.vrm.as_mut() else { return };
         let Some(st) = v.avatar.stroke.as_ref() else { return };
-        let b = v.avatar.brush;
+        let b = self.sh.brush;
         let amount = amount * b.strength;
         let mut touched = Vec::with_capacity(st.verts.len());
         if b.kind == BrushKind::Smooth {
@@ -1217,15 +1274,17 @@ impl Session {
     }
 
     pub fn sculpt_end(&mut self) {
+        if self.vrm.is_none() { return self.mh_end(); }
         let Some(v) = self.vrm.as_mut() else { return };
         let Some(st) = v.avatar.stroke.take() else { return };
         let mut changes = Vec::new();
         for (pi, vi, old) in st.before { let new = v.avatar.sculpt[pi].get(&vi).copied().unwrap_or([0.0; 3]); if (0..3).any(|c| (new[c] - old[c]).abs() > 1e-7) { changes.push((pi, vi, old, new)); } }
         if !changes.is_empty() { v.avatar.hist.push(AvEdit::Stroke { changes }); v.avatar.redo.clear(); if v.avatar.hist.len() > 200 { v.avatar.hist.remove(0); } }
-        v.avatar.feat_changed = true; // Merkmale/Anprobe an die neue Form anpassen
+        self.sh.feat_dirty = true; // Merkmale/Anprobe an die neue Form anpassen
         if v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(500)); }
     }
     pub fn sculpt_clear(&mut self) {
+        if self.vrm.is_none() { return self.mh_clear(); }
         let Some(v) = self.vrm.as_mut() else { return };
         let mut changes = Vec::new();
         for (pi, m) in v.avatar.sculpt.iter().enumerate() { for (vi, d) in m { changes.push((pi, *vi, *d, [0.0; 3])); } }
@@ -1233,7 +1292,8 @@ impl Session {
         for m in v.avatar.sculpt.iter_mut() { m.clear(); }
         v.avatar.hist.push(AvEdit::Stroke { changes }); v.avatar.redo.clear(); v.avatar.changed = true;
     }
-    pub fn sculpt_count(&self) -> usize { self.vrm.as_ref().map(|v| v.avatar.sculpt.iter().map(|m| m.len()).sum()).unwrap_or(0) }
+    pub fn sculpt_count(&self) -> usize {
+        if self.vrm.is_none() { return self.mh_sculpt.len(); } self.vrm.as_ref().map(|v| v.avatar.sculpt.iter().map(|m| m.len()).sum()).unwrap_or(0) }
 
     pub fn avatar_reset(&mut self, idx: &[usize]) { if let Some(v) = self.vrm.as_mut() { for &i in idx { v.avatar.vals[i] = hase_core::avatar::DEFS[i].def; } v.avatar.changed = true; } }
     pub fn avatar_pending(&self) -> bool { self.vrm.as_ref().map(|v| v.avatar.changed || v.avatar.dress_due.is_some()).unwrap_or(false) }
@@ -1259,7 +1319,7 @@ impl Session {
         let Some(v) = self.vrm.as_mut() else { return };
         if let Some(t) = v.avatar.dress_due { if Instant::now() >= t { v.avatar.dress_due = None; v.dress = None; self.assets_dirty = true; } }
         // Schnellpfad: nur Formung (Pinselstrich) → betroffene Vertices neu setzen
-        if !v.avatar.changed && !v.avatar.feat_changed && v.avatar.sculpt_changed && !v.avatar.deformed.is_empty() {
+        if !v.avatar.changed && !self.sh.feat_dirty && v.avatar.sculpt_changed && !v.avatar.deformed.is_empty() {
             v.avatar.sculpt_changed = false;
             let touched = std::mem::take(&mut v.avatar.sculpt_touched);
             let mut parts_t: std::collections::BTreeSet<usize> = Default::default();
@@ -1269,8 +1329,8 @@ impl Session {
             return;
         }
         let deform = v.avatar.changed;
-        if !deform && !v.avatar.feat_changed { return; }
-        v.avatar.changed = false; v.avatar.feat_changed = false;
+        if !deform && !self.sh.feat_dirty { return; }
+        v.avatar.changed = false; self.sh.feat_dirty = false;
         if deform {
             let mut d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
             v.avatar.deformed = d.pos.clone();
@@ -1282,12 +1342,12 @@ impl Session {
             v.model.height = hi; v.floor = -lo;
         }
         // Merkmale (Ohren, Schweif, Hörner) auf der verformten Basis neu erzeugen
-        let any = v.avatar.features.values().any(|f| f.enabled);
-        v.avatar.generated = if any { let lm = hase_core::avatar::prepare(&v.model).lm; hase_core::features::build(&v.model, &lm, &v.avatar.features) } else { Default::default() };
-        v.avatar.gen_rev += 1;
+        let any = self.sh.features.values().any(|f| f.enabled);
+        self.sh.generated = if any { let lm = hase_core::avatar::prepare(&v.model).lm; hase_core::features::build(&v.model, &lm, &self.sh.features) } else { Default::default() };
+        self.sh.gen_rev += 1;
         let mut bones: Vec<hase_core::export::ExBone> = v.model.bones.iter().map(|b| hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }).collect();
         let mut rest = v.model.rest_rot.clone(); let mut names = v.model.vrm_names.clone();
-        for b in &v.avatar.generated.bones { bones.push(hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }); rest.push([0.0, 0.0, 0.0, 1.0]); names.push(None); }
+        for b in &self.sh.generated.bones { bones.push(hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }); rest.push([0.0, 0.0, 0.0, 1.0]); names.push(None); }
         v.rig = hase_core::pose::PoseRig::generic(bones, rest, names);
         v.dirty = true;
         if deform && v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(400)); }
@@ -1295,11 +1355,10 @@ impl Session {
 
     // ---- Merkmale
     pub fn feature_mut(&mut self, kind: &str) -> Option<&mut hase_core::features::FeatureState> {
-        let v = self.vrm.as_mut()?;
-        v.avatar.feat_changed = true;
-        Some(v.avatar.features.entry(kind.to_string()).or_insert_with(|| hase_core::features::FeatureState::new(kind)))
+        self.sh.feat_dirty = true;
+        Some(self.sh.features.entry(kind.to_string()).or_insert_with(|| hase_core::features::FeatureState::new(kind)))
     }
-    pub fn feature(&self, kind: &str) -> hase_core::features::FeatureState { self.vrm.as_ref().and_then(|v| v.avatar.features.get(kind).cloned()).unwrap_or_else(|| hase_core::features::FeatureState::new(kind)) }
+    pub fn feature(&self, kind: &str) -> hase_core::features::FeatureState { self.sh.features.get(kind).cloned().unwrap_or_else(|| hase_core::features::FeatureState::new(kind)) }
 
     pub fn set_skin_part(&mut self, part: usize, on: bool) { if let Some(v) = self.vrm.as_mut() { if on { v.skin_parts.insert(part); } else { v.skin_parts.remove(&part); } v.dress = None; self.assets_dirty = true; } }
     pub fn set_part_hidden(&mut self, part: usize, hide: bool) { if let Some(v) = self.vrm.as_mut() { if hide { v.hidden.insert(part); } else { v.hidden.remove(&part); } v.dirty = true; } }
@@ -1347,13 +1406,13 @@ impl Session {
             v.dirty = false;
         }
         // Merkmale: Meshes neu anlegen, wenn neu erzeugt; bei Posen mit Bone-Matrizen skinnen
-        let recreated = v.avatar.gen_rev != v.avatar.feat_rev_seen;
+        let recreated = self.sh.gen_rev != self.sh.feat_rev_seen;
         if recreated {
-            for id in v.avatar.feat_shown.drain(..) { out.push(MeshUpdate::Remove(id)); }
-            v.avatar.feat_rev_seen = v.avatar.gen_rev;
+            for id in self.sh.feat_shown.drain(..) { out.push(MeshUpdate::Remove(id)); }
+            self.sh.feat_rev_seen = self.sh.gen_rev;
         }
         if recreated || posing {
-            for (k, g) in v.avatar.generated.parts.iter().enumerate() {
+            for (k, g) in self.sh.generated.parts.iter().enumerate() {
                 let id = format!("feat:{k}");
                 let mut pos: Vec<[f32; 3]> = g.pos.iter().map(|q| [q[0], q[1] + floor, q[2]]).collect();
                 if let Some(m) = &mats { for (j, q) in pos.iter_mut().enumerate() { *q = skin_point(m, g.joints[j], g.weights[j], *q); } }
@@ -1361,7 +1420,7 @@ impl Session {
                 let mut nrm = Vec::new(); normals(&pos, &tris, &mut nrm);
                 let mut data = Vec::with_capacity(pos.len() * 6);
                 for (q, n) in pos.iter().zip(&nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
-                if recreated { out.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() })); v.avatar.feat_shown.push(id); }
+                if recreated { out.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() })); self.sh.feat_shown.push(id); }
                 else { out.push(MeshUpdate::Positions { id, data }); }
             }
         }
@@ -1435,13 +1494,13 @@ impl Session {
         else { report.push("Verlust: MToon-Materialeinstellungen des Originals werden vereinfacht.".into()); }
         let meta = ExMeta { name: o.name.clone(), author: o.author.clone(), copyright: format!("Basismodell „{}“ (Rechte beim Urheber des Originals), Kleidung: MakeHuman/MPFB2-Community-Assets (CC0 1.0); Zusammenstellung mit HASE VRM MAKER", m.name), license_url: o.license_url.clone(), commercial: o.commercial.clone(), redistribution: o.redistribution };
         let mut bones: Vec<ExBone> = m.bones.iter().map(|b| ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }).collect();
-        for b in &v.avatar.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
-        for g in &v.avatar.generated.parts {
+        for b in &self.sh.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
+        for g in &self.sh.generated.parts {
             materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
             meshes.push(ExMesh { name: g.name.clone(), pos: g.pos.clone(), nrm: g.nrm.clone(), uv: g.uv.clone(), idx: g.idx.clone(), joints: g.joints.clone(), weights: g.weights.clone(), material: materials.len() - 1, targets: vec![] });
         }
-        if !v.avatar.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", v.avatar.generated.parts.len(), v.avatar.generated.bones.len(), v.avatar.generated.springs.len())); }
-        let springs = v.avatar.generated.springs.clone();
+        if !self.sh.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", self.sh.generated.parts.len(), self.sh.generated.bones.len(), self.sh.generated.springs.len())); }
+        let springs = self.sh.generated.springs.clone();
         Ok((ExDoc { meshes, materials, images, bones, humanoid: m.humanoid.clone(), expressions, meta, springs }, report))
     }
 }
@@ -1537,7 +1596,7 @@ impl Session {
         let assets: Vec<serde_json::Value> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| serde_json::json!({"id": a.id, "tint": a.tint})).collect();
         Some(serde_json::json!({"formatVersion": "0.1-avatar", "kind": "avatar", "species": {"id": ""}, "body": {"id": format!("avatar:{id}")}, "base": {"id": id, "sha": v.base_sha},
             "params": hase_core::avatar::to_map(&v.avatar.vals), "sculpt": hase_core::sculpt::to_json(&v.avatar.sculpt), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets,
-            "features": v.avatar.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect::<serde_json::Map<String, serde_json::Value>>()}))
+            "features": self.sh.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect::<serde_json::Map<String, serde_json::Value>>()}))
     }
 
     /// Öffnet eine registrierte Basis als neuen Avatar (nackt, Standardwerte).
@@ -1559,15 +1618,15 @@ impl Session {
         for (k, c) in j["tints"].as_object().into_iter().flatten() { if let (Ok(i), Some(a)) = (k.parse::<usize>(), c.as_array()) { if i < v.model.parts.len() && a.len() == 3 { v.tints.insert(i, [a[0].as_f64().unwrap_or(1.0) as f32, a[1].as_f64().unwrap_or(1.0) as f32, a[2].as_f64().unwrap_or(1.0) as f32]); } } }
         v.avatar.sculpt = hase_core::sculpt::from_json(&j["sculpt"], v.model.parts.len());
         v.avatar.hist.clear(); v.avatar.redo.clear();
-        v.avatar.features.clear();
+        self.sh.features.clear();
         for (k, f) in j["features"].as_object().into_iter().flatten() {
             let mut st = hase_core::features::FeatureState::new(k);
             st.enabled = f["enabled"].as_bool().unwrap_or(false);
             if let Some(a) = f["vals"].as_array() { let vals: Vec<f32> = a.iter().filter_map(|x| x.as_f64().map(|y| y as f32)).collect(); if vals.len() == st.vals.len() { st.vals = vals; } }
             for (key, dst) in [("color", &mut st.color), ("color2", &mut st.color2)] { if let Some(a) = f[key].as_array() { if a.len() == 3 { *dst = [a[0].as_f64().unwrap_or(0.5) as f32, a[1].as_f64().unwrap_or(0.5) as f32, a[2].as_f64().unwrap_or(0.5) as f32]; } } }
-            v.avatar.features.insert(k.clone(), st);
+            self.sh.features.insert(k.clone(), st);
         }
-        v.avatar.feat_changed = true;
+        self.sh.feat_dirty = true;
         v.hidden = j["hidden"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|i| i as usize)).collect()).unwrap_or_default();
         let clothes: Vec<(String, [f32; 3])> = j["clothes"].as_array().map(|a| a.iter().filter_map(|c| { let t = c["tint"].as_array()?; Some((c["id"].as_str()?.to_string(), [t.first()?.as_f64()? as f32, t.get(1)?.as_f64()? as f32, t.get(2)?.as_f64()? as f32])) }).collect()).unwrap_or_default();
         let old: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
@@ -1580,7 +1639,7 @@ impl Session {
     pub fn reset_avatar(&mut self) {
         let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
         for id in ids { self.remove_asset(&id); }
-        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; for m in v.avatar.sculpt.iter_mut() { m.clear(); } v.avatar.hist.clear(); v.avatar.redo.clear(); v.avatar.features.clear(); v.avatar.feat_changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
+        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; for m in v.avatar.sculpt.iter_mut() { m.clear(); } v.avatar.hist.clear(); v.avatar.redo.clear(); self.sh.features.clear(); self.sh.feat_dirty = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
     }
 }
 
@@ -1638,7 +1697,7 @@ mod sculpt_tests {
         let h = s.body_height();
         let hit = s.avatar_pick([0.0, h * 0.55, 3.0], [0.0, 0.0, -1.0]).expect("Treffer");
         let before = s.vrm.as_ref().unwrap().model.parts.iter().map(|p| p.pos.clone()).collect::<Vec<_>>();
-        s.vrm.as_mut().unwrap().avatar.brush.radius = 0.1;
+        s.sh.brush.radius = 0.1;
         s.sculpt_begin(hit);
         s.sculpt_grab([0.0, 0.0, 0.05]);
         s.refresh();
@@ -1661,5 +1720,217 @@ mod sculpt_tests {
         s2.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
         s2.apply_avatar_json(&j); s2.refresh();
         assert_eq!(s2.sculpt_count(), s.sculpt_count());
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// MakeHuman-Basis: direkte Formung und Merkmale (gleiche Werkzeuge wie auf der Avatar-Basis)
+// ---------------------------------------------------------------------------------------------------------
+impl Session {
+    fn mh_unique(&mut self) {
+        if self.body_uniq.is_empty() { let mut u: Vec<u32> = self.body.topo.vmap.clone(); u.sort_unstable(); u.dedup(); self.body_uniq = u; }
+    }
+    pub(crate) fn mh_pick(&self, o: [f32; 3], d: [f32; 3]) -> Option<[f32; 3]> {
+        let idx: Vec<u32> = self.body.topo.base_tris.iter().flat_map(|t| [t[0], t[1], t[2]]).collect();
+        let o = [o[0], o[1] - self.floor_off, o[2]];
+        let (t, _) = hase_core::sculpt::ray_mesh(o, d, &self.eval.pos, &idx)?;
+        Some([o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t])
+    }
+    fn mh_set(&mut self, v: u32, new: [f32; 3]) {
+        let old = self.mh_sculpt.get(&v).copied().unwrap_or([0.0; 3]);
+        let q = &mut self.eval.pos[v as usize];
+        for c in 0..3 { q[c] += new[c] - old[c]; }
+        if new.iter().all(|c| c.abs() < 1e-9) { self.mh_sculpt.remove(&v); } else { self.mh_sculpt.insert(v, new); }
+    }
+    pub(crate) fn mh_begin(&mut self, hit: [f32; 3]) {
+        use hase_core::sculpt::*;
+        self.mh_unique();
+        if self.body_nrm.len() != self.eval.pos.len() { normals(&self.eval.pos, &self.body.topo.base_tris, &mut self.body_nrm); }
+        let b = self.sh.brush;
+        let (mut verts, mut before) = (Vec::new(), Vec::new());
+        for &v in &self.body_uniq {
+            let q = self.eval.pos[v as usize];
+            let w1 = fall(len(sub(q, hit)), b.radius);
+            let w2 = if b.symmetric { fall(len(sub(q, mirror(hit))), b.radius) } else { 0.0 };
+            if w1 > 0.0 || w2 > 0.0 { verts.push((v, w1, w2)); before.push((v, self.mh_sculpt.get(&v).copied().unwrap_or([0.0; 3]))); }
+        }
+        self.mh_stroke = Some(MhStroke { center: hit, verts, before });
+    }
+    pub(crate) fn mh_grab(&mut self, delta: [f32; 3]) {
+        use hase_core::sculpt::*;
+        let Some(st) = self.mh_stroke.as_ref() else { return };
+        let total = mul(delta, self.sh.brush.strength);
+        let ups: Vec<(u32, [f32; 3])> = st.verts.iter().zip(&st.before).map(|((v, w1, w2), (_, old))| { let d = if w1 >= w2 { mul(total, *w1) } else { mul(mirror(total), *w2) }; (*v, add(*old, d)) }).collect();
+        for (v, n) in ups { self.mh_set(v, n); }
+        self.resend_body = true; self.dirty = true;
+    }
+    pub(crate) fn mh_step(&mut self, amount: f32) {
+        use hase_core::sculpt::*;
+        let Some(st) = self.mh_stroke.as_ref() else { return };
+        let b = self.sh.brush;
+        let amount = amount * b.strength;
+        if b.kind == BrushKind::Smooth && self.mh_adj.is_none() { self.mh_adj = Some(adjacency(self.eval.pos.len(), &self.body.topo.base_tris.iter().flat_map(|t| [t[0], t[1], t[2]]).collect::<Vec<u32>>())); }
+        let mut ups: Vec<(u32, [f32; 3])> = Vec::with_capacity(st.verts.len());
+        for (v, w1, w2) in &st.verts {
+            let w = w1.max(*w2);
+            let p = self.eval.pos[*v as usize];
+            let center = if w1 >= w2 { st.center } else { mirror(st.center) };
+            let d = match b.kind {
+                BrushKind::Inflate => mul(self.body_nrm[*v as usize], amount * w),
+                BrushKind::Scale => mul(sub(p, center), amount * 8.0 * w),
+                BrushKind::Smooth => { let nb = &self.mh_adj.as_ref().unwrap()[*v as usize]; if nb.is_empty() { [0.0; 3] } else { let mut m = [0f32; 3]; for &j in nb { m = add(m, self.eval.pos[j as usize]); } m = mul(m, 1.0 / nb.len() as f32); mul(sub(m, p), 0.5 * b.strength.min(1.0) * w) } }
+                BrushKind::Grab => [0.0; 3],
+            };
+            ups.push((*v, add(self.mh_sculpt.get(v).copied().unwrap_or([0.0; 3]), d)));
+        }
+        for (v, n) in ups { self.mh_set(v, n); }
+        self.resend_body = true; self.dirty = true;
+    }
+    pub(crate) fn mh_end(&mut self) {
+        let Some(st) = self.mh_stroke.take() else { return };
+        let mut changes = Vec::new();
+        for (v, old) in st.before { let new = self.mh_sculpt.get(&v).copied().unwrap_or([0.0; 3]); if (0..3).any(|c| (new[c] - old[c]).abs() > 1e-7) { changes.push((v, old, new)); } }
+        if !changes.is_empty() { self.mh_hist.push((self.history.undo_len(), changes)); self.mh_redo.clear(); if self.mh_hist.len() > 200 { self.mh_hist.remove(0); } }
+        self.assets_dirty = true; self.sh.feat_dirty = true; self.resend_body = true; self.dirty = true;
+    }
+    pub(crate) fn mh_clear(&mut self) {
+        let changes: Vec<(u32, [f32; 3], [f32; 3])> = self.mh_sculpt.iter().map(|(v, d)| (*v, *d, [0.0; 3])).collect();
+        if changes.is_empty() { return; }
+        for (v, _, _) in &changes { self.mh_set(*v, [0.0; 3]); }
+        self.mh_hist.push((self.history.undo_len(), changes)); self.mh_redo.clear();
+        self.assets_dirty = true; self.sh.feat_dirty = true; self.resend_body = true; self.dirty = true;
+    }
+    fn mh_apply(&mut self, changes: &[(u32, [f32; 3], [f32; 3])], undo: bool) {
+        for (v, old, new) in changes { self.mh_set(*v, if undo { *old } else { *new }); }
+        self.assets_dirty = true; self.sh.feat_dirty = true; self.resend_body = true; self.dirty = true;
+    }
+    /// Entfernt die Formung vollständig (neuer Charakter, Basiswechsel).
+    pub(crate) fn mh_reset_sculpt(&mut self) {
+        let keys: Vec<u32> = self.mh_sculpt.keys().copied().collect();
+        for v in keys { self.mh_set(v, [0.0; 3]); }
+        self.mh_hist.clear(); self.mh_redo.clear(); self.mh_stroke = None;
+        self.resend_body = true; self.dirty = true; self.assets_dirty = true; self.sh.feat_dirty = true;
+    }
+
+    // ---- Merkmale
+    /// Momentaufnahme der MakeHuman-Basis als Basismodell (Boden bei y = 0), damit dieselben Merkmals-Generatoren wie beim Avatar laufen.
+    fn mh_host_model(&mut self) -> Option<(hase_core::vrm_model::VrmModel, Option<([f32; 3], [f32; 3])>)> {
+        use hase_core::vrm_model::{VrmModel, VrmPart};
+        if self.rig.is_none() { self.rig = hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj).ok(); }
+        let rig = self.rig.as_ref()?;
+        let fo = -self.body.topo.vmap.iter().map(|&v| self.eval.pos[v as usize][1]).fold(f32::MAX, f32::min);
+        let bones = rig.bones(&self.eval.pos, fo);
+        let map = hase_core::export::humanoid_map();
+        let mut humanoid = std::collections::BTreeMap::new();
+        let mut vrm_names: Vec<Option<String>> = vec![None; bones.len()];
+        for (vn, ue) in &map { if let Some(i) = bones.iter().position(|b| b.name.eq_ignore_ascii_case(ue)) { humanoid.insert(vn.clone(), i); vrm_names[i] = Some(vn.clone()); } }
+        let mut pos: Vec<[f32; 3]> = self.eval.pos.iter().map(|p| [p[0], p[1] + fo, p[2]]).collect();
+        let used: std::collections::BTreeSet<u32> = self.body.topo.vmap.iter().copied().collect();
+        // nur Hautvertices behalten (Hilfsgeometrie weit wegschieben würde Landmarken stören)
+        let keep: Vec<[f32; 3]> = used.iter().map(|&v| pos[v as usize]).collect();
+        pos = keep;
+        let height = pos.iter().map(|p| p[1]).fold(0.0, f32::max);
+        let n = pos.len();
+        let part = VrmPart { name: "Body".into(), pos, nrm: vec![[0.0, 1.0, 0.0]; n], uv: vec![[0.0, 0.0]; n], idx: vec![], joints: vec![[0; 4]; n], weights: vec![[1.0, 0.0, 0.0, 0.0]; n], image: None, color: [1.0; 4], mask: false, double_sided: false, mat_name: "Body".into(), targets: vec![] };
+        let nb = bones.len();
+        let eyes = self.proxies.get(EYES_ID).filter(|rt| !rt.fit.is_empty()).and_then(|rt| {
+            let (mut l, mut r) = (([0f32; 3], 0f32), ([0f32; 3], 0f32));
+            for p in &rt.fit { let t = if p[0] > 0.0 { &mut l } else { &mut r }; for c in 0..3 { t.0[c] += p[c]; } t.1 += 1.0; }
+            if l.1 > 0.0 && r.1 > 0.0 { Some(([l.0[0] / l.1, l.0[1] / l.1 + fo, l.0[2] / l.1], [r.0[0] / r.1, r.0[1] / r.1 + fo, r.0[2] / r.1])) } else { None }
+        });
+        Some((VrmModel { name: "mh".into(), parts: vec![part], bones, humanoid, expressions: vec![], spring_bones: false, rigless: false, identity_rest: true, height, rest_rot: vec![[0.0, 0.0, 0.0, 1.0]; nb], vrm_names }, eyes))
+    }
+
+    fn mh_regen_features(&mut self) {
+        self.sh.feat_dirty = false;
+        let any = self.sh.features.values().any(|f| f.enabled);
+        if !any { if !self.sh.generated.parts.is_empty() { self.sh.generated = Default::default(); self.sh.gen_rev += 1; self.pose_rig = None; } return; }
+        let Some((m, eyes)) = self.mh_host_model() else { return };
+        let prep = hase_core::avatar::prepare_with(&m, eyes);
+        self.sh.generated = hase_core::features::build(&m, &prep.lm, &self.sh.features);
+        self.sh.gen_rev += 1;
+        self.pose_rig = None;
+    }
+
+    fn mh_emit_features(&mut self) {
+        if self.sh.gen_rev == self.sh.feat_rev_seen { return; }
+        for id in self.sh.feat_shown.drain(..) { self.pending.push(MeshUpdate::Remove(id)); }
+        self.sh.feat_rev_seen = self.sh.gen_rev;
+        for (k, g) in self.sh.generated.parts.iter().enumerate() {
+            let id = format!("feat:{k}");
+            let mut data = Vec::with_capacity(g.pos.len() * 6);
+            for (q, n) in g.pos.iter().zip(&g.nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
+            self.pending.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() }));
+            self.sh.feat_shown.push(id);
+        }
+    }
+
+    /// Gemeinsames JSON (Merkmale; bei MakeHuman auch die Formung) – wird an das Charakter-JSON angehängt.
+    pub fn shared_json(&self) -> serde_json::Value {
+        let feats: serde_json::Map<String, serde_json::Value> = self.sh.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect();
+        let sculpt: Vec<serde_json::Value> = self.mh_sculpt.iter().flat_map(|(v, d)| [serde_json::json!(v), serde_json::json!((d[0] * 1e5).round() / 1e5), serde_json::json!((d[1] * 1e5).round() / 1e5), serde_json::json!((d[2] * 1e5).round() / 1e5)]).collect();
+        serde_json::json!({"features": feats, "mhSculpt": sculpt})
+    }
+    pub fn apply_shared_json(&mut self, j: &serde_json::Value) {
+        self.sh.features.clear();
+        for (k, f) in j["features"].as_object().into_iter().flatten() {
+            let mut st = hase_core::features::FeatureState::new(k);
+            st.enabled = f["enabled"].as_bool().unwrap_or(false);
+            if let Some(a) = f["vals"].as_array() { let vals: Vec<f32> = a.iter().filter_map(|x| x.as_f64().map(|y| y as f32)).collect(); if vals.len() == st.vals.len() { st.vals = vals; } }
+            for (key, dst) in [("color", &mut st.color), ("color2", &mut st.color2)] { if let Some(a) = f[key].as_array() { if a.len() == 3 { *dst = [a[0].as_f64().unwrap_or(0.5) as f32, a[1].as_f64().unwrap_or(0.5) as f32, a[2].as_f64().unwrap_or(0.5) as f32]; } } }
+            self.sh.features.insert(k.clone(), st);
+        }
+        self.sh.feat_dirty = true;
+        if self.vrm.is_none() {
+            self.mh_reset_sculpt();
+            let nums: Vec<f64> = j["mhSculpt"].as_array().into_iter().flatten().filter_map(|x| x.as_f64()).collect();
+            for c in nums.chunks_exact(4) { let v = c[0] as u32; if (v as usize) < self.eval.pos.len() { self.mh_set(v, [c[1] as f32, c[2] as f32, c[3] as f32]); } }
+            self.resend_body = true; self.dirty = true; self.assets_dirty = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod mh_tool_tests {
+    use super::*;
+
+    #[test]
+    fn makehuman_features_sculpt_export() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.default_assets_blocking(&["hair/short02"]);
+        s.refresh();
+        // Merkmale
+        for k in ["ears", "tail", "horns"] { s.feature_mut(k).unwrap().enabled = true; }
+        let up = s.refresh();
+        assert!(up.iter().filter(|u| matches!(u, MeshUpdate::Create(d) if d.id.starts_with("feat:"))).count() >= 5, "Ohren, Schweif, Hörner erscheinen");
+        assert!(!s.sh.generated.bones.is_empty());
+        // Formung am Körper + Undo
+        let h = s.body_height();
+        let hit = s.avatar_pick([0.0, h * 0.62, 3.0], [0.0, 0.0, -1.0]).expect("Treffer");
+        s.sh.brush.radius = 0.08;
+        let p0 = s.eval.pos.clone();
+        s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
+        let moved = s.eval.pos.iter().zip(&p0).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-4).count();
+        assert!(moved > 10 && s.sculpt_count() > 10, "Formung wirkt am MakeHuman-Körper: {moved}");
+        // Formung überlebt eine vollständige Neuberechnung der Morphs
+        s.state.values[0] = s.state.values[0] + 0.0;
+        s.undo(); s.refresh();
+        let back = s.eval.pos.iter().zip(&p0).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count();
+        assert_eq!(back, 0, "Undo");
+        s.redo(); s.refresh();
+        // Export enthält die Merkmale
+        let o = ExportOptions { with_outfit: false, expressions: false, name: "T".into(), author: "A".into(), license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: "personalNonProfit".into(), redistribution: true };
+        let (doc, _) = s.build_export(&o).unwrap();
+        assert!(doc.meshes.iter().any(|m| m.name == "Tail") && !doc.springs.is_empty());
+        let glb = hase_core::export::write_glb(&doc).unwrap();
+        hase_core::export::verify_glb(&glb).unwrap();
+        // Speichern/Laden
+        let j = s.shared_json();
+        let mut s2 = Session::load(&repo).unwrap();
+        s2.refresh();
+        s2.apply_shared_json(&j); s2.refresh();
+        assert_eq!(s2.sculpt_count(), s.sculpt_count());
+        assert!(s2.feature("tail").enabled);
     }
 }

@@ -12,7 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 const RENDER_VERSION: &str = "t6";
 
-pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam_kind: String, pub w: u32, pub h: u32, pub body: BodyPackage, pub avatar: Option<(serde_json::Value, PathBuf, String)> }
+pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam_kind: String, pub w: u32, pub h: u32, pub body: BodyPackage, pub avatar: Option<(serde_json::Value, PathBuf, String)>, pub extra: Option<serde_json::Value> }
 pub struct ThumbDone { pub key: String, pub w: u32, pub h: u32, pub rgba: Vec<u8> }
 
 pub struct ThumbService {
@@ -99,6 +99,7 @@ fn worker(repo: PathBuf, dir: PathBuf, rx: Receiver<ThumbJob>, tx: Sender<ThumbD
             // Körperbasis passend halten
             if sess.packages.body.id != job.body.id { if sess.activate_body(&job.body).is_err() { continue; } }
             sess.set_state_silent(job.state.clone());
+            if let Some(x) = &job.extra { sess.apply_shared_json(x); } else { sess.apply_shared_json(&serde_json::json!({})); }
             sess.ensure_assets_blocking();
         }
         let updates = sess.refresh();

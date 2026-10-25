@@ -36,7 +36,7 @@ impl App {
         let key = make_key(&st, &s.packages.body.digest, cam_kind, w, h, &s.params);
         let body = s.packages.body.clone();
         let ctx = ui.ctx().clone();
-        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w, h, body, avatar: None });
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w, h, body, avatar: None, extra: None });
         let p = ui.painter();
         let fill = if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 };
         p.rect_filled(rect, 6.0, fill);
@@ -62,7 +62,7 @@ impl App {
         let key = make_key(&st, &s.packages.body.digest, cam_kind, tw, th, &s.params);
         let body = s.packages.body.clone();
         let ctx = ui.ctx().clone();
-        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w: tw, h: th, body, avatar: None });
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w: tw, h: th, body, avatar: None, extra: None });
         let p = ui.painter();
         let img = egui::Rect::from_min_size(rect.min, egui::vec2(w, h));
         p.rect_filled(img, 7.0, if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 });

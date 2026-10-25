@@ -66,19 +66,21 @@ impl App {
             let body = s.packages.body.clone();
             let st = s.state.clone();
             let jj = j.clone();
-            let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: Some((jj, path, base_id)) });
+            let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: Some((jj, path, base_id)), extra: None });
             self.lib.pending_thumbs.push((key, dir));
             return;
         }
         let st = s.state.clone();
         let (w, h) = (192u32, 192u32);
-        let key = crate::thumbs::make_key(&st, &s.packages.body.digest, "head", w, h, &s.params);
+        let extra = s.shared_json();
+        let has_extra = extra["features"].as_object().map(|o| !o.is_empty()).unwrap_or(false) || !extra["mhSculpt"].as_array().map(|a| a.is_empty()).unwrap_or(true);
+        let key = if has_extra { format!("{}x{}", crate::thumbs::make_key(&st, &s.packages.body.digest, "head", w, h, &s.params), &hase_core::packages::sha256_hex(extra.to_string().as_bytes())[..8]) } else { crate::thumbs::make_key(&st, &s.packages.body.digest, "head", w, h, &s.params) };
         let body = s.packages.body.clone();
-        let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: None });
+        let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: None, extra: if has_extra { Some(extra) } else { None } });
         self.lib.pending_thumbs.push((key, dir));
     }
 
-    fn character_json(&self) -> Option<serde_json::Value> { self.session.as_ref().map(|s| s.avatar_json().unwrap_or_else(|| s.state.to_json(&s.params, &s.packages.body.id))) }
+    fn character_json(&self) -> Option<serde_json::Value> { self.session.as_ref().map(|s| s.avatar_json().unwrap_or_else(|| { let mut j = s.state.to_json(&s.params, &s.packages.body.id); let sh = s.shared_json(); j["features"] = sh["features"].clone(); j["mhSculpt"] = sh["mhSculpt"].clone(); j })) }
 
     pub(crate) fn lib_save_new(&mut self, ctx: &egui::Context, name: &str, template: bool) {
         let (Some(json), Some(repo)) = (self.character_json(), self.session.as_ref().map(|s| s.repo.clone())) else { return };

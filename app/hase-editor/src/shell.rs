@@ -200,6 +200,14 @@ impl App {
             ui_kit::section(ui, t);
             for (i, r) in regions::regions_of(m) { if nav_row(ui, icons::for_region(r.label), r.label, self.main == m && self.region == i).clicked() { go = Some((m, i, 0)); } }
         }
+        ui_kit::section(ui, "Formen");
+        if nav_row(ui, Icon::Sculpt, "Direkt formen (Pinsel)", self.tool == Tool::Sculpt).clicked() { self.tool = Tool::Sculpt; self.main = Main::Charakter; self.region = usize::MAX; }
+        ui_kit::section(ui, "Merkmale");
+        for (k, (kind, label)) in hase_core::features::KINDS.iter().enumerate() {
+            let on = self.session.as_ref().map(|s| s.feature(kind).enabled).unwrap_or(false);
+            let ic = [Icon::Ear, Icon::Species, Icon::Star][k];
+            if nav_row(ui, ic, &format!("{label}{}", if on { "  ●" } else { "" }), self.main == Main::Stil && self.sub == 20 + k).clicked() { go = Some((Main::Stil, usize::MAX, 20 + k)); }
+        }
         ui_kit::section(ui, "Haare & Stil");
         if nav_row(ui, Icon::Hair, "Frisur", self.main == Main::Haare).clicked() { go = Some((Main::Haare, usize::MAX, 0)); }
         for (i, (l, ic)) in [("Haut", Icon::Skin), ("Make-up", Icon::Makeup), ("Details", Icon::Details), ("Augenfarbe (siehe Augen)", Icon::Eye), ("Brauen & Wimpern", Icon::Lashes)].iter().enumerate() {
@@ -220,7 +228,8 @@ impl App {
         card(ui, None, |ui| {
             ui.set_min_height(ui.available_height() - 22.0);
             if self.lib.open { egui::ScrollArea::vertical().id_salt("libscroll").auto_shrink([false, false]).show(ui, |ui| { ui.set_width(ui.available_width()); self.lib_panel(ui, ctx); }); return; }
-            if ws == Workspace::Charakter && !vrm {
+            let special = self.tool == Tool::Sculpt || (self.main == Main::Stil && self.sub >= 20);
+            if ws == Workspace::Charakter && !vrm && !special {
                 let mut t = self.rtab;
                 if tabs(ui, &["Presets", "Parameter", "Fein", "Erweitert"], &mut t) { self.rtab = t; self.expert = t == 3; }
                 ui.add_space(6.0);
@@ -257,7 +266,7 @@ impl App {
         round_mask(&p, rect, 10.0, theme::BG);
         p.rect_stroke(rect, CornerRadius::same(10), Stroke::new(1.0, theme::LINE), StrokeKind::Inside);
         // Werkzeuge links
-        let avatar = self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
+        let avatar = self.session.is_some();
         let mut y = rect.top() + 12.0;
         let mut tools = vec![(Tool::Pan, Icon::Move, "Bewegen", "Ziehen verschiebt die Ansicht"), (Tool::Orbit, Icon::Rotate, "Rotieren", "Ziehen dreht die Kamera"), (Tool::Zoom, Icon::Zoom, "Zoomen", "Ziehen zoomt (auch Mausrad)"), (Tool::Focus, Icon::Focus, "Fokus", "Klick auf den Körper zentriert die Kamera dort"), (Tool::Region, Icon::Region, "Bereich", "Klick auf eine Körperstelle öffnet den passenden Bearbeitungsbereich")];
         if avatar { tools.push((Tool::Sculpt, Icon::Sculpt, "Formen", "Geometrie direkt formen: ziehen, aufblasen, glätten, skalieren (mit Symmetrie)")); }
@@ -505,7 +514,7 @@ impl App {
     /// Eingabe des Formen-Werkzeugs (nur im Avatar-Modus): Hover-Pick, Pinselstrich, Ende.
     pub(crate) fn sculpt_input(&mut self, ui: &egui::Ui, resp: &egui::Response, rect: egui::Rect, aspect: f32) {
         use hase_core::sculpt::*;
-        let active = self.tool == Tool::Sculpt && self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
+        let active = self.tool == Tool::Sculpt && self.session.is_some();
         if !active { self.sculpt_hover = None; if self.sculpt_anchor.take().is_some() { if let Some(s) = self.session.as_mut() { s.sculpt_end(); } } return; }
         let alt = ui.input(|i| i.modifiers.alt);
         let ray = |pp: egui::Pos2, cam: &crate::camera::Camera| { let (nx, ny) = ((pp.x - rect.left()) / rect.width() * 2.0 - 1.0, 1.0 - (pp.y - rect.top()) / rect.height() * 2.0); cam.ray(nx, ny, aspect) };
@@ -519,7 +528,7 @@ impl App {
         }
         if let Some(h) = self.sculpt_anchor {
             if resp.dragged_by(egui::PointerButton::Primary) {
-                let kind = self.session.as_ref().and_then(|s| s.vrm.as_ref().map(|v| v.avatar.brush.kind)).unwrap_or(BrushKind::Grab);
+                let kind = self.session.as_ref().map(|s| s.sh.brush.kind).unwrap_or(BrushKind::Grab);
                 if let Some(s) = self.session.as_mut() {
                     match kind {
                         BrushKind::Grab => {
@@ -532,7 +541,7 @@ impl App {
                             }
                         }
                         BrushKind::Smooth => s.sculpt_step(0.0),
-                        _ => { let dy = resp.drag_delta().y; let r = s.vrm.as_ref().map(|v| v.avatar.brush.radius).unwrap_or(0.06); s.sculpt_step(-dy * 0.0004 * (r / 0.06)); }
+                        _ => { let dy = resp.drag_delta().y; let r = s.sh.brush.radius; s.sculpt_step(-dy * 0.0004 * (r / 0.06)); }
                     }
                 }
             }
@@ -541,7 +550,7 @@ impl App {
         // Pinselring (und Spiegelring)
         let c = self.sculpt_anchor.or(self.sculpt_hover);
         if let (Some(c), Some(s)) = (c, self.session.as_ref()) {
-            let b = s.vrm.as_ref().map(|v| v.avatar.brush).unwrap_or_default();
+            let b = s.sh.brush;
             let right = self.camera.right();
             let mut rings = vec![c];
             if b.symmetric { rings.push(mirror(c)); }
@@ -564,20 +573,18 @@ impl App {
         use hase_core::sculpt::BrushKind;
         self.panel_title(ui, Icon::Sculpt, "Formen (direkte Geometrie)");
         let Some(s) = self.session.as_mut() else { return };
-        let Some(v) = s.vrm.as_mut() else { return };
         ui.colored_label(theme::TEXT2, "Am Modell ziehen, aufblasen, glätten, skalieren – mit Symmetrie und Rückgängig. Alt + Ziehen dreht die Ansicht. Die Formung wird mit dem Charakter gespeichert und wirkt zusätzlich zu den Reglern.");
         ui.add_space(6.0);
-        let mut k = BrushKind::ALL.iter().position(|b| *b == v.avatar.brush.kind).unwrap_or(0);
+        let mut k = BrushKind::ALL.iter().position(|b| *b == s.sh.brush.kind).unwrap_or(0);
         let labels: Vec<&str> = BrushKind::ALL.iter().map(|b| b.label()).collect();
-        if ui_kit::tabs(ui, &labels, &mut k) { v.avatar.brush.kind = BrushKind::ALL[k]; }
-        ui.colored_label(theme::TEXT2, v.avatar.brush.kind.tip());
+        if ui_kit::tabs(ui, &labels, &mut k) { s.sh.brush.kind = BrushKind::ALL[k]; }
+        ui.colored_label(theme::TEXT2, s.sh.brush.kind.tip());
         ui.add_space(6.0);
-        let mut r = v.avatar.brush.radius; if let Some(n) = ui_kit::param_row(ui, "Radius (m)", r, 0.01..=0.25, 0.06, "") { r = n; v.avatar.brush.radius = r; }
-        let mut st = v.avatar.brush.strength; if let Some(n) = ui_kit::param_row(ui, "Stärke", st, 0.1..=2.5, 1.0, "") { st = n; v.avatar.brush.strength = st; }
-        ui.checkbox(&mut v.avatar.brush.symmetric, "Symmetrie (links = rechts)");
+        let r = s.sh.brush.radius; if let Some(n) = ui_kit::param_row(ui, "Radius (m)", r, 0.01..=0.25, 0.06, "") { s.sh.brush.radius = n; }
+        let st = s.sh.brush.strength; if let Some(n) = ui_kit::param_row(ui, "Stärke", st, 0.1..=2.5, 1.0, "") { s.sh.brush.strength = n; }
+        ui.checkbox(&mut s.sh.brush.symmetric, "Symmetrie (links = rechts)");
         ui.add_space(6.0);
-        let n = v.avatar.sculpt.iter().map(|m| m.len()).sum::<usize>();
-        ui.colored_label(theme::TEXT2, format!("{n} Vertices geformt"));
+        ui.colored_label(theme::TEXT2, format!("{} Vertices geformt", s.sculpt_count()));
         ui.horizontal(|ui| {
             if ui.add_enabled(s.can_undo(), egui::Button::new("Rückgängig")).clicked() { s.undo(); }
             if ui.add_enabled(s.can_redo(), egui::Button::new("Wiederholen")).clicked() { s.redo(); }

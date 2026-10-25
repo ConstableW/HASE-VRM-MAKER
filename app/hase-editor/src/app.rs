@@ -79,6 +79,7 @@ pub struct App {
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
     pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
     pub(crate) rtab: usize,
+    pub(crate) pending_shared: Option<serde_json::Value>,
     pub(crate) sculpt_hover: Option<[f32; 3]>,
     pub(crate) sculpt_anchor: Option<[f32; 3]>,
     pub(crate) base_picker: bool,
@@ -112,7 +113,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, sculpt_hover: None, sculpt_anchor: None, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, pending_shared: None, sculpt_hover: None, sculpt_anchor: None, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -409,8 +410,8 @@ impl App {
         if s.vrm.is_some() { s.close_vrm(); }
         match s.plan_load(&v) {
             crate::session::LoadPlan::Ready(st, issues) => {
-                if issues.is_empty() { s.apply_state(st); self.status = format!("Geladen: {path}"); }
-                else { self.pending_load = Some((st, issues, path)); }
+                if issues.is_empty() { s.apply_state(st); s.apply_shared_json(&v); self.status = format!("Geladen: {path}"); }
+                else { self.pending_shared = Some(v.clone()); self.pending_load = Some((st, issues, path)); }
             }
             crate::session::LoadPlan::NeedsBody(b) => { self.pending_body = Some((v, b, path)); }
             crate::session::LoadPlan::MissingBody(id) => self.status = format!("Körperbasis {id} ist nicht installiert oder nicht fertig konfiguriert – Charakter nicht geladen"),
@@ -483,8 +484,8 @@ impl App {
             ui.add_space(6.0);
             ui.label("Die gespeicherten Parameterwerte bleiben unverändert; der Charakter sieht so aus wie gespeichert. Die Bindung an die installierten Versionen wird nur auf Wunsch aktualisiert.");
             ui.horizontal(|ui| {
-                if ui.button("Laden (Werte & alte Bindung behalten)").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); } self.status = format!("Geladen mit Hinweisen: {path}"); done = true; }
-                if ui.button("Laden und an installierte Versionen binden").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); s.rebind_refs(); } self.status = format!("Geladen und gebunden: {path}"); done = true; }
+                if ui.button("Laden (Werte & alte Bindung behalten)").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); if let Some(j) = self.pending_shared.take() { s.apply_shared_json(&j); } } self.status = format!("Geladen mit Hinweisen: {path}"); done = true; }
+                if ui.button("Laden und an installierte Versionen binden").clicked() { if let Some(s) = self.session.as_mut() { s.apply_state(st.clone()); s.rebind_refs(); if let Some(j) = self.pending_shared.take() { s.apply_shared_json(&j); } } self.status = format!("Geladen und gebunden: {path}"); done = true; }
                 if ui.button("Abbrechen").clicked() { done = true; }
             });
         });
@@ -584,6 +585,8 @@ impl App {
         }
         if vrm && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { self.vrm_panel(ui); return; }
         if self.ws == Workspace::Studio { self.studio_detail(ui); return; }
+        if self.ws == Workspace::Charakter && self.tool == Tool::Sculpt { self.sculpt_panel(ui); return; }
+        if self.ws == Workspace::Charakter && self.main == Main::Stil && self.sub >= 20 && self.sub < 30 { self.feature_panel(ui, self.sub - 20); return; }
         if self.ws == Workspace::Charakter {
             match self.rtab { 0 => { self.panel_title(ui, Icon::Species, "Spezies & Presets"); self.species_panel(ui); return; } 3 => { self.params_panel(ui); return; } _ => {} }
         }

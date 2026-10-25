@@ -62,11 +62,14 @@ fn fall(d: f32, r: f32) -> f32 { if d >= r { 0.0 } else { let t = 1.0 - (d / r) 
 
 fn bone_pos(m: &VrmModel, name: &str) -> Option<[f32; 3]> { m.humanoid.get(name).map(|&i| m.bones[i].pos) }
 
-pub fn prepare(m: &VrmModel) -> Prep {
+pub fn prepare(m: &VrmModel) -> Prep { prepare_with(m, None) }
+
+/// Wie `prepare`, optional mit vorgegebenen Augenmitten (links, rechts), z. B. bei Basen ohne Augen-Bones.
+pub fn prepare_with(m: &VrmModel, eyes: Option<([f32; 3], [f32; 3])>) -> Prep {
     let kinds: Vec<Kind> = m.parts.iter().map(|p| kind_of(&p.mat_name)).collect();
     let head = bone_pos(m, "head").unwrap_or([0.0, m.height * 0.9, 0.0]);
     let neck = bone_pos(m, "neck").unwrap_or([head[0], head[1] - 0.08, head[2]]);
-    let (mut el, mut er) = (bone_pos(m, "leftEye"), bone_pos(m, "rightEye"));
+    let (mut el, mut er) = if let Some((a, b)) = eyes { (Some(a), Some(b)) } else { (bone_pos(m, "leftEye"), bone_pos(m, "rightEye")) };
     if el.is_none() || er.is_none() { let w = m.height * 0.03; el = Some([head[0] + w, head[1] + 0.08, head[2] + 0.07]); er = Some([head[0] - w, head[1] + 0.08, head[2] + 0.07]); }
     let (mut el, mut er) = (el.unwrap(), er.unwrap());
     if el[0] < er[0] { std::mem::swap(&mut el, &mut er); }
@@ -77,7 +80,7 @@ pub fn prepare(m: &VrmModel) -> Prep {
         for (pi, ti, w) in binds { let part = &m.parts[*pi]; let t = &part.targets[*ti].1; for (k, d) in t.iter().enumerate() { let mag = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() * w.abs(); if mag > 1e-5 { let p = part.pos[k]; for c in 0..3 { acc.0[c] += p[c] * mag; } acc.1 += mag; } }
         }
     }
-    let mouth = if acc.1 > 0.0 { [0.0, acc.0[1] / acc.1, acc.0[2] / acc.1] } else { [0.0, (el[1] + head[1] - 0.12) * 0.5 - ipd * 0.6, el[2]] };
+    let mouth = if acc.1 > 0.0 { [0.0, acc.0[1] / acc.1, acc.0[2] / acc.1] } else { [0.0, el[1] - ipd * 1.1, el[2]] };
     // Nase/Kinn/Ohren aus der Gesichtsgeometrie (ohne Haare)
     let mid_y = (el[1] + mouth[1]) * 0.5;
     let (mut nose, mut nose_z) = ([0.0, mid_y, el[2]], f32::MIN);

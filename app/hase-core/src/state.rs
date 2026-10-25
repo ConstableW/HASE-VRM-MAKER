@@ -96,6 +96,7 @@ impl History {
     }
     pub fn undo(&mut self, cur: &CharacterState) -> Option<CharacterState> { let s = self.undo.pop()?; self.redo.push(cur.clone()); self.last_key = None; Some(s) }
     pub fn redo(&mut self, cur: &CharacterState) -> Option<CharacterState> { let s = self.redo.pop()?; self.undo.push(cur.clone()); self.last_key = None; Some(s) }
+    pub fn undo_len(&self) -> usize { self.undo.len() }
     pub fn can_undo(&self) -> bool { !self.undo.is_empty() }
     pub fn can_redo(&self) -> bool { !self.redo.is_empty() }
 }
