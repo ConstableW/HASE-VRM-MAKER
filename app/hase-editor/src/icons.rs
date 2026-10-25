@@ -7,7 +7,7 @@ pub enum Icon {
     Overview, Head, Forehead, Eye, Brow, Nose, Cheek, Mouth, Jaw, Ear, Neck, Shoulder, Chest, Breast, Torso, Belly, Hips, Glutes, BackBody, Arm, Hand, Leg, Foot,
     Hair, Skin, Makeup, Details, Lashes, Species, Areas, Outfit, Pose, Export,
     // Werkzeuge
-    Move, Rotate, Zoom, Focus, Region, Pin, Light, Image, Play, Pause, Prev, Next, Back, Fullscreen, Panels, Reset, Symmetry, Undo, Redo,
+    Move, Rotate, Sculpt, Zoom, Focus, Region, Pin, Light, Image, Play, Pause, Prev, Next, Back, Fullscreen, Panels, Reset, Symmetry, Undo, Redo,
     // Kopfzeile
     Project, Library, Settings, Save, Load, Search, Plus, Close, Check, Folder, Star, Copy, Trash, Edit, Compare, Info, Warn,
     // Pfeile
@@ -70,6 +70,7 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Export => { p.ln(&[(-8.0, 2.0), (-8.0, 9.0), (8.0, 9.0), (8.0, 2.0)]); p.ln(&[(0.0, 5.0), (0.0, -9.0)]); p.ln(&[(-4.0, -5.0), (0.0, -9.0), (4.0, -5.0)]); }
         Move => { p.ln(&[(0.0, -10.0), (0.0, 10.0)]); p.ln(&[(-10.0, 0.0), (10.0, 0.0)]); p.ln(&[(-3.0, -7.0), (0.0, -10.0), (3.0, -7.0)]); p.ln(&[(-3.0, 7.0), (0.0, 10.0), (3.0, 7.0)]); p.ln(&[(-7.0, -3.0), (-10.0, 0.0), (-7.0, 3.0)]); p.ln(&[(7.0, -3.0), (10.0, 0.0), (7.0, 3.0)]); }
         Rotate => { p.arc(0.0, 0.0, 8.0, -40.0, 250.0); p.ln(&[(2.0, -9.0), (6.0, -6.0), (8.0, -10.0)]); p.ln(&[(8.0, 3.0), (6.0, -6.0)]); }
+        Sculpt => { p.ci(-3.0, 3.0, 5.5); p.ln(&[(1.0, -1.0), (9.0, -9.0)]); p.ln(&[(4.0, -9.0), (9.0, -9.0), (9.0, -4.0)]); }
         Zoom => { p.ci(-2.0, -2.0, 7.0); p.ln(&[(3.0, 3.0), (9.0, 9.0)]); p.ln(&[(-5.0, -2.0), (1.0, -2.0)]); p.ln(&[(-2.0, -5.0), (-2.0, 1.0)]); }
         Focus => { p.ci(0.0, 0.0, 6.5); p.dot(0.0, 0.0, 1.4); for (a, b, c, d) in [(0.0f32, -10.0f32, 0.0f32, -6.0f32), (0.0, 6.0, 0.0, 10.0), (-10.0, 0.0, -6.0, 0.0), (6.0, 0.0, 10.0, 0.0)] { p.ln(&[(a, b), (c, d)]); } }
         Region => { p.poly(&[(-9.0, -9.0), (-3.0, -9.0)]); p.ln(&[(-9.0, -9.0), (-9.0, -3.0)]); p.ln(&[(9.0, -9.0), (3.0, -9.0)]); p.ln(&[(9.0, -9.0), (9.0, -3.0)]); p.ln(&[(-9.0, 9.0), (-9.0, 3.0)]); p.ln(&[(-9.0, 9.0), (-3.0, 9.0)]); p.ln(&[(-2.0, -2.0), (9.0, 3.0), (4.0, 4.0), (3.0, 9.0), (-2.0, -2.0)]); }

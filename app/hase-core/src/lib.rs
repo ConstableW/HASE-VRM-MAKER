@@ -28,3 +28,4 @@ pub mod vrm_model;
 pub mod dress;
 pub mod avatar;
 pub mod features;
+pub mod sculpt;

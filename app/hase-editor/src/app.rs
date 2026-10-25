@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Tool { Orbit, Pan, Zoom, Focus, Region, Decal }
+pub(crate) enum Tool { Orbit, Pan, Zoom, Focus, Region, Decal, Sculpt }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Workspace { Charakter, Outfit, Finalisieren, Studio }
@@ -79,6 +79,8 @@ pub struct App {
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
     pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
     pub(crate) rtab: usize,
+    pub(crate) sculpt_hover: Option<[f32; 3]>,
+    pub(crate) sculpt_anchor: Option<[f32; 3]>,
     pub(crate) base_picker: bool,
     pub(crate) bases: Vec<crate::anime_bases::AnimeBase>,
     pub(crate) side_filter: u8,
@@ -110,7 +112,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, sculpt_hover: None, sculpt_anchor: None, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -182,8 +184,8 @@ impl App {
         ui.horizontal(|ui| {
             ui.checkbox(&mut s.symmetric, "Symmetrie");
             if ui.button("Alle zurücksetzen").clicked() { s.reset_params(); }
-            if ui.add_enabled(s.history.can_undo(), egui::Button::new("Rückgängig")).on_hover_text("Rückgängig (Strg+Z)").clicked() { s.undo(); }
-            if ui.add_enabled(s.history.can_redo(), egui::Button::new("Wiederholen")).on_hover_text("Wiederholen (Strg+Y)").clicked() { s.redo(); }
+            if ui.add_enabled(s.can_undo(), egui::Button::new("Rückgängig")).on_hover_text("Rückgängig (Strg+Z)").clicked() { s.undo(); }
+            if ui.add_enabled(s.can_redo(), egui::Button::new("Wiederholen")).on_hover_text("Wiederholen (Strg+Y)").clicked() { s.redo(); }
         });
         ui.horizontal(|ui| { ui.label("Suche:"); if ui.text_edit_singleline(&mut self.filter).changed() { self.rows_key.1 = usize::MAX; } if ui.small_button("✕").clicked() { self.filter.clear(); self.rows_key.1 = usize::MAX; } });
         ui.separator();
@@ -280,11 +282,12 @@ impl App {
     pub(crate) fn viewport(&mut self, ui: &mut egui::Ui) {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
         let tool = self.tool;
-        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Orbit | Tool::Region | Tool::Focus | Tool::Decal => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
+        if resp.dragged_by(egui::PointerButton::Primary) { let d = resp.drag_delta(); match tool { Tool::Sculpt => { if ui.input(|i| i.modifiers.alt) { self.camera.orbit(d.x, d.y) } } Tool::Orbit | Tool::Region | Tool::Focus | Tool::Decal => self.camera.orbit(d.x, d.y), Tool::Pan => self.camera.pan(d.x, d.y), Tool::Zoom => self.camera.zoom(-d.y * 4.0) } }
         if resp.dragged_by(egui::PointerButton::Secondary) || resp.dragged_by(egui::PointerButton::Middle) { let d = resp.drag_delta(); self.camera.pan(d.x, d.y); }
         if resp.hovered() { let sc = ui.input(|i| i.smooth_scroll_delta.y); if sc != 0.0 { self.camera.zoom(sc); } }
         if resp.double_clicked() { self.camera = Camera::default(); self.saved_cam = None; }
         let aspect_pick = (rect.width() / rect.height().max(1.0)).max(0.1);
+        self.sculpt_input(ui, &resp, rect, aspect_pick);
         let studio_pick = self.ws == Workspace::Studio && self.studio.prep.as_ref().map(|p| p.pick != crate::studio::Pick::None).unwrap_or(false);
         if resp.clicked() && (studio_pick || matches!(tool, Tool::Region | Tool::Focus | Tool::Decal)) {
             if let Some(pp) = resp.interact_pointer_pos() {
@@ -571,6 +574,7 @@ impl App {
         if self.session.is_none() { ui.label("Lade …"); return; }
         let vrm = self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
         if vrm && self.ws == Workspace::Charakter {
+            if self.tool == Tool::Sculpt { self.sculpt_panel(ui); return; }
             match self.main {
                 Main::Gesicht | Main::Koerper => { let g = self.main == Main::Gesicht; self.panel_title(ui, if g { Icon::Head } else { Icon::Overview }, if g { "Gesicht" } else { "Körper" }); self.region_accordion(ui, self.main, false); }
                 Main::Stil => { if self.sub >= 10 { self.feature_panel(ui, self.sub - 10); } else if self.sub == 0 { self.avatar_colors(ui); } else { self.vrm_panel(ui); } }

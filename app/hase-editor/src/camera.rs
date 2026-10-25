@@ -52,6 +52,17 @@ impl Camera {
         let d = norm([f[0] + s[0] * nx * t * aspect + u[0] * ny * t, f[1] + s[1] * nx * t * aspect + u[1] * ny * t, f[2] + s[2] * nx * t * aspect + u[2] * ny * t]);
         (eye, d)
     }
+    pub fn forward(&self) -> [f32; 3] { norm(sub(self.target, self.eye())) }
+    pub fn right(&self) -> [f32; 3] { norm(cross(self.forward(), [0.0, 1.0, 0.0])) }
+    /// Weltpunkt → Normalisierte Gerätekoordinaten (x,y in -1…1, y nach oben).
+    pub fn project(&self, p: [f32; 3], aspect: f32) -> Option<[f32; 2]> {
+        let vp = self.globals(aspect).vp;
+        let v = [p[0], p[1], p[2], 1.0];
+        let mut c = [0f32; 4];
+        for r in 0..4 { for k in 0..4 { c[r] += vp[k][r] * v[k]; } }
+        if c[3] <= 1e-5 { return None; }
+        Some([c[0] / c[3], c[1] / c[3]])
+    }
     pub fn globals(&self, aspect: f32) -> Globals { self.globals_lit(aspect, &LIGHTS[0], true) }
     pub fn globals_lit(&self, aspect: f32, l: &Lighting, grid: bool) -> Globals {
         let eye = self.eye();

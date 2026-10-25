@@ -17,7 +17,11 @@ pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::pac
 /// Geöffnetes statisches VRM-/glTF-Modell (Ansehen, Posen, Ausdrücke).
 pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, shown: Vec<bool>, dirty: bool, pub path: PathBuf, pub hidden: std::collections::BTreeSet<usize>, pub skin_parts: std::collections::BTreeSet<usize>, dress: Option<VrmDress>, pub dress_info: String, pub avatar: AvatarState, pub tints: std::collections::BTreeMap<usize, [f32; 3]>, pub base_id: Option<String>, pub base_sha: String }
 
-pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant>, pub features: std::collections::BTreeMap<String, hase_core::features::FeatureState>, pub feat_changed: bool, pub generated: hase_core::features::Generated, pub gen_rev: u64, feat_shown: Vec<String>, feat_rev_seen: u64 }
+pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant>, pub features: std::collections::BTreeMap<String, hase_core::features::FeatureState>, pub feat_changed: bool, pub generated: hase_core::features::Generated, pub gen_rev: u64, feat_shown: Vec<String>, feat_rev_seen: u64, pub sculpt: hase_core::sculpt::Layer, deformed: Vec<Vec<[f32; 3]>>, pub brush: hase_core::sculpt::Brush, stroke: Option<Stroke>, sculpt_touched: Vec<(usize, u32)>, sculpt_changed: bool, hist: Vec<AvEdit>, redo: Vec<AvEdit>, last_edit: Option<(usize, Instant)>, adj: Vec<Option<Vec<Vec<u32>>>> }
+
+pub enum AvEdit { Params { before: Vec<f32>, after: Vec<f32> }, Stroke { changes: Vec<(usize, u32, [f32; 3], [f32; 3])> } }
+
+pub struct Stroke { center: [f32; 3], verts: Vec<(usize, u32, f32, f32)>, before: Vec<(usize, u32, [f32; 3])> }
 
 pub struct VrmDress { skin_pos: Vec<[f32; 3]>, skin_nrm: Vec<[f32; 3]>, skin_joints: Vec<[u16; 4]>, skin_weights: Vec<[f32; 4]>, skin_ids: Vec<u32>, grid: hase_core::fit::BodyGrid, base: Vec<[f32; 3]> }
 
@@ -347,8 +351,10 @@ impl Session {
 
     /// Ersetzt den gesamten Zustand (Datei laden).
     pub fn apply_state(&mut self, st: CharacterState) { let before = self.state.clone(); self.history.record(&before, None); self.restore(st); }
-    pub fn undo(&mut self) { if let Some(s) = self.history.undo(&self.state) { self.restore(s); } }
-    pub fn redo(&mut self) { if let Some(s) = self.history.redo(&self.state) { self.restore(s); } }
+    pub fn undo(&mut self) {
+        if self.vrm.is_some() { self.avatar_undo(); return; } if let Some(s) = self.history.undo(&self.state) { self.restore(s); } }
+    pub fn redo(&mut self) {
+        if self.vrm.is_some() { self.avatar_redo(); return; } if let Some(s) = self.history.redo(&self.state) { self.restore(s); } }
     fn restore(&mut self, s: CharacterState) {
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
         for id in removed { if self.proxies.remove(&id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); } }
@@ -1021,7 +1027,7 @@ impl Session {
         let skin_parts: std::collections::BTreeSet<usize> = model.parts.iter().enumerate().filter(|(_, p)| { let (lo, hi) = p.pos.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q[1]), a.1.max(q[1]))); hi - lo >= 0.5 * model.height }).map(|(i, _)| i).collect();
         for rt in self.proxies.values_mut() { rt.created = false; }
         self.proxy_skin.clear(); self.assets_dirty = true;
-        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None, features: Default::default(), feat_changed: false, generated: Default::default(), gen_rev: 0, feat_shown: vec![], feat_rev_seen: 0 } };
+        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None, features: Default::default(), feat_changed: false, generated: Default::default(), gen_rev: 0, feat_shown: vec![], feat_rev_seen: 0, sculpt: vec![Default::default(); model_ref.parts.len()], deformed: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), brush: Default::default(), stroke: None, sculpt_touched: vec![], sculpt_changed: false, hist: vec![], redo: vec![], last_edit: None, adj: vec![None; model_ref.parts.len()] } };
         self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new(), avatar, tints: Default::default(), base_id: None, base_sha: String::new() });
         let info = if rigless_info.is_empty() { info } else { format!("{info} · {rigless_info}") };
         Ok(info)
@@ -1106,10 +1112,129 @@ impl Session {
         let Some(v) = self.vrm.as_mut() else { return };
         let d = &hase_core::avatar::DEFS[i];
         let val = val.clamp(d.min, d.max);
+        let before = v.avatar.vals.clone();
         v.avatar.vals[i] = val;
         if v.avatar.eye_linked { if let Some(m) = hase_core::avatar::mirror(i) { v.avatar.vals[m] = val; } }
+        // Undo: Änderungen desselben Reglers innerhalb von 0,7 s zu einem Schritt zusammenfassen
+        let now = Instant::now();
+        let merge = matches!(v.avatar.last_edit, Some((li, t)) if li == i && now.duration_since(t).as_millis() < 700) && matches!(v.avatar.hist.last(), Some(AvEdit::Params { .. }));
+        if merge { if let Some(AvEdit::Params { after, .. }) = v.avatar.hist.last_mut() { *after = v.avatar.vals.clone(); } }
+        else if before != v.avatar.vals { v.avatar.hist.push(AvEdit::Params { before, after: v.avatar.vals.clone() }); if v.avatar.hist.len() > 200 { v.avatar.hist.remove(0); } }
+        v.avatar.last_edit = Some((i, now)); v.avatar.redo.clear();
         v.avatar.changed = true;
     }
+    pub fn avatar_can_undo(&self) -> bool { self.vrm.as_ref().map(|v| !v.avatar.hist.is_empty()).unwrap_or(false) }
+    pub fn avatar_can_redo(&self) -> bool { self.vrm.as_ref().map(|v| !v.avatar.redo.is_empty()).unwrap_or(false) }
+    pub fn avatar_undo(&mut self) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let Some(e) = v.avatar.hist.pop() else { return };
+        match &e { AvEdit::Params { before, .. } => v.avatar.vals = before.clone(), AvEdit::Stroke { changes } => { for (pi, vi, old, _) in changes { if old.iter().all(|c| c.abs() < 1e-9) { v.avatar.sculpt[*pi].remove(vi); } else { v.avatar.sculpt[*pi].insert(*vi, *old); } } } }
+        v.avatar.redo.push(e); v.avatar.changed = true; v.avatar.last_edit = None;
+    }
+    pub fn avatar_redo(&mut self) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let Some(e) = v.avatar.redo.pop() else { return };
+        match &e { AvEdit::Params { after, .. } => v.avatar.vals = after.clone(), AvEdit::Stroke { changes } => { for (pi, vi, _, new) in changes { if new.iter().all(|c| c.abs() < 1e-9) { v.avatar.sculpt[*pi].remove(vi); } else { v.avatar.sculpt[*pi].insert(*vi, *new); } } } }
+        v.avatar.hist.push(e); v.avatar.changed = true; v.avatar.last_edit = None;
+    }
+    pub fn can_undo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_undo() } else { self.history.can_undo() } }
+    pub fn can_redo(&self) -> bool { if self.vrm.is_some() { self.avatar_can_redo() } else { self.history.can_redo() } }
+
+    // ---- Direkte Formung
+    /// Strahl (Weltraum inkl. Boden) gegen die sichtbaren Teile; liefert den Treffer in Modellkoordinaten.
+    pub fn avatar_pick(&self, o: [f32; 3], d: [f32; 3]) -> Option<[f32; 3]> {
+        let v = self.vrm.as_ref()?;
+        let o = [o[0], o[1] - v.floor, o[2]];
+        let mut best: Option<f32> = None;
+        for (i, p) in v.model.parts.iter().enumerate() {
+            if v.hidden.contains(&i) { continue; }
+            if let Some((t, _)) = hase_core::sculpt::ray_mesh(o, d, &p.pos, &p.idx) { if best.map(|b| t < b).unwrap_or(true) { best = Some(t); } }
+        }
+        best.map(|t| [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t])
+    }
+    pub fn sculpt_floor(&self) -> f32 { self.vrm.as_ref().map(|v| v.floor).unwrap_or(0.0) }
+
+    pub fn sculpt_begin(&mut self, hit: [f32; 3]) {
+        use hase_core::sculpt::*;
+        let Some(v) = self.vrm.as_mut() else { return };
+        let b = v.avatar.brush;
+        let mut verts = Vec::new(); let mut before = Vec::new();
+        for (pi, p) in v.model.parts.iter().enumerate() {
+            if v.hidden.contains(&pi) { continue; }
+            for (vi, q) in p.pos.iter().enumerate() {
+                let w1 = fall(len(sub(*q, hit)), b.radius);
+                let w2 = if b.symmetric { fall(len(sub(*q, mirror(hit))), b.radius) } else { 0.0 };
+                if w1 > 0.0 || w2 > 0.0 { verts.push((pi, vi as u32, w1, w2)); before.push((pi, vi as u32, v.avatar.sculpt[pi].get(&(vi as u32)).copied().unwrap_or([0.0; 3]))); }
+            }
+        }
+        v.avatar.stroke = Some(Stroke { center: hit, verts, before });
+    }
+
+    /// Ziehen: Verschiebung `delta` (Modellkoordinaten) gegenüber dem Greifpunkt.
+    pub fn sculpt_grab(&mut self, delta: [f32; 3]) {
+        use hase_core::sculpt::*;
+        let Some(v) = self.vrm.as_mut() else { return };
+        let Some(st) = v.avatar.stroke.as_ref() else { return };
+        let k = v.avatar.brush.strength;
+        let total = mul(delta, k);
+        let mut touched = Vec::with_capacity(st.verts.len());
+        for (idx, (pi, vi, w1, w2)) in st.verts.iter().enumerate() {
+            let old = st.before[idx].2;
+            let d = if w1 >= w2 { mul(total, *w1) } else { mul(mirror(total), *w2) };
+            v.avatar.sculpt[*pi].insert(*vi, add(old, d));
+            touched.push((*pi, *vi));
+        }
+        v.avatar.sculpt_touched = touched; v.avatar.sculpt_changed = true;
+    }
+
+    /// Inkrementelle Pinsel (Aufblasen, Skalieren, Glätten); `amount` in Metern (Vorzeichen = Richtung).
+    pub fn sculpt_step(&mut self, amount: f32) {
+        use hase_core::sculpt::*;
+        let Some(v) = self.vrm.as_mut() else { return };
+        let Some(st) = v.avatar.stroke.as_ref() else { return };
+        let b = v.avatar.brush;
+        let amount = amount * b.strength;
+        let mut touched = Vec::with_capacity(st.verts.len());
+        if b.kind == BrushKind::Smooth {
+            for pi in 0..v.model.parts.len() { if v.avatar.adj[pi].is_none() { v.avatar.adj[pi] = Some(adjacency(v.model.parts[pi].pos.len(), &v.model.parts[pi].idx)); } }
+        }
+        let mut updates: Vec<(usize, u32, [f32; 3])> = Vec::with_capacity(st.verts.len());
+        for (pi, vi, w1, w2) in &st.verts {
+            let w = w1.max(*w2);
+            let part = &v.model.parts[*pi];
+            let p = part.pos[*vi as usize];
+            let center = if w1 >= w2 { st.center } else { mirror(st.center) };
+            let d = match b.kind {
+                BrushKind::Inflate => mul(part.nrm[*vi as usize], amount * w),
+                BrushKind::Scale => mul(sub(p, center), amount * 8.0 * w),
+                BrushKind::Smooth => { let adj = v.avatar.adj[*pi].as_ref().unwrap(); let nb = &adj[*vi as usize]; if nb.is_empty() { [0.0; 3] } else { let mut m = [0f32; 3]; for &j in nb { m = add(m, part.pos[j as usize]); } m = mul(m, 1.0 / nb.len() as f32); mul(sub(m, p), 0.5 * b.strength.min(1.0) * w) } }
+                BrushKind::Grab => [0.0; 3],
+            };
+            updates.push((*pi, *vi, d));
+        }
+        for (pi, vi, d) in updates { let e = v.avatar.sculpt[pi].entry(vi).or_insert([0.0; 3]); *e = add(*e, d); touched.push((pi, vi)); }
+        v.avatar.sculpt_touched = touched; v.avatar.sculpt_changed = true;
+    }
+
+    pub fn sculpt_end(&mut self) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let Some(st) = v.avatar.stroke.take() else { return };
+        let mut changes = Vec::new();
+        for (pi, vi, old) in st.before { let new = v.avatar.sculpt[pi].get(&vi).copied().unwrap_or([0.0; 3]); if (0..3).any(|c| (new[c] - old[c]).abs() > 1e-7) { changes.push((pi, vi, old, new)); } }
+        if !changes.is_empty() { v.avatar.hist.push(AvEdit::Stroke { changes }); v.avatar.redo.clear(); if v.avatar.hist.len() > 200 { v.avatar.hist.remove(0); } }
+        v.avatar.feat_changed = true; // Merkmale/Anprobe an die neue Form anpassen
+        if v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(500)); }
+    }
+    pub fn sculpt_clear(&mut self) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let mut changes = Vec::new();
+        for (pi, m) in v.avatar.sculpt.iter().enumerate() { for (vi, d) in m { changes.push((pi, *vi, *d, [0.0; 3])); } }
+        if changes.is_empty() { return; }
+        for m in v.avatar.sculpt.iter_mut() { m.clear(); }
+        v.avatar.hist.push(AvEdit::Stroke { changes }); v.avatar.redo.clear(); v.avatar.changed = true;
+    }
+    pub fn sculpt_count(&self) -> usize { self.vrm.as_ref().map(|v| v.avatar.sculpt.iter().map(|m| m.len()).sum()).unwrap_or(0) }
+
     pub fn avatar_reset(&mut self, idx: &[usize]) { if let Some(v) = self.vrm.as_mut() { for &i in idx { v.avatar.vals[i] = hase_core::avatar::DEFS[i].def; } v.avatar.changed = true; } }
     pub fn avatar_pending(&self) -> bool { self.vrm.as_ref().map(|v| v.avatar.changed || v.avatar.dress_due.is_some()).unwrap_or(false) }
     pub fn set_part_tint(&mut self, part: usize, rgb: [f32; 3]) {
@@ -1133,11 +1258,24 @@ impl Session {
     fn avatar_update(&mut self) {
         let Some(v) = self.vrm.as_mut() else { return };
         if let Some(t) = v.avatar.dress_due { if Instant::now() >= t { v.avatar.dress_due = None; v.dress = None; self.assets_dirty = true; } }
+        // Schnellpfad: nur Formung (Pinselstrich) → betroffene Vertices neu setzen
+        if !v.avatar.changed && !v.avatar.feat_changed && v.avatar.sculpt_changed && !v.avatar.deformed.is_empty() {
+            v.avatar.sculpt_changed = false;
+            let touched = std::mem::take(&mut v.avatar.sculpt_touched);
+            let mut parts_t: std::collections::BTreeSet<usize> = Default::default();
+            for (pi, vi) in touched { let d = v.avatar.sculpt[pi].get(&vi).copied().unwrap_or([0.0; 3]); let b = v.avatar.deformed[pi][vi as usize]; v.model.parts[pi].pos[vi as usize] = [b[0] + d[0], b[1] + d[1], b[2] + d[2]]; parts_t.insert(pi); }
+            for pi in parts_t { let p = &mut v.model.parts[pi]; normals(&p.pos, &v.tris[pi], &mut p.nrm); }
+            v.dirty = true;
+            return;
+        }
         let deform = v.avatar.changed;
         if !deform && !v.avatar.feat_changed { return; }
         v.avatar.changed = false; v.avatar.feat_changed = false;
         if deform {
-            let d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
+            let mut d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
+            v.avatar.deformed = d.pos.clone();
+            for (pi, m) in v.avatar.sculpt.iter().enumerate() { for (vi, dl) in m { if let Some(q) = d.pos[pi].get_mut(*vi as usize) { *q = [q[0] + dl[0], q[1] + dl[1], q[2] + dl[2]]; } } }
+            v.avatar.sculpt_changed = false; v.avatar.sculpt_touched.clear();
             for (i, p) in v.model.parts.iter_mut().enumerate() { p.pos = d.pos[i].clone(); normals(&p.pos, &v.tris[i], &mut p.nrm); }
             for (b, bn) in v.model.bones.iter_mut().enumerate() { bn.pos = d.bones[b]; }
             let (lo, hi) = v.model.parts.iter().flat_map(|p| p.pos.iter().map(|q| q[1])).fold((f32::MAX, f32::MIN), |a, y| (a.0.min(y), a.1.max(y)));
@@ -1398,7 +1536,7 @@ impl Session {
         let tints: serde_json::Map<String, serde_json::Value> = v.tints.iter().map(|(k, c)| (k.to_string(), serde_json::json!(c))).collect();
         let assets: Vec<serde_json::Value> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| serde_json::json!({"id": a.id, "tint": a.tint})).collect();
         Some(serde_json::json!({"formatVersion": "0.1-avatar", "kind": "avatar", "species": {"id": ""}, "body": {"id": format!("avatar:{id}")}, "base": {"id": id, "sha": v.base_sha},
-            "params": hase_core::avatar::to_map(&v.avatar.vals), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets,
+            "params": hase_core::avatar::to_map(&v.avatar.vals), "sculpt": hase_core::sculpt::to_json(&v.avatar.sculpt), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets,
             "features": v.avatar.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect::<serde_json::Map<String, serde_json::Value>>()}))
     }
 
@@ -1419,6 +1557,8 @@ impl Session {
         v.avatar.changed = true;
         v.tints.clear();
         for (k, c) in j["tints"].as_object().into_iter().flatten() { if let (Ok(i), Some(a)) = (k.parse::<usize>(), c.as_array()) { if i < v.model.parts.len() && a.len() == 3 { v.tints.insert(i, [a[0].as_f64().unwrap_or(1.0) as f32, a[1].as_f64().unwrap_or(1.0) as f32, a[2].as_f64().unwrap_or(1.0) as f32]); } } }
+        v.avatar.sculpt = hase_core::sculpt::from_json(&j["sculpt"], v.model.parts.len());
+        v.avatar.hist.clear(); v.avatar.redo.clear();
         v.avatar.features.clear();
         for (k, f) in j["features"].as_object().into_iter().flatten() {
             let mut st = hase_core::features::FeatureState::new(k);
@@ -1440,7 +1580,7 @@ impl Session {
     pub fn reset_avatar(&mut self) {
         let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
         for id in ids { self.remove_asset(&id); }
-        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; v.avatar.features.clear(); v.avatar.feat_changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
+        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; for m in v.avatar.sculpt.iter_mut() { m.clear(); } v.avatar.hist.clear(); v.avatar.redo.clear(); v.avatar.features.clear(); v.avatar.feat_changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
     }
 }
 
@@ -1479,5 +1619,47 @@ mod avatar_tests {
         s2.vrm.as_mut().unwrap().avatar.eye_linked = false;
         s2.avatar_set(ie, -0.3);
         assert!((s2.vrm.as_ref().unwrap().avatar.vals[ir] - 0.8).abs() < 1e-6, "getrennt: rechtes Auge bleibt");
+    }
+}
+
+#[cfg(test)]
+mod sculpt_tests {
+    use super::*;
+
+    #[test]
+    fn sculpt_grab_undo_json() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        s.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
+        if let Some(v) = s.vrm.as_mut() { v.base_id = Some("t".into()); v.base_sha = "x".into(); }
+        s.refresh();
+        // Treffer in der Körpermitte von vorn
+        let h = s.body_height();
+        let hit = s.avatar_pick([0.0, h * 0.55, 3.0], [0.0, 0.0, -1.0]).expect("Treffer");
+        let before = s.vrm.as_ref().unwrap().model.parts.iter().map(|p| p.pos.clone()).collect::<Vec<_>>();
+        s.vrm.as_mut().unwrap().avatar.brush.radius = 0.1;
+        s.sculpt_begin(hit);
+        s.sculpt_grab([0.0, 0.0, 0.05]);
+        s.refresh();
+        let moved = s.vrm.as_ref().unwrap().model.parts.iter().enumerate().flat_map(|(i, p)| p.pos.iter().enumerate().map(move |(k, q)| (i, k, *q))).filter(|(i, k, q)| (q[2] - before[*i][*k][2]).abs() > 1e-4).count();
+        assert!(moved > 10, "Pinsel verschiebt Vertices: {moved}");
+        s.sculpt_end();
+        assert!(s.sculpt_count() >= moved);
+        let j = s.avatar_json().unwrap();
+        assert!(!j["sculpt"].as_array().unwrap().iter().all(|a| a.as_array().unwrap().is_empty()));
+        // Undo stellt den Ausgangszustand her
+        s.undo(); s.refresh();
+        let after = s.vrm.as_ref().unwrap().model.parts.iter().map(|p| p.pos.clone()).collect::<Vec<_>>();
+        let diff = after.iter().zip(&before).flat_map(|(a, b)| a.iter().zip(b)).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count();
+        assert_eq!(diff, 0, "Undo");
+        s.redo(); s.refresh();
+        assert!(s.sculpt_count() >= moved);
+        // Laden in neuer Sitzung
+        let mut s2 = Session::load(&repo).unwrap();
+        s2.refresh();
+        s2.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
+        s2.apply_avatar_json(&j); s2.refresh();
+        assert_eq!(s2.sculpt_count(), s.sculpt_count());
     }
 }

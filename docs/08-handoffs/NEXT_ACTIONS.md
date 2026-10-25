@@ -39,3 +39,4 @@
 30. UI-Feinschliff gegen Mockup: Haare/Haut/Make-up/Details im Zeilenstil, Export- und Posenpanel als Karten, Kamera-Porträtthumbnails, Kartenmanagement (einklappen), eigene Fensterleiste. Owner-Test der neuen Oberfläche unter Windows.
 
 31. Vision OD-028: Reihenfolge siehe `../01-product/vision.md` (Erschaffen auf Anime-Basis → Speichern → Haare erstellen → Spezies-Merkmale/Tierohren → Outfit → Formate → Stilüberführung).
+32. Merkmale per Pinsel formen (Ohrspitze ziehen), adaptive Unterteilung bei großen Formänderungen, Augen/Lider als eigene Module mit Anbindung an die Kopfform, Hair-Generator, Spring-Bone-Simulation in der Vorschau.
