@@ -514,7 +514,8 @@ impl App {
             ui_kit::section(ui, "Form");
             for (i, d) in hase_core::features::defs(kind).iter().enumerate() { let mut vv = st.vals[i]; if let Some(n) = ui_kit::param_row(ui, d.label, vv, d.min..=d.max, d.def, "") { vv = n; st.vals[i] = vv; } }
             ui_kit::section(ui, "Farben");
-            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color); ui.label(if kind == "ears" { "Außenseite" } else { "Farbe" }); });
+            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color); ui.label(match kind { "ears" => "Außenseite", "hair" => "Ansatz", _ => "Farbe" }); });
+            if kind == "hair" { ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color2); ui.label("Spitze (Farbverlauf)"); }); }
             if kind == "ears" { ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color2); ui.label("Innenseite"); }); }
         }
         if kind == "hair" && st.enabled && !before.enabled {

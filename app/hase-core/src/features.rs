@@ -32,7 +32,7 @@ pub fn presets(kind: &str) -> &'static [(&'static str, &'static [f32])] { match 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FeatureState { pub enabled: bool, pub vals: Vec<f32>, pub color: [f32; 3], pub color2: [f32; 3] }
 impl FeatureState {
-    pub fn new(kind: &str) -> FeatureState { FeatureState { enabled: false, vals: presets(kind)[0].1.to_vec(), color: [0.45, 0.30, 0.20], color2: [0.95, 0.65, 0.65] } }
+    pub fn new(kind: &str) -> FeatureState { FeatureState { enabled: false, vals: presets(kind)[0].1.to_vec(), color: if kind == "hair" { [0.30, 0.20, 0.14] } else { [0.45, 0.30, 0.20] }, color2: if kind == "hair" { [0.50, 0.36, 0.24] } else { [0.95, 0.65, 0.65] } } }
 }
 
 pub struct GenPart { pub name: String, pub pos: Vec<[f32; 3]>, pub nrm: Vec<[f32; 3]>, pub uv: Vec<[f32; 2]>, pub idx: Vec<u32>, pub joints: Vec<[u16; 4]>, pub weights: Vec<[f32; 4]>, pub color: [f32; 3] }

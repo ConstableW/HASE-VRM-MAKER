@@ -18,6 +18,8 @@ pub struct LibState {
     pub current: Option<String>,
     pub new_name: String,
     pub rename_buf: String,
+    pub tag_buf: String,
+    pub tag_for: String,
     pub snap_label: String,
     pub confirm_delete: bool,
     pub compare: bool,
@@ -199,6 +201,11 @@ impl App {
                 ui.horizontal(|ui| {
                     let (mut fav, mut tpl) = (e.favorite, e.template);
                     if ui.checkbox(&mut fav, "Favorit").changed() || ui.checkbox(&mut tpl, "Vorlage").changed() { if let Some(m) = self.lib.entries.iter_mut().find(|x| x.id == e.id) { m.favorite = fav; m.template = tpl; let _ = library::set_flags(m); } }
+                });
+                if self.lib.tag_for != e.id { self.lib.tag_for = e.id.clone(); self.lib.tag_buf = e.tags.join(", "); }
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.lib.tag_buf).hint_text("Tags, durch Komma getrennt").desired_width(ui.available_width() - 90.0));
+                    if ui.button("Tags setzen").clicked() { if let Some(m) = self.lib.entries.iter_mut().find(|x| x.id == e.id) { m.tags = self.lib.tag_buf.split(',').map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()).collect(); let _ = library::set_flags(m); } }
                 });
                 ui.separator();
                 ui.strong("Snapshots");

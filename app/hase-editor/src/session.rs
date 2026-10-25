@@ -1111,6 +1111,15 @@ impl Session {
     }
 }
 
+/// Farbverlauf-Textur (Ansatz → Spitze) für generierte Frisuren; V läuft entlang der Strähne.
+fn hair_gradient(root: [f32; 3], tip: [f32; 3]) -> Arc<ImageRgba> {
+    let (w, h) = (4usize, 64usize);
+    let to8 = |c: f32| (c.clamp(0.0, 1.0) * 255.0) as u8;
+    let mut px = Vec::with_capacity(w * h * 4);
+    for y in 0..h { let t = y as f32 / (h - 1) as f32; for _ in 0..w { for k in 0..3 { px.push(to8(root[k] + (tip[k] - root[k]) * t)); } px.push(255); } }
+    Arc::new(ImageRgba { w: w as u32, h: h as u32, levels: vec![px] })
+}
+
 fn clip_hip_height(c: &hase_core::pose::Clip) -> f32 { c.hips_rest_height() }
 
 #[cfg(test)]
@@ -1556,7 +1565,7 @@ impl Session {
                 let mut nrm = Vec::new(); normals(&pos, &tris, &mut nrm);
                 let mut data = Vec::with_capacity(pos.len() * 6);
                 for (q, n) in pos.iter().zip(&nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
-                if recreated { out.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() })); self.sh.feat_shown.push(id); }
+                if recreated { let (tex, tint) = if g.name == "Hair" { (Some(hair_gradient(g.color, self.sh.features.get("hair").map(|f| f.color2).unwrap_or(g.color))), [1.0; 3]) } else { (None, g.color) }; out.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: tex, tint, mask: false, cull_back: false, mat: Default::default() })); self.sh.feat_shown.push(id); }
                 else { out.push(MeshUpdate::Positions { id, data }); }
             }
         }
@@ -1996,7 +2005,7 @@ impl Session {
             let id = format!("feat:{k}");
             let mut data = Vec::with_capacity(g.pos.len() * 6);
             for (q, n) in g.pos.iter().zip(&g.nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
-            self.pending.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() }));
+            { let (tex, tint) = if g.name == "Hair" { (Some(hair_gradient(g.color, self.sh.features.get("hair").map(|f| f.color2).unwrap_or(g.color))), [1.0; 3]) } else { (None, g.color) }; self.pending.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: tex, tint, mask: false, cull_back: false, mat: Default::default() })); }
             self.sh.feat_shown.push(id);
         }
     }

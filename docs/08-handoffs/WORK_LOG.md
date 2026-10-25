@@ -97,3 +97,5 @@ Outfit-Studio: „Meine Outfits“ – getragene Kleidung samt Farben als benann
 Studio: Auswahl einer Spezies zeigt sie im Viewport; Tab Körperbasis enthält dieselben Werkzeuge wie die Charakter-Phase (Pinsel, Merkmale inkl. Frisur) – eine Toolbox; fehlende Glyphen (→) durch ASCII ersetzt.
 
 Beispiel-Spezies „Anime-Humanoid“ (größerer Kopf, große Augen, kleine Nase/Mund, spitzes Kinn, Regler Kopfgröße und Nase zurücksetzen). Wichtig: Spezieskörper-Deltas, die Augenregionen betreffen, müssen **alle** Vertices inkl. Helfergeometrie verschieben (Augen-Proxys referenzieren sie), sonst verschwinden/schielen die Augäpfel. Screenshot `anime-species.png`.
+
+Frisur: Farbverlauf Ansatz→Spitze über Gradient-Textur (V entlang der Strähne); Bibliothek: Tags bearbeitbar. (Export schreibt weiterhin nur die Mittelfarbe.)
