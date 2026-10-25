@@ -1,0 +1,61 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "description": "Zierlicher Humanoider im Anime-/VTuber-Stil: große Augen, kleine zurückgesetzte Nase, kleiner Mund, spitzes Kinn (Grundform eingebacken). Echte Anime-Proportionen (großer Kopf) brauchen eine eigene Körperbasis.",
+  "dev": {
+    "status": "specimen"
+  },
+  "files": [],
+  "id": "org.hase.species.anime",
+  "license": {
+    "attribution": null,
+    "redistribution": true,
+    "spdx": "CC0-1.0"
+  },
+  "name": {
+    "de": "Anime-Humanoid"
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "schemaVersion": "1.0",
+  "species": {
+    "capabilities": [
+      "trait:pointed-ears"
+    ],
+    "components": [],
+    "defaults": {
+      "mh:head-scale-horiz-decr-incr": 0.25,
+      "mh:head-scale-vert-decr-incr": 0.25,
+      "mh:l-eye-height1-decr-incr": 0.25,
+      "mh:l-eye-scale-decr-incr": 0.45,
+      "mh:macro-age": 0.25,
+      "mh:macro-gender": 0.0,
+      "mh:measure-upperarm-length-decr-incr": -0.2,
+      "mh:mouth-scale-horiz-decr-incr": -0.5,
+      "mh:nose-scale-vert-decr-incr": -0.5,
+      "mh:r-eye-height1-decr-incr": 0.25,
+      "mh:r-eye-scale-decr-incr": 0.45
+    },
+    "limits": {},
+    "presets": [],
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "traits": {}
+  },
+  "tags": [
+    "humanoid",
+    "fantasy"
+  ],
+  "type": "species",
+  "version": "1.0.0"
+}

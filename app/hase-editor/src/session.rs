@@ -2083,6 +2083,15 @@ mod mh_tool_tests {
         };
         mkspecies("org.hase.species.orc", "Orkin", "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform), breite Schultern, kräftige Arme; Hörner erlaubt.", serde_json::json!({"mh:macro-age": 0.5, "mh:macro-gender": 0.8, "mh:torso-scale-horiz-decr-incr": 0.45, "mh:measure-shoulder-dist-decr-incr": 0.5, "mh:upperarm-fat-decr-incr": 0.4, "mh:measure-neck-circ-decr-incr": 0.5}),
             SpeciesShape { baked: heavy(1.0), variations: vec![Variation { id: "var-kiefer".into(), label: "Kieferbreite".into(), min: -0.8, max: 1.5, delta: heavy(0.6) }], features: Some(vec!["horns".into(), "ears".into()]), skin_tone: Some(([0.5, 0.7, 0.55], 0.8)) });
+        // Anime-Humanoid: zurückgesetzte kleine Nase, zierliches Kinn (Kopfskalierung per Netz stört die Augen-Proxys, daher nur über Parameter)
+        let anime = || -> std::collections::BTreeMap<u32, [f32; 3]> {
+            let mut m: std::collections::BTreeMap<u32, [f32; 3]> = Default::default();
+            for (v, d) in nosey(-0.55) { let e = m.entry(v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c]; } }
+            for (v, d) in jaw(0.7) { let e = m.entry(v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c]; } }
+            m
+        };
+        mkspecies("org.hase.species.anime", "Anime-Humanoid", "Zierlicher Humanoider im Anime-/VTuber-Stil: große Augen, kleine zurückgesetzte Nase, kleiner Mund, spitzes Kinn (Grundform eingebacken). Echte Anime-Proportionen (großer Kopf) brauchen eine eigene Körperbasis.", serde_json::json!({"mh:macro-gender": 0.0, "mh:macro-age": 0.25, "mh:l-eye-scale-decr-incr": 0.45, "mh:r-eye-scale-decr-incr": 0.45, "mh:l-eye-height1-decr-incr": 0.25, "mh:r-eye-height1-decr-incr": 0.25, "mh:nose-scale-vert-decr-incr": -0.5, "mh:mouth-scale-horiz-decr-incr": -0.5, "mh:head-scale-horiz-decr-incr": 0.25, "mh:head-scale-vert-decr-incr": 0.25, "mh:measure-upperarm-length-decr-incr": -0.2}),
+            SpeciesShape { baked: anime(), variations: vec![Variation { id: "var-nasenruecksetzung".into(), label: "Nase zurücksetzen".into(), min: -1.0, max: 1.5, delta: nosey(-0.4) }], features: None, skin_tone: None });
         mkspecies("org.hase.species.dwarf", "Zwerg", "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform), kurze Beine, breiter Rumpf.", serde_json::json!({"mh:macro-age": 0.55, "mh:macro-gender": 0.7, "mh:measure-lowerleg-height-decr-incr": -0.75, "mh:measure-upperleg-height-decr-incr": -0.5, "mh:torso-scale-horiz-decr-incr": 0.4, "mh:torso-scale-depth-decr-incr": 0.3, "mh:upperleg-fat-decr-incr": 0.2}),
             SpeciesShape { baked: nosey(1.0), variations: vec![Variation { id: "var-nasengroesse".into(), label: "Nasengröße".into(), min: -0.8, max: 1.6, delta: nosey(0.8) }], features: None, skin_tone: None });
         write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None, skin_tone: None });

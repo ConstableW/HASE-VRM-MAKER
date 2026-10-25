@@ -95,3 +95,5 @@ Frisur: Zopf/Pferdeschwanz (Parameter „Zusammenbinden“, „Zopf-Höhe“, Pr
 Outfit-Studio: „Meine Outfits“ – getragene Kleidung samt Farben als benannte Vorlage speichern (user-content/outfits.json), anwenden (lädt Teile, setzt Farben, legt andere Kleidung ab) und löschen. Test outfit_roundtrip.
 
 Studio: Auswahl einer Spezies zeigt sie im Viewport; Tab Körperbasis enthält dieselben Werkzeuge wie die Charakter-Phase (Pinsel, Merkmale inkl. Frisur) – eine Toolbox; fehlende Glyphen (→) durch ASCII ersetzt.
+
+Beispiel-Spezies „Anime-Humanoid“ (große Augen, kleine Nase/Mund, spitzes Kinn, Regler „Nase zurücksetzen“). Erkenntnis: Kopf-Skalierung per Netz-Delta stört die Augen-Proxys (Augäpfel verschwinden/schielen) – echte Anime-Proportionen (großer Kopf) brauchen eine eigene Körperbasis bzw. Skelett-/Proxy-gestützte Skalierung.
