@@ -201,6 +201,19 @@ impl Session {
     pub fn species_index(&self) -> usize { self.packages.species.iter().position(|s| s.id == self.state.species).unwrap_or(0) }
     pub fn species_opt(&self) -> Option<usize> { self.packages.species.iter().position(|s| s.id == self.state.species) }
     /// Spezies, die zur aktiven Körperbasis passen.
+    /// Alle Spezies, deren Körperbasis aktiv oder aktivierbar (nicht Entwurf) ist.
+    pub fn species_selectable(&self) -> Vec<usize> { self.packages.species.iter().enumerate().filter(|(_, s)| s.body_id.is_empty() || s.body_id == self.packages.body.id || self.packages.bodies.iter().any(|b| b.id == s.body_id && b.status != "draft")).map(|(i, _)| i).collect() }
+    /// Wählt eine Spezies und wechselt dabei bei Bedarf auf ihre Körperbasis (Spezies ↔ Körperbasis).
+    pub fn select_species(&mut self, idx: usize) -> Result<(), String> {
+        let sp = self.packages.species.get(idx).cloned().ok_or("keine Spezies")?;
+        if !sp.body_id.is_empty() && sp.body_id != self.packages.body.id {
+            let b = self.packages.bodies.iter().find(|b| b.id == sp.body_id && b.status != "draft").cloned().ok_or_else(|| format!("Körperbasis {} nicht verfügbar", sp.body_id))?;
+            self.activate_body(&b)?;
+        }
+        let i = self.packages.species.iter().position(|x| x.id == sp.id).unwrap_or(idx);
+        self.apply_species(i);
+        Ok(())
+    }
     pub fn species_indices(&self) -> Vec<usize> { self.packages.species.iter().enumerate().filter(|(_, s)| s.body_id.is_empty() || s.body_id == self.packages.body.id).map(|(i, _)| i).collect() }
 
     /// Standard-Ausstattung (synchron) – für Start und Screenshot-Modus.

@@ -154,7 +154,7 @@ impl App {
         card(ui, Some((Icon::Species, "Spezies")), |ui| {
             {
                 let s = self.session.as_mut().unwrap();
-                let compat = s.species_indices();
+                let compat = s.species_selectable();
                 let cur = s.species_opt().unwrap_or(usize::MAX);
                 let mut sel = cur;
                 let pos = compat.iter().position(|&i| i == cur);
@@ -163,11 +163,11 @@ impl App {
                     let w = ui.available_width() - 2.0 * 30.0 - 8.0;
                     if ui.add_sized([30.0, 28.0], egui::Button::new("‹")).clicked() { if let Some(p) = pos { sel = compat[(p + compat.len() - 1) % compat.len()]; } }
                     egui::ComboBox::from_id_salt("species").width(w - 14.0).selected_text(s.species_opt().map(|i| s.packages.species[i].label.clone()).unwrap_or_else(|| "(keine Spezies)".into())).show_ui(ui, |ui| {
-                        for &i in &compat { let sp = &s.packages.species[i]; ui.selectable_value(&mut sel, i, format!("{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" })); }
+                        for &i in &compat { let sp = &s.packages.species[i]; ui.selectable_value(&mut sel, i, format!("{}{}{}", sp.label, if sp.stub { "  (Stub)" } else { "" }, if !sp.body_id.is_empty() && sp.body_id != s.packages.body.id { "  · eigene Körperbasis" } else { "" })); }
                     });
                     if ui.add_sized([30.0, 28.0], egui::Button::new("›")).clicked() { if let Some(p) = pos { sel = compat[(p + 1) % compat.len()]; } }
                 });
-                if sel != cur && sel != usize::MAX { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
+                if sel != cur && sel != usize::MAX { if let Err(e) = s.select_species(sel) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
             }
             // Variationen der Spezies (bewusst definierte Regler)
             let vars: Vec<(String, String, f32, f32, f32)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].shape.variations.iter().map(|v| (v.id.clone(), v.label.clone(), v.min, v.max, s.var_vals.get(&v.id).copied().unwrap_or(0.0))).collect()).unwrap_or_default() };
