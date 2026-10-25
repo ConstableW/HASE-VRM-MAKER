@@ -2076,6 +2076,18 @@ mod mh_tool_tests {
     }
 
     #[test]
+    fn generated_hair() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        let f = s.feature_mut("hair").unwrap(); f.enabled = true;
+        let up = s.refresh();
+        assert!(up.iter().any(|u| matches!(u, MeshUpdate::Create(d) if d.id.starts_with("feat:"))), "Frisur erscheint");
+        let n = s.sh.generated.parts.iter().find(|p| p.name == "Hair").map(|p| p.pos.len()).unwrap();
+        assert!(n > 5000 && n < 400_000, "Strähnenzahl plausibel: {n}");
+    }
+
+    #[test]
     fn species_default_features() {
         let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
         let mut s = Session::load(&repo).unwrap();

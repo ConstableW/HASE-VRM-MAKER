@@ -78,3 +78,6 @@ Orkin (breiter Kiefer, Brauenwülste eingebacken, Regler Kieferbreite, Hörner/O
 
 ## 2026-10-25 – Körperproportionen je Spezies
 Orkin (breiter Rumpf/Schultern, kräftige Arme), Zwerg (kurze Beine, breiter Rumpf), Elf (schlank, lange Beine) über Standardwerte der Spezies; Vergleich `docs/07-quality/screens/species-bodies.png`.
+
+## 2026-10-25 – Frisuren-Generator (Merkmal „Frisur (generiert)“)
+Neues Merkmal `hair` (features.rs): Strähnenbänder, auf der Schädelellipse verwurzelt, mit Schwerkraft, Welle, Scheitel, Pony-/Seiten-/Hinterkopflänge, Volumen, Dichte; Kollision mit Kopf und grober Schulterellipse; 5 Presets. Arbeitet auf MakeHuman-Basis und Avataren, wird mit exportiert (Kopf-Bone, noch ohne Spring-Bones). Grenzen: Strähnen sind flache Bänder (keine Haarkarten-Texturen), Schulterkollision grob (sichtbare Kante), keine Physik. Screenshot `hair-generated.png`.

@@ -18,10 +18,16 @@ pub const TAIL_PRESETS: &[(&str, &[f32])] = &[("Katze", &[0.9, 0.7, 0.4, 0.0, 0.
 pub const HORNS: &[PDef] = &[p("length", "Länge", 0.1, 2.0, 0.7), p("thick", "Dicke", 0.3, 2.5, 1.0), p("curl", "Krümmung", -1.0, 1.5, 0.6), p("spread", "Abstand", -1.0, 1.0, 0.2), p("fwd", "Richtung nach vorn", -1.0, 1.0, 0.2), p("height", "Position: Höhe", -1.0, 1.0, 0.0), p("taper", "Spitze", 0.0, 1.0, 0.8)];
 pub const HORNS_PRESETS: &[(&str, &[f32])] = &[("Dämon", &[0.8, 1.0, 0.7, 0.3, 0.3, 0.0, 0.9]), ("Widder (eingerollt)", &[1.2, 1.6, 1.4, 0.8, -0.2, -0.4, 0.5]), ("Kurz", &[0.35, 1.0, 0.2, 0.1, 0.0, 0.2, 0.9]), ("Hirsch-artig (gerade)", &[1.4, 0.7, 0.1, 0.4, 0.0, 0.2, 0.9])];
 
-pub const KINDS: &[(&str, &str)] = &[("ears", "Ohren"), ("tail", "Schweif"), ("horns", "Hörner")];
+pub const HAIR: &[PDef] = &[p("fringe", "Pony / Stirnhaar (Länge)", 0.0, 4.0, 0.7), p("side", "Seitenlänge", 0.3, 7.0, 2.0), p("back", "Hinterkopf-Länge", 0.3, 8.0, 2.4), p("volume", "Volumen", 0.0, 1.0, 0.45), p("width", "Strähnenbreite", 0.4, 2.5, 1.0), p("density", "Dichte", 0.5, 2.0, 1.0), p("wave", "Welle", 0.0, 1.0, 0.1), p("part", "Scheitel (links/rechts)", -1.0, 1.0, 0.0), p("gravity", "Fall (Schwerkraft)", 0.1, 1.0, 0.7)];
+pub const HAIR_PRESETS: &[(&str, &[f32])] = &[
+    ("Kurz", &[0.45, 0.8, 0.8, 0.55, 1.0, 1.2, 0.0, 0.0, 0.7]), ("Bob", &[0.7, 2.0, 2.0, 0.45, 1.1, 1.2, 0.05, 0.0, 0.8]), ("Lang", &[0.7, 4.5, 6.0, 0.4, 1.1, 1.3, 0.1, 0.0, 0.75]),
+    ("Lang, gewellt", &[0.6, 4.5, 5.5, 0.55, 1.2, 1.4, 0.7, 0.3, 0.6]), ("Fransig (Anime)", &[1.0, 2.6, 3.2, 0.6, 1.4, 1.2, 0.15, 0.2, 0.7]),
+];
 
-pub fn defs(kind: &str) -> &'static [PDef] { match kind { "ears" => EARS, "tail" => TAIL, _ => HORNS } }
-pub fn presets(kind: &str) -> &'static [(&'static str, &'static [f32])] { match kind { "ears" => EARS_PRESETS, "tail" => TAIL_PRESETS, _ => HORNS_PRESETS } }
+pub const KINDS: &[(&str, &str)] = &[("ears", "Ohren"), ("tail", "Schweif"), ("horns", "Hörner"), ("hair", "Frisur (generiert)")];
+
+pub fn defs(kind: &str) -> &'static [PDef] { match kind { "ears" => EARS, "tail" => TAIL, "hair" => HAIR, _ => HORNS } }
+pub fn presets(kind: &str) -> &'static [(&'static str, &'static [f32])] { match kind { "ears" => EARS_PRESETS, "tail" => TAIL_PRESETS, "hair" => HAIR_PRESETS, _ => HORNS_PRESETS } }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FeatureState { pub enabled: bool, pub vals: Vec<f32>, pub color: [f32; 3], pub color2: [f32; 3] }
@@ -210,6 +216,85 @@ fn tail_part(m: &VrmModel, lm: &Landmarks, st: &FeatureState, hips_bone: usize, 
     out.parts.push(GenPart { name: "Tail".into(), pos, nrm, uv, idx, joints, weights, color: st.color });
 }
 
+/// Frisur: Strähnenbänder, auf der Schädelellipse verwurzelt, fallen unter Schwerkraft herab und halten Abstand zum Kopf.
+fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, out: &mut Generated) {
+    let v = &st.vals;
+    let (fringe, side_l, back_l, vol, wscale, dens, wave, part, grav) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
+    let (crown, hw, drop) = head_extent(m, lm);
+    let hu = drop; // Längeneinheit: Scheitel bis Ohrhöhe
+    let c = [0.0, crown[1] - drop, lm.ear_l[2]];
+    let (ax, ay, az) = (hw * 1.02, drop * 1.02, hw * 1.12);
+    let margin = hu * (0.04 + 0.14 * vol);
+    let ell = |q: V3| -> f32 { ((q[0] - c[0]) / (ax + margin)).powi(2) + ((q[1] - c[1]) / (ay + margin)).powi(2) + ((q[2] - c[2]) / (az + margin)).powi(2) };
+    let (mut pos, mut nrm, mut uv, mut idx) = (Vec::<V3>::new(), Vec::<V3>::new(), Vec::<[f32; 2]>::new(), Vec::<u32>::new());
+    let nphi = (78.0 * dens) as usize; let nth = (15.0 * dens.sqrt()) as usize;
+    let mut seed = 12345u32;
+    let mut rnd = move || { seed = seed.wrapping_mul(1664525).wrapping_add(1013904223); (seed >> 8) as f32 / 16777216.0 };
+    let nstep = 14usize;
+    for it in 0..nth {
+        let th = (4.0 + (it as f32 + 0.5) / nth as f32 * 98.0).to_radians();
+        let ring_c = th.sin();
+        let nph = ((nphi as f32 * ring_c.max(0.12)).round() as usize).max(3);
+        for ip in 0..nph {
+            let phi = (ip as f32 + rnd() * 0.6) / nph as f32 * std::f32::consts::TAU; // 0 = vorn
+            let (cf, sf) = (phi.cos(), phi.sin());
+            // Gesichtsbereich freihalten: vorn nur oberhalb der Haarlinie; Nacken nur hinten/seitlich
+            let th_deg = th.to_degrees();
+            if cf > 0.35 && th_deg > 52.0 { continue; }
+            if cf > -0.2 && th_deg > 88.0 && sf.abs() < 0.8 { continue; }
+            let root = [c[0] + sf * th.sin() * ax, c[1] + th.cos() * ay, c[2] + cf * th.sin() * az];
+            let nrm0 = norm([sf * th.sin() / ax, th.cos() / ay, cf * th.sin() / az]);
+            let (wf, wb) = (cf.max(0.0).powi(2), (-cf).max(0.0).powi(2));
+            let len = (wf * fringe + wb * back_l + (1.0 - wf - wb).max(0.0) * side_l) * hu * (0.85 + 0.3 * rnd());
+            // Scheitel: Pony/Seitenscheitel verschiebt Richtung nach links/rechts
+            let tdown = norm([sf * th.cos() * ax, -th.sin() * ay, cf * th.cos() * az]);
+            let mut d = norm(add(add(mul(tdown, 1.0), mul(nrm0, 0.15 + vol * 0.9)), [part * 0.35 * (if cf > 0.0 { 1.0 } else { 0.0 }), 0.0, 0.0]));
+            let lat = (if sf >= part * 0.35 { 1.0f32 } else { -1.0 }) * wf * (fringe / 4.0 + 0.15).min(0.6);
+            let mut p = add(root, mul(nrm0, margin * 0.6));
+            let step = len / nstep as f32;
+            let sidev = norm(cross(d, [0.0, 1.0, 0.0]));
+            let (mut pts, mut dirs) = (vec![p], vec![d]);
+            let phase = rnd() * 6.28;
+            for k in 0..nstep {
+                let t = (k + 1) as f32 / nstep as f32;
+                // Schwerkraft zieht Richtung nach unten, Steifigkeit am Ansatz
+                let gstr = grav * (0.45 + 1.3 * t);
+                d = norm(add(add(d, mul([0.0, -1.0, 0.0], gstr * 0.55)), [lat * (1.0 - t) * 0.5, 0.0, 0.0]));
+                let w = wave * hu * 0.35 * (t * 7.0 + phase).sin() * step / (len.max(1e-4)) * nstep as f32 * 0.25;
+                let mut q = add(add(p, mul(d, step)), mul(sidev, w));
+                // außerhalb des Kopfes halten
+                let e = ell(q); if e < 1.0 { let r = sub(q, c); let rn = norm([r[0] / (ax + margin), r[1] / (ay + margin), r[2] / (az + margin)]); q = [c[0] + rn[0] * (ax + margin), c[1] + rn[1] * (ay + margin), c[2] + rn[2] * (az + margin)]; }
+                // Oberkörper (Schultern) als Ellipse im Grundriss freihalten
+                if q[1] < c[1] - ay * 0.95 {
+                    let (cz, rx, rz) = (c[2] - hw * 0.35, hw * 2.5 + margin * 0.5, hw * 1.25 + margin * 0.5);
+                    let (ex, ez) = ((q[0]) / rx, (q[2] - cz) / rz);
+                    let e2 = ex * ex + ez * ez;
+                    if e2 < 1.0 { let k = 1.0 / e2.sqrt().max(1e-3); q[0] = ex * k * rx; q[2] = cz + ez * k * rz; }
+                }
+                dirs.push(norm(sub(q, p))); p = q; pts.push(p);
+            }
+            // Band: Breite verjüngt zur Spitze
+            let w0 = hu * 0.075 * wscale / dens.sqrt();
+            let base = pos.len() as u32;
+            for (j, (q, dd)) in pts.iter().zip(&dirs).enumerate() {
+                let t = j as f32 / nstep as f32;
+                let sv = norm(cross(*dd, nrm0)); let sv = if dot(sv, sv) < 0.5 { sidev } else { sv };
+                let ww = w0 * (1.0 - 0.8 * t.powf(1.5));
+                let n = norm(cross(sv, *dd));
+                for sg in [-1.0f32, 1.0] { pos.push(add(*q, mul(sv, sg * ww))); nrm.push(n); uv.push([(sg + 1.0) * 0.5, t]); }
+            }
+            for j in 0..nstep as u32 { let a = base + j * 2; idx.extend_from_slice(&[a, a + 1, a + 2, a + 1, a + 3, a + 2]); }
+            // Rückseite (doppelseitig)
+            let nb = pos.len() as u32 - base;
+            for j in 0..nb { let (q, n) = (pos[(base + j) as usize], nrm[(base + j) as usize]); pos.push(q); nrm.push(mul(n, -1.0)); uv.push(uv[(base + j) as usize]); }
+            for j in 0..nstep as u32 { let a = base + nb + j * 2; idx.extend_from_slice(&[a, a + 2, a + 1, a + 1, a + 2, a + 3]); }
+        }
+    }
+    if pos.is_empty() { return; }
+    let n = pos.len();
+    out.parts.push(GenPart { name: "Hair".into(), pos, nrm, uv, idx, joints: vec![[head_bone, 0, 0, 0]; n], weights: vec![[1.0, 0.0, 0.0, 0.0]; n], color: st.color });
+}
+
 /// Erzeugt alle aktiven Merkmale auf der (verformten) Basis. `base_bones` = Anzahl der Basis-Bones (Indizes der Zusatz-Bones beginnen dort).
 pub fn build(m: &VrmModel, lm: &Landmarks, feats: &std::collections::BTreeMap<String, FeatureState>) -> Generated {
     let mut out = Generated::default();
@@ -221,6 +306,7 @@ pub fn build(m: &VrmModel, lm: &Landmarks, feats: &std::collections::BTreeMap<St
         match *kind {
             "ears" => ear_parts(m, lm, st, head as u16, &mut out),
             "horns" => horn_parts(m, lm, st, head as u16, &mut out),
+            "hair" => hair_parts(m, lm, st, head as u16, &mut out),
             "tail" => { if let Some(&h) = m.humanoid.get("hips") { tail_part(m, lm, st, h, base, &mut out); } }
             _ => {}
         }
