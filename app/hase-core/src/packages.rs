@@ -104,6 +104,7 @@ impl Packages {
                 _ => {}
             }
         }
+        for sp in species.iter_mut() { if sp.shape.features.is_none() && !sp.components.is_empty() { let k: Vec<String> = sp.default_features().iter().map(|(k, _)| k.to_string()).collect(); if !k.is_empty() { sp.shape.features = Some(k); } } }
         let body = bodies.iter().find(|b| b.status != "draft").cloned().ok_or("kein Body-Package gefunden")?;
         if species.is_empty() { issues.push("keine Spezies gefunden".into()); }
         Ok(Packages { body, bodies, species, issues })
@@ -148,6 +149,17 @@ fn bump(v: &str, level: usize) -> String {
 pub fn bump_version(v: &str, level: usize) -> String { bump(v, level) }
 
 impl Species {
+    /// Aus den Komponenten abgeleitete Standardmerkmale (Art, Preset-Index) – z. B. Katzen-Demi: Katzenohren + Katzenschweif.
+    pub fn default_features(&self) -> Vec<(&'static str, usize)> {
+        let mut out: Vec<(&'static str, usize)> = vec![];
+        for c in &self.components {
+            let a = c.asset.as_str();
+            let f = if a.contains("cat-ears") { Some(("ears", 0)) } else if a.contains("dog-ears") { Some(("ears", 1)) } else if a.contains("pointed-ears") { Some(("ears", 3)) }
+                else if a.contains("cat-tail") { Some(("tail", 0)) } else if a.contains("dog-tail") { Some(("tail", 1)) } else if a.contains("horn") { Some(("horns", 0)) } else { None };
+            if let Some(f) = f { if !out.iter().any(|x| x.0 == f.0) { out.push(f); } }
+        }
+        out
+    }
     /// Schreibt die Spezies als installierbares Package (`hase-package.json`) nach `user-content/packages/<id>/`.
     pub fn write(&self, repo: &Path, body: &BodyPackage) -> Result<PathBuf, String> {
         let dir = self.dir.clone().unwrap_or_else(|| user_dir(repo).join(&self.id));

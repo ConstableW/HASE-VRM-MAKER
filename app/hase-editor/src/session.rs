@@ -349,6 +349,7 @@ impl Session {
         self.dirty = true;
         self.var_vals.clear();
         self.refresh_species_layer();
+        for (kind, pi) in sp.default_features() { if sp.shape.allows(kind) && !self.sh.features.get(kind).map(|f| f.enabled).unwrap_or(false) { let f = self.feature_mut(kind).unwrap(); f.enabled = true; f.vals = hase_core::features::presets(kind)[pi.min(hase_core::features::presets(kind).len() - 1)].1.to_vec(); } }
         for (k, _) in hase_core::features::KINDS.iter() { if !sp.shape.allows(k) && self.sh.features.get(*k).map(|f| f.enabled).unwrap_or(false) { self.feature_mut(k).unwrap().enabled = false; } }
     }
     /// Ist das Merkmal für die gewählte Spezies zulässig?
@@ -2018,6 +2019,18 @@ impl Session {
 #[cfg(test)]
 mod mh_tool_tests {
     use super::*;
+
+    #[test]
+    fn species_default_features() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        let i = s.packages.species.iter().position(|x| x.id.ends_with("cat-demi")).unwrap();
+        s.select_species(i).unwrap();
+        assert!(s.sh.features["ears"].enabled && s.sh.features["tail"].enabled && !s.feature_allowed("horns"));
+        let h = s.packages.species.iter().position(|x| x.id.ends_with(".human")).unwrap();
+        s.select_species(h).unwrap();
+        assert!(s.feature_allowed("horns"));
+    }
 
     #[test]
     fn species_bake_and_variation() {

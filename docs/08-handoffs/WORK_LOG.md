@@ -63,3 +63,6 @@ Neues Hauptlayout (Kopfzeile, Navigation links mit Icons, Viewport-Overlays, Akk
 `packages::SpeciesShape` (baked + Variationen, Sidecar `shape.json`, Hash im Manifest), `Session::{bake_into_species, define_variation, set_variation, refresh_species_layer}`, Studio-Abschnitt „Spezieskörper aus der Formung“ (Tab Körperbasis, nur eigene Spezies), Variationsregler in der Spezieskarte der Charakter-Phase, Persistenz in Charakterdatei (`variations`). Test `species_bake_and_variation`. Nicht per Hand in der Windows-GUI geprüft; Exe nicht neu gebaut.
 
 Windows-Build-Rezept (Container ohne Vorinstallation): `apt-get install gcc-mingw-w64-x86-64` (posix-Variante per update-alternatives), dann `cargo build --release --target x86_64-pc-windows-gnu` in `app/`, Ergebnis nach `app/win/hase-editor.exe` kopieren. Exe-Stand: a787f71+ (Spezieskörper, Basiswechsel, L/R-Variationen).
+
+## 2026-10-25 – Spezies-Kacheln, Standardmerkmale
+Speziesauswahl als Kachelraster; Spezies mit Komponenten (Katzen-/Hunde-Demi, Elf) leiten erlaubte Merkmale und Standardmerkmale (Ohren/Schweif mit passendem Preset) aus ihren Komponenten ab und aktivieren sie bei Auswahl. Abgeleitete Spezies übernehmen Formung/Variationen. Tests `species_default_features`, `species_bake_and_variation`.
