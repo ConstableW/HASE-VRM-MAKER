@@ -204,6 +204,7 @@ impl App {
         if nav_row(ui, Icon::Sculpt, "Direkt formen (Pinsel)", self.tool == Tool::Sculpt).clicked() { self.tool = Tool::Sculpt; self.main = Main::Charakter; self.region = usize::MAX; }
         ui_kit::section(ui, "Merkmale");
         for (k, (kind, label)) in hase_core::features::KINDS.iter().enumerate() {
+            if !self.session.as_ref().map(|s| s.feature_allowed(kind)).unwrap_or(true) { continue; }
             let on = self.session.as_ref().map(|s| s.feature(kind).enabled).unwrap_or(false);
             let ic = [Icon::Ear, Icon::Species, Icon::Star][k];
             if nav_row(ui, ic, &format!("{label}{}", if on { "  ●" } else { "" }), self.main == Main::Stil && self.sub == 20 + k).clicked() { go = Some((Main::Stil, usize::MAX, 20 + k)); }

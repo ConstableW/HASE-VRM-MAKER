@@ -214,6 +214,18 @@ impl App {
                 ui.heading("Werte & Grenzen");
                 if !editable { ui.colored_label(theme::WARN, "Schreibgeschützt – zum Bearbeiten duplizieren."); }
                 let sp = &mut s.packages.species[sel];
+                ui.strong("Erlaubte Merkmale");
+                ui.weak("Welche modularen Merkmale Charaktere dieser Spezies haben dürfen (z. B. Ohren nur bei Elfen).");
+                for (kind, label) in hase_core::features::KINDS.iter() {
+                    let mut on = sp.shape.allows(kind);
+                    if ui.add_enabled(editable, egui::Checkbox::new(&mut on, *label)).changed() {
+                        let mut f: Vec<String> = hase_core::features::KINDS.iter().filter(|(k, _)| if k == kind { on } else { sp.shape.allows(k) }).map(|(k, _)| k.to_string()).collect();
+                        f.sort();
+                        sp.shape.features = if f.len() == hase_core::features::KINDS.len() { None } else { Some(f) };
+                        self.studio.dirty = true;
+                    }
+                }
+                ui.separator();
                 ui.label(format!("Standardwerte ({}):", sp.defaults.len()));
                 let mut rm = None;
                 for (k, v) in sp.defaults.iter() { ui.horizontal(|ui| { ui.label(format!("{} = {:.2}", theme::label_de(&k.trim_start_matches("mh:").replace('-', " ")), v)); if editable && ui.small_button("Entfernen").clicked() { rm = Some(k.clone()); } }); }

@@ -349,7 +349,10 @@ impl Session {
         self.dirty = true;
         self.var_vals.clear();
         self.refresh_species_layer();
+        for (k, _) in hase_core::features::KINDS.iter() { if !sp.shape.allows(k) && self.sh.features.get(*k).map(|f| f.enabled).unwrap_or(false) { self.feature_mut(k).unwrap().enabled = false; } }
     }
+    /// Ist das Merkmal für die gewählte Spezies zulässig?
+    pub fn feature_allowed(&self, kind: &str) -> bool { self.species_opt().map(|i| self.packages.species[i].shape.allows(kind)).unwrap_or(true) }
 
     /// Spezieskörper-Ebene neu berechnen (eingebackene Grundform + Variationen · Wert) und Differenz auf die Körperpositionen anwenden.
     pub fn refresh_species_layer(&mut self) {
@@ -411,6 +414,8 @@ impl Session {
         Ok(n)
     }
 
+    #[cfg(test)]
+    fn finish_shape_move_for_test(&mut self, idx: usize) { self.finish_shape_move(idx); }
     fn finish_shape_move(&mut self, idx: usize) {
         // Formung wandert in die Spezies; der sichtbare Körper bleibt (Baked) bzw. wird bei Wert 0 der Variation neutral
         let layer = std::mem::take(&mut self.mh_sculpt);
@@ -2031,11 +2036,17 @@ mod mh_tool_tests {
         let p2 = s.eval.pos.clone();
         s.bake_into_species(idx).unwrap();
         assert_eq!(s.eval.pos.iter().zip(&p2).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Einbacken ändert die Form nicht");
+        // Erlaubte Merkmale
+        s.packages.species[idx].shape.features = Some(vec!["ears".into()]);
+        s.feature_mut("tail").unwrap().enabled = true;
+        s.apply_species(idx);
+        assert!(s.feature_allowed("ears") && !s.feature_allowed("tail") && !s.sh.features["tail"].enabled);
+        s.finish_shape_move_for_test(idx);
         // Neu laden: Spezies samt Form kommt aus dem Paket
         let pk = hase_core::packages::Packages::load(&repo).unwrap();
         let back = pk.species.iter().find(|x| x.id == "user.species.test-shape").unwrap();
         let _ = std::fs::remove_dir_all(hase_core::packages::user_dir(&repo).join("user.species.test-shape"));
-        assert!(!back.shape.baked.is_empty() && back.shape.variations.len() == 3);
+        assert!(!back.shape.baked.is_empty() && back.shape.variations.len() == 3 && back.shape.features.as_deref() == Some(&["ears".to_string()][..]));
     }
 
     #[test]
