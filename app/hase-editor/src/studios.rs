@@ -215,6 +215,50 @@ impl App {
         let s = self.session.as_mut().unwrap();
         if let Some((id, t)) = tint { s.set_tint(&id, t); }
         if let Some(id) = off { s.toggle_asset_off(&id); }
+        // Outfit-Vorlagen: aktuelle Kleidung samt Farben speichern, später mit einem Klick anwenden
+        crate::ui_kit::hr(ui);
+        crate::ui_kit::section(ui, "Meine Outfits");
+        let can_save = !worn.is_empty() && !self.outfit_name.trim().is_empty();
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.outfit_name).hint_text("Name des Outfits").desired_width(ui.available_width() - 110.0));
+            if ui.add_enabled(can_save, egui::Button::new("Speichern")).on_hover_text("Speichert die getragene Kleidung mit Farben als Vorlage").clicked() {
+                let name = self.outfit_name.trim().to_string();
+                let items: Vec<(String, [f32; 3])> = worn.iter().map(|a| (a.id.clone(), a.tint)).collect();
+                let s = self.session.as_ref().unwrap();
+                let mut all = crate::library::load_outfits(&s.repo);
+                all.retain(|o| o.name != name);
+                all.push(crate::library::Outfit { name, items });
+                let _ = crate::library::save_outfits(&s.repo, &all);
+                self.outfit_name.clear();
+            }
+        });
+        let outfits = crate::library::load_outfits(&self.session.as_ref().unwrap().repo);
+        let (mut apply, mut del): (Option<usize>, Option<usize>) = (None, None);
+        for (i, o) in outfits.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.button(format!("{}  ({} Teile)", o.name, o.items.len())).clicked() { apply = Some(i); }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if crate::ui_kit::icon_tile(ui, crate::icons::Icon::Close, "", egui::vec2(24.0, 24.0), false, "Outfit löschen").clicked() { del = Some(i); } });
+            });
+        }
+        if outfits.is_empty() { ui.colored_label(theme::TEXT2, "Noch keine Outfits gespeichert."); }
+        if let Some(i) = del { let repo = self.session.as_ref().unwrap().repo.clone(); let mut all = outfits.clone(); all.remove(i); let _ = crate::library::save_outfits(&repo, &all); }
+        if let Some(i) = apply {
+            let o = outfits[i].clone();
+            let ids: Vec<String> = o.items.iter().map(|(id, _)| id.clone()).collect();
+            let s = self.session.as_mut().unwrap();
+            let remove: Vec<String> = s.state.assets.iter().filter(|a| a.id.starts_with("clothes/") && !ids.contains(&a.id)).map(|a| a.id.clone()).collect();
+            for id in remove { s.toggle_asset_off(&id); }
+            let mut loads: Vec<(String, std::path::PathBuf)> = vec![];
+            for (id, t) in &o.items {
+                let s = self.session.as_mut().unwrap();
+                if let Some(e) = s.assets.assets.iter().find(|a| &a.id == id).cloned() {
+                    if !s.is_selected(id) { s.add_asset_selection(&e); loads.push((e.id.clone(), e.mhclo.clone())); }
+                    s.set_tint(id, *t);
+                }
+            }
+            for (id, mh) in loads { self.start_asset_load(ctx, &id, mh, None); }
+        }
+        let s = self.session.as_mut().unwrap();
         if let Some(i) = click {
             let e = self.session.as_ref().unwrap().assets.assets[i].clone();
             let s = self.session.as_mut().unwrap();

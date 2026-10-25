@@ -90,3 +90,6 @@ Neuer Hautton (Tönung + Stärke) im Style (`SkinStyle.tone/tone_amt`, im Charak
 Export-Panel mit Format-Auswahl: VRM 1.0, schlichtes glTF/GLB (ohne VRMC-/Unlit-Erweiterungen, mit Skelett/Skinning/Morphs) und Wavefront OBJ (+MTL, PNG; statische Ruhepose). Test deckt glTF ohne VRMC und OBJ ab. Offen: FBX, USD, Ziel-Presets (z. B. VRChat/Unity), Blender-Prüfung des schlichten GLB.
 
 Frisur: Zopf/Pferdeschwanz (Parameter „Zusammenbinden“, „Zopf-Höhe“, Preset), Schulterkollision ohne Kante (Ellipse erst unterhalb des Halses, Nackenwurzeln ausgelassen). Screenshot hair-ponytail.png.
+
+## 2026-10-25 – Outfit-Vorlagen
+Outfit-Studio: „Meine Outfits“ – getragene Kleidung samt Farben als benannte Vorlage speichern (user-content/outfits.json), anwenden (lädt Teile, setzt Farben, legt andere Kleidung ab) und löschen. Test outfit_roundtrip.

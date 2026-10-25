@@ -123,3 +123,37 @@ mod tests {
         assert!(now_string().len() == 16);
     }
 }
+
+/// Gespeichertes Outfit: Kleidungsteile (Asset-ID) mit Farbton.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Outfit { pub name: String, pub items: Vec<(String, [f32; 3])> }
+
+fn outfits_path(repo: &std::path::Path) -> std::path::PathBuf { repo.join("user-content").join("outfits.json") }
+
+pub fn load_outfits(repo: &std::path::Path) -> Vec<Outfit> {
+    let Ok(t) = std::fs::read_to_string(outfits_path(repo)) else { return vec![] };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) else { return vec![] };
+    v.as_array().map(|a| a.iter().filter_map(|o| Some(Outfit { name: o["name"].as_str()?.to_string(), items: o["items"].as_array()?.iter().filter_map(|i| { let c = i["tint"].as_array()?; Some((i["id"].as_str()?.to_string(), [c.first()?.as_f64()? as f32, c.get(1)?.as_f64()? as f32, c.get(2)?.as_f64()? as f32])) }).collect() })).collect()).unwrap_or_default()
+}
+
+pub fn save_outfits(repo: &std::path::Path, all: &[Outfit]) -> Result<(), String> {
+    let v: Vec<serde_json::Value> = all.iter().map(|o| serde_json::json!({"name": o.name, "items": o.items.iter().map(|(id, t)| serde_json::json!({"id": id, "tint": t})).collect::<Vec<_>>()})).collect();
+    let p = outfits_path(repo);
+    if let Some(d) = p.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
+    std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod outfit_tests {
+    use super::*;
+    #[test]
+    fn outfit_roundtrip() {
+        let d = std::env::temp_dir().join("hase-outfit-test"); let _ = std::fs::remove_dir_all(&d);
+        let o = vec![Outfit { name: "Alltag".into(), items: vec![("clothes/a".into(), [0.1, 0.2, 0.3]), ("clothes/b".into(), [1.0, 1.0, 1.0])] }];
+        save_outfits(&d, &o).unwrap();
+        let back = load_outfits(&d);
+        assert_eq!(back.len(), 1); assert_eq!(back[0].name, "Alltag"); assert_eq!(back[0].items.len(), 2);
+        assert!((back[0].items[0].1[1] - 0.2).abs() < 1e-6);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
