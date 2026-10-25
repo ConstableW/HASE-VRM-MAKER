@@ -81,3 +81,4 @@ Orkin (breiter Rumpf/Schultern, kräftige Arme), Zwerg (kurze Beine, breiter Rum
 
 ## 2026-10-25 – Frisuren-Generator (Merkmal „Frisur (generiert)“)
 Neues Merkmal `hair` (features.rs): Strähnenbänder, auf der Schädelellipse verwurzelt, mit Schwerkraft, Welle, Scheitel, Pony-/Seiten-/Hinterkopflänge, Volumen, Dichte; Kollision mit Kopf und grober Schulterellipse; 5 Presets. Arbeitet auf MakeHuman-Basis und Avataren, wird mit exportiert (Kopf-Bone, noch ohne Spring-Bones). Grenzen: Strähnen sind flache Bänder (keine Haarkarten-Texturen), Schulterkollision grob (sichtbare Kante), keine Physik. Screenshot `hair-generated.png`.
+Frisur: langes Haar (> 1,2 Kopfeinheiten) bekommt je Azimut-Cluster (12) eine Spring-Bone-Kette aus drei Bones (`J_Sec_Hair_xx_yy`), Gewichte entlang der Strähne (Ansatz am Kopf-Bone); VRM-Export schreibt `VRMC_springBone`, Schema 0 Fehler. Schwingungsverhalten in einem VRM-Viewer noch nicht geprüft (Owner/HASEC).

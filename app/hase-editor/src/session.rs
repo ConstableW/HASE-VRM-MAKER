@@ -2080,11 +2080,15 @@ mod mh_tool_tests {
         let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
         let mut s = Session::load(&repo).unwrap();
         s.refresh();
-        let f = s.feature_mut("hair").unwrap(); f.enabled = true;
+        let f = s.feature_mut("hair").unwrap(); f.enabled = true; f.vals = hase_core::features::presets("hair")[2].1.to_vec();
         let up = s.refresh();
         assert!(up.iter().any(|u| matches!(u, MeshUpdate::Create(d) if d.id.starts_with("feat:"))), "Frisur erscheint");
         let n = s.sh.generated.parts.iter().find(|p| p.name == "Hair").map(|p| p.pos.len()).unwrap();
         assert!(n > 5000 && n < 400_000, "Strähnenzahl plausibel: {n}");
+        assert!(s.sh.generated.springs.iter().filter(|(k, _)| k == "hair").count() >= 6, "Haar-Spring-Ketten");
+        let hp = s.sh.generated.parts.iter().find(|p| p.name == "Hair").unwrap();
+        let nb = (s.body.topo.vmap.len() > 0) as usize; let _ = nb;
+        assert!(hp.joints.iter().zip(&hp.weights).all(|(j, w)| (w[0] + w[1] + w[2] + w[3] - 1.0).abs() < 1e-4 && j.iter().all(|&b| (b as usize) < 1000)), "Gewichte normiert");
     }
 
     #[test]

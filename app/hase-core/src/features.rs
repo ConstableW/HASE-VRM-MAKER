@@ -217,7 +217,7 @@ fn tail_part(m: &VrmModel, lm: &Landmarks, st: &FeatureState, hips_bone: usize, 
 }
 
 /// Frisur: Strähnenbänder, auf der Schädelellipse verwurzelt, fallen unter Schwerkraft herab und halten Abstand zum Kopf.
-fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, out: &mut Generated) {
+fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, base_bones: usize, out: &mut Generated) {
     let v = &st.vals;
     let (fringe, side_l, back_l, vol, wscale, dens, wave, part, grav) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
     let (crown, hw, drop) = head_extent(m, lm);
@@ -231,6 +231,9 @@ fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, o
     let mut seed = 12345u32;
     let mut rnd = move || { seed = seed.wrapping_mul(1664525).wrapping_add(1013904223); (seed >> 8) as f32 / 16777216.0 };
     let nstep = 14usize;
+    let nclu = 12usize;
+    // (Cluster, erster Vertex, Vertexzahl je Seite, Strähnenpunkte, lang genug für Spring-Bones)
+    let mut strands: Vec<(usize, u32, u32, Vec<V3>, bool)> = Vec::new();
     for it in 0..nth {
         let th = (4.0 + (it as f32 + 0.5) / nth as f32 * 98.0).to_radians();
         let ring_c = th.sin();
@@ -276,6 +279,7 @@ fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, o
             // Band: Breite verjüngt zur Spitze
             let w0 = hu * 0.075 * wscale / dens.sqrt();
             let base = pos.len() as u32;
+            let clu = ((phi / std::f32::consts::TAU) * nclu as f32) as usize % nclu;
             for (j, (q, dd)) in pts.iter().zip(&dirs).enumerate() {
                 let t = j as f32 / nstep as f32;
                 let sv = norm(cross(*dd, nrm0)); let sv = if dot(sv, sv) < 0.5 { sidev } else { sv };
@@ -288,11 +292,40 @@ fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, o
             let nb = pos.len() as u32 - base;
             for j in 0..nb { let (q, n) = (pos[(base + j) as usize], nrm[(base + j) as usize]); pos.push(q); nrm.push(mul(n, -1.0)); uv.push(uv[(base + j) as usize]); }
             for j in 0..nstep as u32 { let a = base + nb + j * 2; idx.extend_from_slice(&[a, a + 2, a + 1, a + 1, a + 2, a + 3]); }
+            strands.push((clu, base, nb, pts.clone(), len > hu * 1.2));
         }
     }
     if pos.is_empty() { return; }
     let n = pos.len();
-    out.parts.push(GenPart { name: "Hair".into(), pos, nrm, uv, idx, joints: vec![[head_bone, 0, 0, 0]; n], weights: vec![[1.0, 0.0, 0.0, 0.0]; n], color: st.color });
+    let (mut joints, mut weights) = (vec![[head_bone, 0, 0, 0]; n], vec![[1.0f32, 0.0, 0.0, 0.0]; n]);
+    // Spring-Bone-Ketten: je Azimut-Cluster drei Bones entlang der mittleren Strähne (langes Haar schwingt, Ansatz bleibt am Kopf)
+    let knots = [5usize, 10, nstep];
+    for c in 0..nclu {
+        let members: Vec<&(usize, u32, u32, Vec<V3>, bool)> = strands.iter().filter(|s| s.0 == c && s.4).collect();
+        if members.len() < 3 { continue; }
+        let first = base_bones + out.bones.len();
+        let mut chain = Vec::new();
+        for (k, &kn) in knots.iter().enumerate() {
+            let mut avg = [0.0f32; 3];
+            for s in &members { avg = add(avg, s.3[kn]); }
+            let pbone = if k == 0 { Some(head_bone as usize) } else { Some(first + k - 1) };
+            out.bones.push(ExBone { name: format!("J_Sec_Hair_{:02}_{:02}", c + 1, k + 1), parent: pbone, pos: mul(avg, 1.0 / members.len() as f32) });
+            chain.push(first + k);
+        }
+        out.springs.push(("hair".into(), chain));
+        for s in &members {
+            for side in 0..2u32 {
+                for j in 0..=nstep {
+                    // Gewichte entlang der Strähne: Kopf → B0 → B1 → B2
+                    let (a, b, f) = if j <= 3 { (None, None, 0.0) } else if j <= knots[0] { (None, Some(0usize), (j - 3) as f32 / (knots[0] - 3) as f32) } else if j <= knots[1] { (Some(0usize), Some(1usize), (j - knots[0]) as f32 / (knots[1] - knots[0]) as f32) } else { (Some(1usize), Some(2usize), (j - knots[1]) as f32 / (knots[2] - knots[1]) as f32) };
+                    let (ja, wa) = match a { None => (head_bone, 1.0 - f), Some(i) => ((first + i) as u16, 1.0 - f) };
+                    let (jb, wb) = match b { None => (head_bone, 0.0), Some(i) => ((first + i) as u16, f) };
+                    for v in 0..2u32 { let vi = (s.1 + side * s.2 + (j as u32) * 2 + v) as usize; joints[vi] = [ja, jb, 0, 0]; weights[vi] = [wa, wb, 0.0, 0.0]; }
+                }
+            }
+        }
+    }
+    out.parts.push(GenPart { name: "Hair".into(), pos, nrm, uv, idx, joints, weights, color: st.color });
 }
 
 /// Erzeugt alle aktiven Merkmale auf der (verformten) Basis. `base_bones` = Anzahl der Basis-Bones (Indizes der Zusatz-Bones beginnen dort).
@@ -306,7 +339,7 @@ pub fn build(m: &VrmModel, lm: &Landmarks, feats: &std::collections::BTreeMap<St
         match *kind {
             "ears" => ear_parts(m, lm, st, head as u16, &mut out),
             "horns" => horn_parts(m, lm, st, head as u16, &mut out),
-            "hair" => hair_parts(m, lm, st, head as u16, &mut out),
+            "hair" => hair_parts(m, lm, st, head as u16, base, &mut out),
             "tail" => { if let Some(&h) = m.humanoid.get("hips") { tail_part(m, lm, st, h, base, &mut out); } }
             _ => {}
         }
