@@ -57,17 +57,14 @@ fn unassigned(app: &App) -> usize { app.session.as_ref().map(|s| s.params.defs.i
 
 impl App {
     pub(crate) fn studio_library(&mut self, ui: &mut egui::Ui) {
-        let Some(s) = self.session.as_mut() else { return };
+        if self.session.is_none() { return; }
         ui.strong("Speziesbibliothek"); ui.separator();
-        let n = s.packages.species.len();
+        let n = self.session.as_ref().unwrap().packages.species.len();
         self.studio.sel = self.studio.sel.min(n.saturating_sub(1));
-        egui::ScrollArea::vertical().max_height(ui.available_height() - 190.0).show(ui, |ui| {
-            for i in 0..n {
-                let sp = &s.packages.species[i];
-                let label = format!("{}{}{}{}", sp.label, if sp.user { "  · eigene" } else { "" }, if sp.stub { "  · Stub" } else { "" }, if !sp.body_id.is_empty() && sp.body_id != s.packages.body.id { "  · andere Körperbasis" } else { "" });
-                if ui.selectable_label(self.studio.sel == i, label).clicked() { self.studio.sel = i; let _ = s.select_species(i); }
-            }
-        });
+        let h = (ui.available_height() - 250.0).max(120.0);
+        let sel = self.studio.sel;
+        if let Some(i) = self.species_grid(ui, true, h, Some(sel)) { self.studio.sel = i; let _ = self.session.as_mut().unwrap().select_species(i); }
+        let Some(s) = self.session.as_mut() else { return };
         ui.separator();
         ui.weak("Neue Spezies aus dem aktuellen Charakter (bewusste Umwandlung):");
         ui.text_edit_singleline(&mut self.studio.new_name);

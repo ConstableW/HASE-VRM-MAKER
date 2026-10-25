@@ -149,30 +149,34 @@ impl App {
         });
     }
 
+    /// Kachelraster der Spezies (Vorschau mit Körper, Merkmalen und Hautton). `all` = auch Spezies anderer Körperbasis; `mark` überschreibt die markierte Spezies.
+    pub(crate) fn species_grid(&mut self, ui: &mut egui::Ui, all: bool, max_h: f32, mark: Option<usize>) -> Option<usize> {
+        let mut items: Vec<(usize, String, std::collections::BTreeMap<String, f32>, bool, hase_core::state::PkgRef, Option<([f32; 3], f32)>)> = { let s = self.session.as_ref().unwrap(); let cur = s.species_opt(); (if all { (0..s.packages.species.len()).collect::<Vec<_>>() } else { s.species_selectable() }).into_iter().map(|i| { let sp = &s.packages.species[i]; (i, format!("{}{}", sp.label, if sp.stub { " (Stub)" } else { "" }), sp.defaults.clone(), cur == Some(i), hase_core::state::PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() }, sp.shape.skin_tone) }).collect() };
+        if let Some(m) = mark { for it in items.iter_mut() { it.3 = it.0 == m; } }
+        let cols = 3usize; let gap = 6.0;
+        let tw = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
+        let mut pick = None;
+        egui::ScrollArea::vertical().id_salt("speciesgrid").max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
+            for row in items.chunks(cols) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = gap;
+                    for (i, label, defs, on, pref, tone) in row {
+                        let st = { let s = self.session.as_ref().unwrap(); let mut st = s.state.clone(); st.values = s.params.defaults(); drop(s); st };
+                        let st = { let s = self.session.as_ref().unwrap(); let mut st = st; for (k, v) in defs { if let Some(j) = s.params.canonical(k) { st.values[j] = *v; } } st.species = pref.id.clone(); st.species_ref = pref.clone(); let (tc, ta) = tone.unwrap_or(([1.0; 3], 0.0)); st.style.skin.tone = tc; st.style.skin.tone_amt = ta; st };
+                        if self.tile_card(ui, tw, tw * 1.15, st, "head", label, *on) { pick = Some(*i); }
+                    }
+                });
+            }
+        });
+        pick
+    }
+
     fn species_card(&mut self, ui: &mut egui::Ui) {
         if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(true) { return; }
         card(ui, Some((Icon::Species, "Spezies")), |ui| {
             // Spezies-Kacheln (Vorschau mit den Standardwerten der Spezies)
-            {
-                let items: Vec<(usize, String, std::collections::BTreeMap<String, f32>, bool, hase_core::state::PkgRef, Option<([f32; 3], f32)>)> = { let s = self.session.as_ref().unwrap(); let cur = s.species_opt(); s.species_selectable().into_iter().map(|i| { let sp = &s.packages.species[i]; (i, format!("{}{}", sp.label, if sp.stub { " (Stub)" } else { "" }), sp.defaults.clone(), cur == Some(i), hase_core::state::PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() }, sp.shape.skin_tone) }).collect() };
-                let cols = 3usize; let gap = 6.0;
-                let tw = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
-                let mut pick = None;
-                egui::ScrollArea::vertical().id_salt("speciesgrid").max_height(250.0).auto_shrink([false, true]).show(ui, |ui| {
-                    for row in items.chunks(cols) {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = gap;
-                            for (i, label, defs, on, pref, tone) in row {
-                                let st = { let s = self.session.as_ref().unwrap(); let mut st = s.state.clone(); st.values = s.params.defaults(); drop(s); st };
-                                let st = { let s = self.session.as_ref().unwrap(); let mut st = st; for (k, v) in defs { if let Some(j) = s.params.canonical(k) { st.values[j] = *v; } } st.species = pref.id.clone(); st.species_ref = pref.clone(); let (tc, ta) = tone.unwrap_or(([1.0; 3], 0.0)); st.style.skin.tone = tc; st.style.skin.tone_amt = ta; st };
-                                if self.tile_card(ui, tw, tw * 1.15, st, "head", label, *on) { pick = Some(*i); }
-                            }
-                        });
-                    }
-                });
-                if let Some(i) = pick { if let Err(e) = self.session.as_mut().unwrap().select_species(i) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
-                if !self.studio.msg.is_empty() { ui.colored_label(theme::WARN, self.studio.msg.clone()); }
-            }
+            if let Some(i) = self.species_grid(ui, false, 250.0, None) { if let Err(e) = self.session.as_mut().unwrap().select_species(i) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
+            if !self.studio.msg.is_empty() { ui.colored_label(theme::WARN, self.studio.msg.clone()); }
             // Variationen der Spezies (bewusst definierte Regler)
             let vars: Vec<(String, String, f32, f32, f32)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].shape.variations.iter().map(|v| (v.id.clone(), v.label.clone(), v.min, v.max, s.var_vals.get(&v.id).copied().unwrap_or(0.0))).collect()).unwrap_or_default() };
             if !vars.is_empty() {
