@@ -2200,6 +2200,13 @@ mod mh_tool_tests {
         let o = ExportOptions { with_outfit: false, expressions: false, name: "T".into(), author: "A".into(), license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: "personalNonProfit".into(), redistribution: true };
         let (doc, _) = s.build_export(&o).unwrap();
         assert!(doc.meshes.iter().any(|m| m.name == "Tail") && !doc.springs.is_empty());
+        // Weitere Formate: schlichtes glTF ohne VRMC, OBJ mit MTL
+        let plain = hase_core::export::write_glb_opt(&doc, false).unwrap();
+        assert!(!String::from_utf8_lossy(&plain).contains("VRMC_") && hase_core::export::verify_glb(&plain).is_ok());
+        let td = std::env::temp_dir().join("hase-obj-test"); let _ = std::fs::create_dir_all(&td);
+        let (tris, files) = hase_core::export::write_obj(&doc, &td.join("t.obj")).unwrap();
+        assert!(tris > 1000 && files.iter().any(|f| f.ends_with(".mtl")) && std::fs::read_to_string(td.join("t.obj")).unwrap().contains("\nf "));
+        let _ = std::fs::remove_dir_all(&td);
         let glb = hase_core::export::write_glb(&doc).unwrap();
         hase_core::export::verify_glb(&glb).unwrap();
         // Speichern/Laden

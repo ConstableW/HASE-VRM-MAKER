@@ -8,6 +8,7 @@ use std::sync::mpsc::{channel, Receiver};
 pub struct ExportState {
     pub with_outfit: bool,
     pub expressions: bool,
+    pub format: usize,
     pub name: String,
     pub author: String,
     pub commercial: usize,
@@ -24,7 +25,7 @@ pub struct ExportState {
 }
 
 impl Default for ExportState {
-    fn default() -> Self { Self { with_outfit: false, expressions: true, name: "HASE Charakter".into(), author: String::new(), commercial: 0, redistribution: true, report: vec![], msg: String::new(), rx: None, busy: false, sub: 0, clips: vec![], clips_loaded: false, filter: String::new(), clip_msg: String::new() } }
+    fn default() -> Self { Self { with_outfit: false, expressions: true, format: 0, name: "HASE Charakter".into(), author: String::new(), commercial: 0, redistribution: true, report: vec![], msg: String::new(), rx: None, busy: false, sub: 0, clips: vec![], clips_loaded: false, filter: String::new(), clip_msg: String::new() } }
 }
 
 const COMMERCIAL: [(&str, &str); 3] = [("personalNonProfit", "Privat, nicht kommerziell"), ("personalProfit", "Privat, auch kommerziell (z. B. Streaming)"), ("corporation", "Unternehmen")];
@@ -144,6 +145,10 @@ impl App {
         if crate::ui_kit::tabs(ui, &["Basischarakter", "Mit Outfit"], &mut prof) { ex.with_outfit = prof == 1; }
         ui.colored_label(theme::TEXT2, if ex.with_outfit { "Charakter mit getragener Kleidung (verdeckte Körperflächen entfallen)." } else { "Nackter Basischarakter ohne Kleidung." });
         ui.add_space(4.0);
+        crate::ui_kit::section(ui, "Format");
+        crate::ui_kit::tabs(ui, &["VRM 1.0", "glTF (GLB)", "OBJ"], &mut ex.format);
+        if ex.format == 1 { ui.colored_label(theme::TEXT2, "Schlichtes glTF 2.0: Skelett, Skinning, Morph-Targets, Texturen. Ohne VRM-Metadaten, Expressions-Zuordnung und Spring Bones."); }
+        if ex.format == 2 { ui.colored_label(theme::TEXT2, "Statisches Mesh in Ruhepose (OBJ + MTL + PNG), ohne Skelett und Morphs."); }
         ui.checkbox(&mut ex.expressions, "Expressions (Blinzeln, Vokale, Gefühle)");
         crate::ui_kit::section(ui, "Metadaten");
         egui::Grid::new("meta").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
@@ -173,8 +178,10 @@ impl App {
 
     fn export_start(&mut self) {
         let ex = &self.export;
-        let default = format!("{}.vrm", hase_core::packages::slug(&ex.name));
-        let Some(path) = rfd::FileDialog::new().add_filter("VRM 1.0", &["vrm"]).set_file_name(default).save_file() else { return };
+        let fmt = ex.format;
+        let (ext, fname) = [("vrm", "VRM 1.0"), ("glb", "glTF (GLB)"), ("obj", "Wavefront OBJ")][fmt.min(2)];
+        let default = format!("{}.{ext}", hase_core::packages::slug(&ex.name));
+        let Some(path) = rfd::FileDialog::new().add_filter(fname, &[ext]).set_file_name(default).save_file() else { return };
         let o = ExportOptions { with_outfit: ex.with_outfit, expressions: ex.expressions, name: ex.name.clone(), author: if ex.author.trim().is_empty() { "HASE VRM MAKER".into() } else { ex.author.clone() }, license_url: "https://vrm.dev/licenses/1.0/".into(), commercial: COMMERCIAL[ex.commercial].0.into(), redistribution: ex.redistribution };
         let Some(s) = self.session.as_mut() else { return };
         let t0 = std::time::Instant::now();
@@ -187,12 +194,12 @@ impl App {
                 let ctx_repaint = self.ctx.clone();
                 std::thread::spawn(move || {
                     let t1 = std::time::Instant::now();
-                    let r = hase_core::export::write_glb(&doc).and_then(|glb| {
+                    let r = if fmt == 2 { hase_core::export::write_obj(&doc, &path).map(|(t, f)| format!("Gespeichert: {} ({t} Dreiecke; weitere Dateien: {})", path.display(), f.join(", "))) } else { hase_core::export::write_glb_opt(&doc, fmt == 0).and_then(|glb| {
                         std::fs::write(&path, &glb).map_err(|e| e.to_string())?;
                         // Rücklesen-Prüfung: die Datei muss als glTF parsebar sein
                         let (m, mat, im, mt) = hase_core::export::verify_glb(&glb)?;
                         Ok(format!("Gespeichert: {} ({:.1} MB, {m} Meshes, {mat} Materialien, {im} Bilder, {mt} Morph-Targets; Zusammenstellung {build_ms:.0} ms, Schreiben {:.0} ms im Hintergrund; Rücklesen OK)", path.display(), glb.len() as f64 / 1048576.0, t1.elapsed().as_secs_f64() * 1e3))
-                    });
+                    }) };
                     let _ = tx.send(r);
                     ctx_repaint.request_repaint();
                 });

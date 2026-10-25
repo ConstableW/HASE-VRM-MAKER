@@ -85,3 +85,6 @@ Frisur: langes Haar (> 1,2 Kopfeinheiten) bekommt je Azimut-Cluster (12) eine Sp
 
 ## 2026-10-25 – Hautton, Spezies-Kacheln mit Körper
 Neuer Hautton (Tönung + Stärke) im Style (`SkinStyle.tone/tone_amt`, im Charakter gespeichert, wirkt in Textur und Export); Spezies können einen Standardton vorgeben (`shape.skinTone`: Orkin grünlich, Elf leicht bläulich); Spezieskacheln zeigen jetzt Körperform, Merkmale und Ton. Charakter → „Als neue Spezies speichern“ übernimmt den Ton.
+
+## 2026-10-25 – Exportformate
+Export-Panel mit Format-Auswahl: VRM 1.0, schlichtes glTF/GLB (ohne VRMC-/Unlit-Erweiterungen, mit Skelett/Skinning/Morphs) und Wavefront OBJ (+MTL, PNG; statische Ruhepose). Test deckt glTF ohne VRMC und OBJ ab. Offen: FBX, USD, Ziel-Presets (z. B. VRChat/Unity), Blender-Prüfung des schlichten GLB.

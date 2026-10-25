@@ -120,7 +120,11 @@ impl Bin {
 fn f32b(v: &[f32]) -> Vec<u8> { v.iter().flat_map(|x| x.to_le_bytes()).collect() }
 fn bounds(p: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) { let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]); for q in p { for i in 0..3 { lo[i] = lo[i].min(q[i]); hi[i] = hi[i].max(q[i]); } } (lo, hi) }
 
-pub fn write_glb(doc: &ExDoc) -> Result<Vec<u8>, String> {
+/// VRM 1.0 (GLB mit VRMC-Erweiterungen).
+pub fn write_glb(doc: &ExDoc) -> Result<Vec<u8>, String> { write_glb_opt(doc, true) }
+
+/// Schreibt GLB; ohne `vrm` als schlichtes glTF 2.0 (Skelett, Skinning, Morph-Targets, PBR-Materialien, keine VRMC-/Unlit-Erweiterungen).
+pub fn write_glb_opt(doc: &ExDoc, vrm_ext: bool) -> Result<Vec<u8>, String> {
     let mut bin = Bin { data: Vec::new(), views: vec![], accs: vec![] };
     let nb = doc.bones.len();
     // Knoten: Bones, dann Meshes
@@ -192,6 +196,10 @@ pub fn write_glb(doc: &ExDoc) -> Result<Vec<u8>, String> {
         gltf["extensions"]["VRMC_springBone"] = json!({"specVersion": "1.0", "springs": springs});
         gltf["extensionsUsed"].as_array_mut().unwrap().push(json!("VRMC_springBone"));
     }
+    if !vrm_ext {
+        if let Some(ms) = gltf["materials"].as_array_mut() { for m in ms { if let Some(o) = m.as_object_mut() { o.remove("extensions"); } } }
+        if let Some(o) = gltf.as_object_mut() { o.remove("extensions"); o.remove("extensionsUsed"); }
+    }
     if !images.is_empty() { gltf["images"] = json!(images); gltf["textures"] = json!(textures); }
     gltf["bufferViews"] = json!(bin.views); gltf["accessors"] = json!(bin.accs);
     pad4(&mut bin.data);
@@ -253,4 +261,31 @@ pub fn verify_glb(glb: &[u8]) -> Result<(usize, usize, usize, usize), String> {
     let d = &g.document;
     let morphs: usize = d.meshes().map(|m| m.primitives().map(|p| p.morph_targets().len()).sum::<usize>()).sum();
     Ok((d.meshes().count(), d.materials().count(), d.images().count(), morphs))
+}
+
+/// Statischer Export als Wavefront OBJ + MTL + PNG-Texturen (Ruhepose, ohne Skelett/Morphs). Liefert (Dreiecke, Dateien).
+pub fn write_obj(doc: &ExDoc, path: &Path) -> Result<(usize, Vec<String>), String> {
+    use std::fmt::Write as _;
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("export");
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let mut files = vec![];
+    let mut obj = String::new(); let mut mtl = String::new();
+    writeln!(obj, "# HASE VRM MAKER\nmtllib {stem}.mtl").unwrap();
+    for (i, m) in doc.materials.iter().enumerate() {
+        writeln!(mtl, "newmtl m{i}_{}\nKd {:.4} {:.4} {:.4}\nd {:.3}", m.name.replace(' ', "_"), m.color[0], m.color[1], m.color[2], m.color[3]).unwrap();
+        if let Some(ii) = m.image { let im = &doc.images[ii]; let fname = format!("{stem}_{ii}.png"); std::fs::write(dir.join(&fname), png_bytes(im.w, im.h, &im.rgba)?).map_err(|e| e.to_string())?; writeln!(mtl, "map_Kd {fname}").unwrap(); files.push(fname); }
+        writeln!(mtl).unwrap();
+    }
+    let (mut vo, mut tris) = (1usize, 0usize);
+    for me in &doc.meshes {
+        writeln!(obj, "o {}\nusemtl m{}_{}", me.name, me.material, doc.materials.get(me.material).map(|m| m.name.replace(' ', "_")).unwrap_or_default()).unwrap();
+        for p in &me.pos { writeln!(obj, "v {:.5} {:.5} {:.5}", p[0], p[1], p[2]).unwrap(); }
+        for t in &me.uv { writeln!(obj, "vt {:.5} {:.5}", t[0], 1.0 - t[1]).unwrap(); }
+        for n in &me.nrm { writeln!(obj, "vn {:.4} {:.4} {:.4}", n[0], n[1], n[2]).unwrap(); }
+        for t in me.idx.chunks_exact(3) { let f = |k: u32| { let i = vo + k as usize; format!("{i}/{i}/{i}") }; writeln!(obj, "f {} {} {}", f(t[0]), f(t[1]), f(t[2])).unwrap(); tris += 1; }
+        vo += me.pos.len();
+    }
+    std::fs::write(path, obj).map_err(|e| e.to_string())?;
+    let mf = format!("{stem}.mtl"); std::fs::write(dir.join(&mf), mtl).map_err(|e| e.to_string())?; files.push(mf);
+    Ok((tris, files))
 }
