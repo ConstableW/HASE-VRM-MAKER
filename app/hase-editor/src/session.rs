@@ -515,6 +515,7 @@ impl Session {
         let skin_changed = s.skin != self.state.skin;
         self.style_dirty = true; self.assets_dirty = true; self.skin_dirty = true;
         self.state = s;
+        self.refresh_species_layer();
         for a in &self.state.assets { if self.proxies.contains_key(&a.id) { self.pending.push(MeshUpdate::Tint { id: format!("proxy:{}", a.id), tint: a.tint }); } }
         if skin_changed { self.skin_dirty = true; self.skin_tex = self.skin_path().and_then(|p| load_image(&p, 2048).ok()); self.pending.push(MeshUpdate::Remove("body".into())); self.body_created = false; }
         self.dirty = true;
@@ -2116,6 +2117,24 @@ mod mh_tool_tests {
         let hp = s.sh.generated.parts.iter().find(|p| p.name == "Hair").unwrap();
         let nb = (s.body.topo.vmap.len() > 0) as usize; let _ = nb;
         assert!(hp.joints.iter().zip(&hp.weights).all(|(j, w)| (w[0] + w[1] + w[2] + w[3] - 1.0).abs() < 1e-4 && j.iter().all(|&b| (b as usize) < 1000)), "Gewichte normiert");
+    }
+
+    #[test]
+    fn species_undo_restores_geometry() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        let base = s.eval.pos.clone();
+        let i = s.packages.species.iter().position(|x| x.id.ends_with("dwarf")).unwrap();
+        s.select_species(i).unwrap(); s.refresh();
+        assert!(s.eval.pos.iter().zip(&base).any(|(a, b)| (a[2] - b[2]).abs() > 1e-4), "Zwerg verformt");
+        s.undo(); s.refresh();
+        let human = s.packages.species.iter().position(|x| x.id.ends_with(".human")).unwrap();
+        s.select_species(human).unwrap(); s.refresh();
+        let h = s.eval.pos.clone();
+        s.select_species(i).unwrap(); s.refresh();
+        s.undo(); s.refresh();
+        assert_eq!(s.eval.pos.iter().zip(&h).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5 || (a[1] - b[1]).abs() > 1e-5).count(), 0, "Undo stellt Geometrie der Vorgänger-Spezies wieder her");
     }
 
     #[test]
