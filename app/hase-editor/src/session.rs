@@ -416,6 +416,22 @@ impl Session {
 
     #[cfg(test)]
     fn finish_shape_move_for_test(&mut self, idx: usize) { self.finish_shape_move(idx); }
+    /// Spezieskörper für eine aus dem Charakter abgeleitete Spezies: Basis-Spezies-Geometrie + individuelle Formung (eingebacken), Variationen und Merkmalsfreigaben der Basis-Spezies.
+    pub fn derived_shape(&self) -> hase_core::packages::SpeciesShape {
+        let mut sh = self.species_opt().map(|i| self.packages.species[i].shape.clone()).unwrap_or_default();
+        if self.vrm.is_none() { for (v, d) in &self.mh_sculpt { let e = sh.baked.entry(*v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c]; } } }
+        sh
+    }
+    /// Nach dem Anlegen einer abgeleiteten Spezies: individuelle Formung steckt nun im Spezieskörper.
+    pub fn adopt_new_species(&mut self) {
+        let layer = std::mem::take(&mut self.mh_sculpt);
+        for (v, d) in &layer { let q = &mut self.eval.pos[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        self.mh_hist.clear(); self.mh_redo.clear(); self.mh_stroke = None;
+        let old = std::mem::take(&mut self.species_layer);
+        for (v, d) in &old { let q = &mut self.eval.pos[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        self.refresh_species_layer();
+        self.resend_body = true; self.dirty = true; self.assets_dirty = true; self.sh.feat_dirty = true;
+    }
     fn finish_shape_move(&mut self, idx: usize) {
         // Formung wandert in die Spezies; der sichtbare Körper bleibt (Baked) bzw. wird bei Wert 0 der Variation neutral
         let layer = std::mem::take(&mut self.mh_sculpt);
@@ -2036,6 +2052,15 @@ mod mh_tool_tests {
         let p2 = s.eval.pos.clone();
         s.bake_into_species(idx).unwrap();
         assert_eq!(s.eval.pos.iter().zip(&p2).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Einbacken ändert die Form nicht");
+        // Abgeleitete Spezies: individuelle Formung wandert in den Spezieskörper, Körper bleibt gleich
+        s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, -0.03]); s.refresh(); s.sculpt_end(); s.refresh();
+        let p3 = s.eval.pos.clone();
+        let mut sp2 = s.packages.species[idx].clone(); sp2.id = "user.species.test-shape2".into(); sp2.dir = None; sp2.shape = s.derived_shape();
+        s.packages.species.push(sp2); let i2 = s.packages.species.len() - 1;
+        s.state.species = "user.species.test-shape2".into(); s.adopt_new_species();
+        assert_eq!(s.mh_sculpt.len(), 0);
+        assert_eq!(s.eval.pos.iter().zip(&p3).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "abgeleitete Spezies behält die Form");
+        let _ = i2;
         // Erlaubte Merkmale
         s.packages.species[idx].shape.features = Some(vec!["ears".into()]);
         s.feature_mut("tail").unwrap().enabled = true;
