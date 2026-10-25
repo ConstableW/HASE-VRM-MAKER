@@ -3,7 +3,7 @@
   "authors": [
     "HASE VRM MAKER"
   ],
-  "description": "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform).",
+  "description": "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform), kurze Beine, breiter Rumpf.",
   "dev": {
     "status": "specimen"
   },
@@ -30,7 +30,13 @@
     ],
     "components": [],
     "defaults": {
-      "mh:macro-age": 0.550000011920929
+      "mh:macro-age": 0.55,
+      "mh:macro-gender": 0.7,
+      "mh:measure-lowerleg-height-decr-incr": -0.75,
+      "mh:measure-upperleg-height-decr-incr": -0.5,
+      "mh:torso-scale-depth-decr-incr": 0.3,
+      "mh:torso-scale-horiz-decr-incr": 0.4,
+      "mh:upperleg-fat-decr-incr": 0.2
     },
     "limits": {},
     "presets": [],

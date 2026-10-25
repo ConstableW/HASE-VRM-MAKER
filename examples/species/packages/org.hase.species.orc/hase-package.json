@@ -3,7 +3,7 @@
   "authors": [
     "HASE VRM MAKER"
   ],
-  "description": "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform); Hörner erlaubt.",
+  "description": "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform), breite Schultern, kräftige Arme; Hörner erlaubt.",
   "dev": {
     "status": "specimen"
   },
@@ -30,7 +30,12 @@
     ],
     "components": [],
     "defaults": {
-      "mh:macro-age": 0.5
+      "mh:macro-age": 0.5,
+      "mh:macro-gender": 0.8,
+      "mh:measure-neck-circ-decr-incr": 0.5,
+      "mh:measure-shoulder-dist-decr-incr": 0.5,
+      "mh:torso-scale-horiz-decr-incr": 0.45,
+      "mh:upperarm-fat-decr-incr": 0.4
     },
     "limits": {},
     "presets": [],

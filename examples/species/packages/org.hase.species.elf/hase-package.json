@@ -42,7 +42,11 @@
       }
     },
     "defaults": {
-      "mh:macro-age": 0.35
+      "mh:macro-age": 0.35,
+      "mh:torso-scale-horiz-decr-incr": -0.3,
+      "mh:measure-lowerleg-height-decr-incr": 0.3,
+      "mh:measure-upperleg-height-decr-incr": 0.2,
+      "mh:upperleg-fat-decr-incr": -0.2
     },
     "limits": {
       "mh:head-scale-vert-decr-incr": [

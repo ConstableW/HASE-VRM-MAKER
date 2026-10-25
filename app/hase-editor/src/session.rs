@@ -2057,20 +2057,20 @@ mod mh_tool_tests {
             let c = [0.0, nose[1] - 0.005, nose[2] - 0.01];
             head.iter().filter_map(|&v| { let p = s.eval.pos[v as usize]; if p[2] < c[2] - 0.05 { return None; } let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2); let w = (-d2 / (2.0 * 0.022f32.powi(2))).exp(); if w < 0.02 { None } else { Some((v, [p[0] * 0.3 * amount * w, -0.002 * amount * w, 0.018 * amount * w])) } }).collect()
         };
-        let mkspecies = |id: &str, name: &str, desc: &str, age: f32, shape: SpeciesShape| {
+        let mkspecies = |id: &str, name: &str, desc: &str, defaults: serde_json::Value, shape: SpeciesShape| {
             let src: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo.join("examples/species/packages/org.hase.species.elf/hase-package.json")).unwrap()).unwrap();
             let mut m = src.clone();
             m["id"] = id.into(); m["name"] = serde_json::json!({"de": name}); m["description"] = desc.into(); m["dev"] = serde_json::json!({"status": "specimen"});
             m["requires"] = serde_json::json!([src["requires"][0].clone()]);
-            m["species"]["defaults"] = serde_json::json!({"mh:macro-age": age}); m["species"]["limits"] = serde_json::json!({});
+            m["species"]["defaults"] = defaults; m["species"]["limits"] = serde_json::json!({});
             m["species"]["presets"] = serde_json::json!([]); m["species"]["traits"] = serde_json::json!({}); m["species"]["components"] = serde_json::json!([]);
             let d = repo.join("examples/species/packages").join(id); std::fs::create_dir_all(&d).unwrap();
             std::fs::write(d.join("hase-package.json"), serde_json::to_string_pretty(&m).unwrap()).unwrap();
             std::fs::write(d.join("shape.json"), shape.to_json().to_string()).unwrap();
         };
-        mkspecies("org.hase.species.orc", "Orkin", "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform); Hörner erlaubt.", 0.5,
+        mkspecies("org.hase.species.orc", "Orkin", "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform), breite Schultern, kräftige Arme; Hörner erlaubt.", serde_json::json!({"mh:macro-age": 0.5, "mh:macro-gender": 0.8, "mh:torso-scale-horiz-decr-incr": 0.45, "mh:measure-shoulder-dist-decr-incr": 0.5, "mh:upperarm-fat-decr-incr": 0.4, "mh:measure-neck-circ-decr-incr": 0.5}),
             SpeciesShape { baked: heavy(1.0), variations: vec![Variation { id: "var-kiefer".into(), label: "Kieferbreite".into(), min: -0.8, max: 1.5, delta: heavy(0.6) }], features: Some(vec!["horns".into(), "ears".into()]) });
-        mkspecies("org.hase.species.dwarf", "Zwerg", "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform).", 0.55,
+        mkspecies("org.hase.species.dwarf", "Zwerg", "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform), kurze Beine, breiter Rumpf.", serde_json::json!({"mh:macro-age": 0.55, "mh:macro-gender": 0.7, "mh:measure-lowerleg-height-decr-incr": -0.75, "mh:measure-upperleg-height-decr-incr": -0.5, "mh:torso-scale-horiz-decr-incr": 0.4, "mh:torso-scale-depth-decr-incr": 0.3, "mh:upperleg-fat-decr-incr": 0.2}),
             SpeciesShape { baked: nosey(1.0), variations: vec![Variation { id: "var-nasengroesse".into(), label: "Nasengröße".into(), min: -0.8, max: 1.6, delta: nosey(0.8) }], features: None });
         write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None });
     }

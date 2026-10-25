@@ -75,3 +75,6 @@ Elf: Kinnspitze (eingebacken + Regler), Preset-Index-Korrektur (Elf = 4), seitli
 
 ## 2026-10-25 – Weitere Beispiel-Spezies
 Orkin (breiter Kiefer, Brauenwülste eingebacken, Regler Kieferbreite, Hörner/Ohren erlaubt) und Zwerg (große breite Nase, Regler Nasengröße), prozedural per `generate_species_shapes` erzeugt (Manifest + shape.json). Effekte bewusst moderat; Feinschliff erst mit echten Körperbasen je Spezies.
+
+## 2026-10-25 – Körperproportionen je Spezies
+Orkin (breiter Rumpf/Schultern, kräftige Arme), Zwerg (kurze Beine, breiter Rumpf), Elf (schlank, lange Beine) über Standardwerte der Spezies; Vergleich `docs/07-quality/screens/species-bodies.png`.
