@@ -57,7 +57,7 @@ impl App {
         ui.label(format!("{} Teile · {} Bones · {} humanoide Zuordnungen{}", parts.len(), bones, hum, if spring { " · Spring Bones vorhanden" } else { "" }));
         for (n, vcount, tcount) in &parts { ui.colored_label(theme::TEXT2, format!("• {n}: {vcount} Vertices, {tcount} Blendshapes")); }
         ui.add_space(4.0);
-        ui.colored_label(theme::WARN, "Körperform und Haare sind in diesem Modell fest eingebacken und nicht verformbar. Spring Bones werden in der Vorschau nicht simuliert. Kleidung anprobieren: 2 Outfit · Posen: 3 Finalisieren.");
+        ui.colored_label(theme::WARN, "Spring Bones werden in der Vorschau nicht simuliert. Kleidung anprobieren: 2 Outfit · Posen: 3 Finalisieren.");
         {
             let v = s.vrm.as_ref().unwrap();
             let rows: Vec<(usize, String, bool, bool)> = v.model.parts.iter().enumerate().map(|(i, p)| (i, format!("{} ({})", p.name, p.pos.len()), !v.hidden.contains(&i), v.skin_parts.contains(&i))).collect();

@@ -37,3 +37,5 @@
 29. Anprobe: Wellen am Ausschnitt/Saum bei grob modellierten Körpern glätten (Kleidungs-Relaxation statt reinem Herausschieben); Schritt-Lücken; Handschuhe/Schuhe/Hüte.
 
 30. UI-Feinschliff gegen Mockup: Haare/Haut/Make-up/Details im Zeilenstil, Export- und Posenpanel als Karten, Kamera-Porträtthumbnails, Kartenmanagement (einklappen), eigene Fensterleiste. Owner-Test der neuen Oberfläche unter Windows.
+
+31. Vision OD-028: Reihenfolge siehe `../01-product/vision.md` (Erschaffen auf Anime-Basis → Speichern → Haare erstellen → Spezies-Merkmale/Tierohren → Outfit → Formate → Stilüberführung).

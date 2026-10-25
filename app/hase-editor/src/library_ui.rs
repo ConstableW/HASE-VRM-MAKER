@@ -58,15 +58,27 @@ impl App {
 
     fn request_thumb_for(&mut self, ctx: &egui::Context, dir: PathBuf) {
         let Some(s) = self.session.as_ref() else { return };
+        if let (Some(j), Some(v)) = (s.avatar_json(), s.vrm.as_ref()) {
+            let (w, h) = (192u32, 192u32);
+            let base_id = v.base_id.clone().unwrap_or_default();
+            let path = crate::anime_bases::find(&s.repo, &base_id).map(|b| b.vrm()).unwrap_or_else(|| v.path.clone());
+            let key = crate::thumbs::make_key_avatar(&j, &v.base_sha, "head", w, h);
+            let body = s.packages.body.clone();
+            let st = s.state.clone();
+            let jj = j.clone();
+            let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: Some((jj, path, base_id)) });
+            self.lib.pending_thumbs.push((key, dir));
+            return;
+        }
         let st = s.state.clone();
         let (w, h) = (192u32, 192u32);
         let key = crate::thumbs::make_key(&st, &s.packages.body.digest, "head", w, h, &s.params);
         let body = s.packages.body.clone();
-        let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body });
+        let _ = self.thumbs.get(ctx, &key, || crate::thumbs::ThumbJob { key: key.clone(), state: st, cam_kind: "head".into(), w, h, body, avatar: None });
         self.lib.pending_thumbs.push((key, dir));
     }
 
-    fn character_json(&self) -> Option<serde_json::Value> { self.session.as_ref().map(|s| s.state.to_json(&s.params, &s.packages.body.id)) }
+    fn character_json(&self) -> Option<serde_json::Value> { self.session.as_ref().map(|s| s.avatar_json().unwrap_or_else(|| s.state.to_json(&s.params, &s.packages.body.id))) }
 
     pub(crate) fn lib_save_new(&mut self, ctx: &egui::Context, name: &str, template: bool) {
         let (Some(json), Some(repo)) = (self.character_json(), self.session.as_ref().map(|s| s.repo.clone())) else { return };

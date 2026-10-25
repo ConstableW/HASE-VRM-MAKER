@@ -26,3 +26,4 @@ pub mod export;
 pub mod pose;
 pub mod vrm_model;
 pub mod dress;
+pub mod avatar;

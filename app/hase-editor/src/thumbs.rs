@@ -12,7 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 const RENDER_VERSION: &str = "t6";
 
-pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam_kind: String, pub w: u32, pub h: u32, pub body: BodyPackage }
+pub struct ThumbJob { pub key: String, pub state: CharacterState, pub cam_kind: String, pub w: u32, pub h: u32, pub body: BodyPackage, pub avatar: Option<(serde_json::Value, PathBuf, String)> }
 pub struct ThumbDone { pub key: String, pub w: u32, pub h: u32, pub rgba: Vec<u8> }
 
 pub struct ThumbService {
@@ -37,6 +37,8 @@ pub fn cam_for(kind: &str, hh: f32) -> Camera {
         _ => Camera { yaw: 0.3, pitch: 0.05, dist: 3.2 * k.max(0.6), target: [0.0, 0.52 * hh, 0.0], fov: 0.62 },
     }
 }
+
+pub fn make_key_avatar(j: &serde_json::Value, base_sha: &str, cam_kind: &str, w: u32, h: u32) -> String { sha256_hex(format!("{RENDER_VERSION}|avatar|{base_sha}|{j}|{cam_kind}|{w}x{h}").as_bytes())[..32].to_string() }
 
 pub fn make_key(state: &CharacterState, body_digest: &str, cam_kind: &str, w: u32, h: u32, params: &hase_core::params::Catalog) -> String {
     let mut j = state.to_json(params, &state.body_ref.id);
@@ -87,10 +89,18 @@ fn worker(repo: PathBuf, dir: PathBuf, rx: Receiver<ThumbJob>, tx: Sender<ThumbD
     let Ok(mut sess) = Session::load(&repo) else { return };
     let Ok(mut off) = Offscreen::new() else { return };
     while let Ok(job) = rx.recv() {
-        // Körperbasis passend halten
-        if sess.packages.body.id != job.body.id { if sess.activate_body(&job.body).is_err() { continue; } }
-        sess.set_state_silent(job.state.clone());
-        sess.ensure_assets_blocking();
+        if let Some((j, path, base_id)) = &job.avatar {
+            let same = sess.vrm.as_ref().map(|v| v.base_id.as_deref() == Some(base_id.as_str())).unwrap_or(false);
+            if !same { if sess.open_vrm(path).is_err() { continue; } if let Some(v) = sess.vrm.as_mut() { v.base_id = Some(base_id.clone()); } }
+            sess.apply_avatar_json(j);
+            sess.ensure_assets_blocking();
+        } else {
+            if sess.vrm.is_some() { sess.close_vrm(); }
+            // Körperbasis passend halten
+            if sess.packages.body.id != job.body.id { if sess.activate_body(&job.body).is_err() { continue; } }
+            sess.set_state_silent(job.state.clone());
+            sess.ensure_assets_blocking();
+        }
         let updates = sess.refresh();
         let aspect = job.w as f32 / job.h as f32;
         let cam = cam_for(&job.cam_kind, sess.body_height());

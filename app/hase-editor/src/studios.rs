@@ -36,7 +36,7 @@ impl App {
         let key = make_key(&st, &s.packages.body.digest, cam_kind, w, h, &s.params);
         let body = s.packages.body.clone();
         let ctx = ui.ctx().clone();
-        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w, h, body });
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w, h, body, avatar: None });
         let p = ui.painter();
         let fill = if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 };
         p.rect_filled(rect, 6.0, fill);
@@ -62,7 +62,7 @@ impl App {
         let key = make_key(&st, &s.packages.body.digest, cam_kind, tw, th, &s.params);
         let body = s.packages.body.clone();
         let ctx = ui.ctx().clone();
-        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w: tw, h: th, body });
+        let tex = self.thumbs.get(&ctx, &key, || ThumbJob { key: key.clone(), state: st, cam_kind: cam_kind.to_string(), w: tw, h: th, body, avatar: None });
         let p = ui.painter();
         let img = egui::Rect::from_min_size(rect.min, egui::vec2(w, h));
         p.rect_filled(img, 7.0, if selected { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { theme::PANEL2 });
@@ -78,11 +78,10 @@ impl App {
         {
             let s = self.session.as_mut().unwrap();
             let mut linked = s.state.style.eyes.linked;
-            ui.horizontal(|ui| {
-                if ui.checkbox(&mut linked, "Links und rechts gemeinsam bearbeiten").changed() { s.edit_style(1, |st| { st.eyes.linked = linked; if linked { st.eyes.right = st.eyes.left.clone(); } }); }
-            });
-            if !linked && self.eye_tab != 0 {
-                ui.horizontal(|ui| { for (i, t) in ["Linkes Auge", "Rechtes Auge"].iter().enumerate() { if ui.selectable_label(self.eye_side == i, *t).clicked() { self.eye_side = i; } } });
+            if ui.checkbox(&mut linked, "Links und rechts gemeinsam bearbeiten").changed() { s.edit_style(1, |st| { st.eyes.linked = linked; if linked { st.eyes.right = st.eyes.left.clone(); } }); }
+            if !linked {
+                let mut side = self.eye_side;
+                if crate::ui_kit::segmented(ui, &["Linkes Auge", "Rechtes Auge"], &mut side, 130.0) { self.eye_side = side; }
             }
         }
         ui.separator();
@@ -90,16 +89,17 @@ impl App {
             0 => {
                 ui.weak("Presets setzen die Augenform-Parameter (danach frei anpassbar).");
                 let base = self.session.as_ref().unwrap().state.clone();
+                let (linked, side) = { let e = &self.session.as_ref().unwrap().state.style.eyes; (e.linked, self.eye_side) };
                 let mut apply: Option<BTreeMap<String, f32>> = None;
                 let tile_w = ((ui.available_width() - 16.0) / 3.0).floor().min(120.0);
                 ui.horizontal_wrapped(|ui| {
                     for (name, vals) in EYE_PRESETS {
-                        let map: BTreeMap<String, f32> = vals.iter().flat_map(|(k, v)| [(format!("mh:l-{k}"), *v), (format!("mh:r-{k}"), *v)]).collect();
+                        let map: BTreeMap<String, f32> = vals.iter().flat_map(|(k, v)| [(format!("mh:l-{k}"), *v), (format!("mh:r-{k}"), *v)]).filter(|(k, _)| linked || (side == 0 && k.starts_with("mh:l-")) || (side == 1 && k.starts_with("mh:r-"))).collect();
                         let mut st = self.session.as_ref().unwrap().state_with(&BTreeMap::new());
                         st.values = base.values.clone();
                         // Preset ersetzt die Augenwerte vollständig (Basis: Augenparameter auf 0)
                         let s = self.session.as_ref().unwrap();
-                        for (i, d) in s.params.defs.iter().enumerate() { if d.id.contains("-eye-") { st.values[i] = 0.0; } }
+                        for (i, d) in s.params.defs.iter().enumerate() { if d.id.contains("-eye-") && (linked || (side == 0 && d.id.starts_with("mh:l-")) || (side == 1 && d.id.starts_with("mh:r-"))) { st.values[i] = 0.0; } }
                         let st = { let mut x = st; let s = self.session.as_ref().unwrap(); for (k, v) in &map { if let Some(i) = s.params.canonical(k) { x.values[i] = *v; } } x };
                         if self.tile(ui, egui::vec2(tile_w, tile_w * 0.8), st, "eye", name, false) { apply = Some(map); }
                     }
@@ -107,14 +107,16 @@ impl App {
                 if let Some(m) = apply {
                     let s = self.session.as_mut().unwrap();
                     let before = s.state.clone();
-                    let idx: Vec<usize> = s.params.defs.iter().enumerate().filter(|(_, d)| d.id.contains("-eye-")).map(|(i, _)| i).collect();
+                    let idx: Vec<usize> = s.params.defs.iter().enumerate().filter(|(_, d)| d.id.contains("-eye-") && (linked || (side == 0 && d.id.starts_with("mh:l-")) || (side == 1 && d.id.starts_with("mh:r-")))).map(|(i, _)| i).collect();
                     for i in idx { s.state.values[i] = 0.0; }
                     s.apply_map(&m);
                     let _ = before;
                     self.reg_key = (usize::MAX, 0);
                 }
                 ui.add_space(6.0);
+                self.side_filter = if linked { 1 } else { side as u8 + 1 };
                 self.region_sliders(ui, Some(crate::regions::REGIONS.iter().position(|r| r.label == "Augen").unwrap()), false, false);
+                self.side_filter = 0;
             }
             1 => {
                 let s = self.session.as_mut().unwrap();

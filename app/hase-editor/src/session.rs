@@ -15,7 +15,9 @@ use std::time::Instant;
 pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::packages::BodyPackage), MissingBody(String), Invalid }
 
 /// Geöffnetes statisches VRM-/glTF-Modell (Ansehen, Posen, Ausdrücke).
-pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, shown: Vec<bool>, dirty: bool, pub path: PathBuf, pub hidden: std::collections::BTreeSet<usize>, pub skin_parts: std::collections::BTreeSet<usize>, dress: Option<VrmDress>, pub dress_info: String }
+pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, shown: Vec<bool>, dirty: bool, pub path: PathBuf, pub hidden: std::collections::BTreeSet<usize>, pub skin_parts: std::collections::BTreeSet<usize>, dress: Option<VrmDress>, pub dress_info: String, pub avatar: AvatarState, pub tints: std::collections::BTreeMap<usize, [f32; 3]>, pub base_id: Option<String>, pub base_sha: String }
+
+pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant> }
 
 pub struct VrmDress { skin_pos: Vec<[f32; 3]>, skin_nrm: Vec<[f32; 3]>, skin_joints: Vec<[u16; 4]>, skin_weights: Vec<[f32; 4]>, skin_ids: Vec<u32>, grid: hase_core::fit::BodyGrid, base: Vec<[f32; 3]> }
 
@@ -218,12 +220,15 @@ impl Session {
         self.assets_dirty = true;
     }
 
+    /// Spiegelt eine Änderung auf die Gegenseite? Augenparameter folgen der Verknüpfung im Augenstudio, alle anderen der Symmetrie-Option.
+    pub fn mirrors(&self, i: usize) -> bool { if self.params.defs[i].id.contains("-eye-") { self.state.style.eyes.linked } else { self.symmetric } }
+
     pub fn set_param(&mut self, idx: usize, v: f32) {
         let before = self.state.clone();
         let v = self.clamp_to_species(idx, v);
         if (self.state.values[idx] - v).abs() < 1e-7 { return; }
         self.state.values[idx] = v;
-        if self.symmetric { if let Some(m) = self.params.defs[idx].mirror { self.state.values[m] = v; } }
+        if self.mirrors(idx) { if let Some(m) = self.params.defs[idx].mirror { self.state.values[m] = v; } }
         self.history.record(&before, Some(idx));
         self.dirty = true;
     }
@@ -282,6 +287,7 @@ impl Session {
 
     /// Neuer Charakter: Standardwerte der aktuellen Spezies, keine Assets, Standard-Stil.
     pub fn new_character(&mut self) {
+        if self.vrm.as_ref().map(|v| v.base_id.is_some()).unwrap_or(false) { self.reset_avatar(); return; }
         let before = self.state.clone();
         let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
         for id in ids { self.remove_asset(&id); }
@@ -307,7 +313,7 @@ impl Session {
 
     pub fn apply_map(&mut self, m: &std::collections::BTreeMap<String, f32>) {
         let before = self.state.clone();
-        for (k, v) in m { if let Some(i) = self.params.canonical(k) { let v = self.clamp_to_species(i, *v); self.state.values[i] = v; if self.symmetric { if let Some(mi) = self.params.defs[i].mirror { self.state.values[mi] = v; } } } }
+        for (k, v) in m { if let Some(i) = self.params.canonical(k) { let v = self.clamp_to_species(i, *v); self.state.values[i] = v; if self.mirrors(i) { if let Some(mi) = self.params.defs[i].mirror { self.state.values[mi] = v; } } } }
         self.history.record(&before, None);
         self.dirty = true;
     }
@@ -583,6 +589,12 @@ impl Session {
     pub fn floor_offset(&self) -> f32 { self.floor_off }
 
     pub fn counts(&self) -> (usize, usize) {
+        if let Some(vr) = &self.vrm {
+            let cl: Vec<&ProxyRt> = self.proxies.iter().filter(|(k, p)| k.starts_with("clothes/") && p.created).map(|(_, p)| p).collect();
+            let v = vr.model.parts.iter().enumerate().filter(|(i, _)| !vr.hidden.contains(i)).map(|(_, p)| p.pos.len()).sum::<usize>() + cl.iter().map(|p| p.proxy.topo.vmap.len()).sum::<usize>();
+            let t = vr.model.parts.iter().enumerate().filter(|(i, _)| !vr.hidden.contains(i)).map(|(_, p)| p.idx.len() / 3).sum::<usize>() + cl.iter().map(|p| p.proxy.topo.indices.len() / 3).sum::<usize>();
+            return (v, t);
+        }
         let v = self.body.topo.vmap.len() + self.proxies.values().map(|p| p.proxy.topo.vmap.len()).sum::<usize>();
         let t = self.body.topo.indices.len() / 3 + self.proxies.values().map(|p| p.proxy.topo.indices.len() / 3).sum::<usize>();
         (v, t)
@@ -1009,7 +1021,8 @@ impl Session {
         let skin_parts: std::collections::BTreeSet<usize> = model.parts.iter().enumerate().filter(|(_, p)| { let (lo, hi) = p.pos.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q[1]), a.1.max(q[1]))); hi - lo >= 0.5 * model.height }).map(|(i, _)| i).collect();
         for rt in self.proxies.values_mut() { rt.created = false; }
         self.proxy_skin.clear(); self.assets_dirty = true;
-        self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new() });
+        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None } };
+        self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new(), avatar, tints: Default::default(), base_id: None, base_sha: String::new() });
         let info = if rigless_info.is_empty() { info } else { format!("{info} · {rigless_info}") };
         Ok(info)
     }
@@ -1088,11 +1101,57 @@ impl Session {
         Ok(())
     }
 
+    // ---- Avatar-Erstellung (parametrische Verformung der geöffneten Basis)
+    pub fn avatar_set(&mut self, i: usize, val: f32) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let d = &hase_core::avatar::DEFS[i];
+        let val = val.clamp(d.min, d.max);
+        v.avatar.vals[i] = val;
+        if v.avatar.eye_linked { if let Some(m) = hase_core::avatar::mirror(i) { v.avatar.vals[m] = val; } }
+        v.avatar.changed = true;
+    }
+    pub fn avatar_reset(&mut self, idx: &[usize]) { if let Some(v) = self.vrm.as_mut() { for &i in idx { v.avatar.vals[i] = hase_core::avatar::DEFS[i].def; } v.avatar.changed = true; } }
+    pub fn avatar_pending(&self) -> bool { self.vrm.as_ref().map(|v| v.avatar.changed || v.avatar.dress_due.is_some()).unwrap_or(false) }
+    pub fn set_part_tint(&mut self, part: usize, rgb: [f32; 3]) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        v.tints.insert(part, rgb);
+        let p = &v.model.parts[part];
+        let shown = v.shown.get(part).copied().unwrap_or(false);
+        let m = p.mat_name.to_lowercase();
+        let _ = &m;
+        let recolor = recolorable(&p.mat_name) && p.image.is_some();
+        if recolor {
+            let im = p.image.as_ref().unwrap();
+            let data = recolor_rgba(&im.rgba, rgb);
+            if shown { let img = image_from_rgba(im.w, im.h, data, 2048); self.pending.push(MeshUpdate::Texture { id: format!("vrm:{part}"), img }); self.pending.push(MeshUpdate::Material { id: format!("vrm:{part}"), tint: [p.color[0], p.color[1], p.color[2]], mat: Default::default() }); }
+        } else if shown {
+            let c = p.color;
+            self.pending.push(MeshUpdate::Material { id: format!("vrm:{part}"), tint: [c[0] * rgb[0], c[1] * rgb[1], c[2] * rgb[2]], mat: Default::default() });
+        }
+    }
+
+    fn avatar_update(&mut self) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        if let Some(t) = v.avatar.dress_due { if Instant::now() >= t { v.avatar.dress_due = None; v.dress = None; self.assets_dirty = true; } }
+        if !v.avatar.changed { return; }
+        v.avatar.changed = false;
+        let d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
+        for (i, p) in v.model.parts.iter_mut().enumerate() { p.pos = d.pos[i].clone(); normals(&p.pos, &v.tris[i], &mut p.nrm); }
+        for (b, bn) in v.model.bones.iter_mut().enumerate() { bn.pos = d.bones[b]; }
+        let (lo, hi) = v.model.parts.iter().flat_map(|p| p.pos.iter().map(|q| q[1])).fold((f32::MAX, f32::MIN), |a, y| (a.0.min(y), a.1.max(y)));
+        v.model.height = hi; v.floor = -lo;
+        let bones: Vec<hase_core::export::ExBone> = v.model.bones.iter().map(|b| hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }).collect();
+        v.rig = hase_core::pose::PoseRig::generic(bones, v.model.rest_rot.clone(), v.model.vrm_names.clone());
+        v.dirty = true;
+        if v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(400)); }
+    }
+
     pub fn set_skin_part(&mut self, part: usize, on: bool) { if let Some(v) = self.vrm.as_mut() { if on { v.skin_parts.insert(part); } else { v.skin_parts.remove(&part); } v.dress = None; self.assets_dirty = true; } }
     pub fn set_part_hidden(&mut self, part: usize, hide: bool) { if let Some(v) = self.vrm.as_mut() { if hide { v.hidden.insert(part); } else { v.hidden.remove(&part); } v.dirty = true; } }
 
     fn refresh_vrm(&mut self) -> Vec<MeshUpdate> {
         use hase_core::pose::skin_point;
+        self.avatar_update();
         if self.assets_dirty && self.proxies.keys().any(|k| k.starts_with("clothes/")) { if let Err(e) = self.ensure_dress() { if let Some(v) = self.vrm.as_mut() { v.dress_info = e; } } }
         let mut out = std::mem::take(&mut self.pending);
         let posing = self.play.clip.is_some();
@@ -1107,8 +1166,10 @@ impl Session {
             else if !hide && !v.shown[i] {
                 let mut data = Vec::with_capacity(p.pos.len() * 6);
                 for (q, n) in p.pos.iter().zip(&p.nrm) { data.extend_from_slice(&[q[0], q[1] + floor, q[2], n[0], n[1], n[2]]); }
-                let tex = p.image.as_ref().map(|im| image_from_rgba(im.w, im.h, im.rgba.clone(), 2048));
-                out.push(MeshUpdate::Create(MeshDesc { id: format!("vrm:{i}"), indices: p.idx.clone(), uv: p.uv.clone(), data, texture: tex, tint: [p.color[0], p.color[1], p.color[2]], mask: p.mask, cull_back: !p.double_sided, mat: Default::default() }));
+                let tint_i = v.tints.get(&i).copied().unwrap_or([1.0; 3]);
+                let rec = recolorable(&p.mat_name);
+                let tex = p.image.as_ref().map(|im| image_from_rgba(im.w, im.h, if rec { recolor_rgba(&im.rgba, tint_i) } else { im.rgba.clone() }, 2048));
+                out.push(MeshUpdate::Create(MeshDesc { id: format!("vrm:{i}"), indices: p.idx.clone(), uv: p.uv.clone(), data, texture: tex, tint: { let t = if rec { [1.0; 3] } else { tint_i }; [p.color[0] * t[0], p.color[1] * t[1], p.color[2] * t[2]] }, mask: p.mask, cull_back: !p.double_sided, mat: Default::default() }));
                 v.shown[i] = true; v.dirty = true;
             }
         }
@@ -1272,5 +1333,98 @@ mod dump_params {
         let mut out = String::new();
         for d in &s.params.defs { out += &format!("{}|{}|{}|{}\n", d.id, d.group, d.min, d.max); }
         std::fs::write("/tmp/param_ids.txt", out).unwrap();
+    }
+}
+
+/// Umfärben über die Helligkeitszeichnung der Textur: neue Farbe = Zielfarbe × (Luma / mittlere Luma). Weiß = Original.
+pub fn recolor_rgba(rgba: &[u8], rgb: [f32; 3]) -> Vec<u8> {
+    if rgb.iter().all(|c| (*c - 1.0).abs() < 1e-3) { return rgba.to_vec(); }
+    let luma = |px: &[u8]| 0.299 * px[0] as f32 + 0.587 * px[1] as f32 + 0.114 * px[2] as f32;
+    let (mut sum, mut n) = (0f64, 0f64);
+    for px in rgba.chunks_exact(4) { if px[3] > 128 { sum += luma(px) as f64; n += 1.0; } }
+    let mean = (sum / n.max(1.0)).max(8.0) as f32;
+    let mut out = rgba.to_vec();
+    for px in out.chunks_exact_mut(4) { let k = luma(px) / mean; for c in 0..3 { px[c] = (rgb[c] * 255.0 * k).clamp(0.0, 255.0) as u8; } }
+    out
+}
+pub fn recolorable(mat: &str) -> bool { let m = mat.to_lowercase(); m.contains("hair") || m.contains("eyeiris") }
+
+impl Session {
+    pub fn avatar_json(&self) -> Option<serde_json::Value> {
+        let v = self.vrm.as_ref()?; let id = v.base_id.as_ref()?;
+        let tints: serde_json::Map<String, serde_json::Value> = v.tints.iter().map(|(k, c)| (k.to_string(), serde_json::json!(c))).collect();
+        let assets: Vec<serde_json::Value> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| serde_json::json!({"id": a.id, "tint": a.tint})).collect();
+        Some(serde_json::json!({"formatVersion": "0.1-avatar", "kind": "avatar", "species": {"id": ""}, "body": {"id": format!("avatar:{id}")}, "base": {"id": id, "sha": v.base_sha},
+            "params": hase_core::avatar::to_map(&v.avatar.vals), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets}))
+    }
+
+    /// Öffnet eine registrierte Basis als neuen Avatar (nackt, Standardwerte).
+    pub fn open_avatar_base(&mut self, base: &crate::anime_bases::AnimeBase) -> Result<String, String> {
+        let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
+        for id in ids { self.remove_asset(&id); }
+        let info = self.open_vrm(&base.vrm())?;
+        if let Some(v) = self.vrm.as_mut() { v.base_id = Some(base.id.clone()); v.base_sha = base.sha.clone(); }
+        Ok(info)
+    }
+
+    pub fn apply_avatar_json(&mut self, j: &serde_json::Value) {
+        let Some(v) = self.vrm.as_mut() else { return };
+        let params: std::collections::BTreeMap<String, f32> = j["params"].as_object().map(|o| o.iter().filter_map(|(k, x)| Some((k.clone(), x.as_f64()? as f32))).collect()).unwrap_or_default();
+        v.avatar.vals = hase_core::avatar::from_map(&params);
+        v.avatar.eye_linked = j["eyeLinked"].as_bool().unwrap_or(true);
+        v.avatar.changed = true;
+        v.tints.clear();
+        for (k, c) in j["tints"].as_object().into_iter().flatten() { if let (Ok(i), Some(a)) = (k.parse::<usize>(), c.as_array()) { if i < v.model.parts.len() && a.len() == 3 { v.tints.insert(i, [a[0].as_f64().unwrap_or(1.0) as f32, a[1].as_f64().unwrap_or(1.0) as f32, a[2].as_f64().unwrap_or(1.0) as f32]); } } }
+        v.hidden = j["hidden"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|i| i as usize)).collect()).unwrap_or_default();
+        let clothes: Vec<(String, [f32; 3])> = j["clothes"].as_array().map(|a| a.iter().filter_map(|c| { let t = c["tint"].as_array()?; Some((c["id"].as_str()?.to_string(), [t.first()?.as_f64()? as f32, t.get(1)?.as_f64()? as f32, t.get(2)?.as_f64()? as f32])) }).collect()).unwrap_or_default();
+        let old: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
+        for id in old { self.remove_asset(&id); }
+        for (id, tint) in clothes { self.state.assets.push(hase_core::state::AssetSel { id, tint }); }
+        self.assets_dirty = true;
+    }
+
+    /// Zurück auf Standardwerte (nackt, ohne Farben).
+    pub fn reset_avatar(&mut self) {
+        let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
+        for id in ids { self.remove_asset(&id); }
+        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
+    }
+}
+
+#[cfg(test)]
+mod avatar_tests {
+    use super::*;
+
+    #[test]
+    fn avatar_json_roundtrip_and_deform() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        s.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
+        if let Some(v) = s.vrm.as_mut() { v.base_id = Some("testbase".into()); v.base_sha = "x".into(); }
+        let (ih, ie) = (hase_core::avatar::index_of("height").unwrap(), hase_core::avatar::index_of("eye-size-l").unwrap());
+        s.avatar_set(ih, 0.5); s.avatar_set(ie, 0.8);
+        s.set_part_tint(0, [0.2, 0.4, 0.9]);
+        let h0 = s.body_height();
+        s.refresh();
+        let h1 = s.body_height();
+        assert!(h1 > h0 * 1.05, "Körpergröße wirkt: {h0} -> {h1}");
+        let j = s.avatar_json().unwrap();
+        assert_eq!(j["kind"], "avatar");
+        let mut s2 = Session::load(&repo).unwrap();
+        s2.refresh();
+        s2.open_vrm(&repo.join("content/testcandidate/avatar_b_makehuman.vrm")).unwrap();
+        s2.apply_avatar_json(&j);
+        s2.refresh();
+        let v2 = s2.vrm.as_ref().unwrap();
+        assert!((v2.avatar.vals[ih] - 0.5).abs() < 1e-6 && (v2.avatar.vals[ie] - 0.8).abs() < 1e-6);
+        assert!((s2.body_height() - h1).abs() < 1e-4);
+        assert_eq!(v2.tints.get(&0), Some(&[0.2, 0.4, 0.9]));
+        // Verknüpfte Augen spiegeln; getrennte nicht
+        let ir = hase_core::avatar::index_of("eye-size-r").unwrap();
+        assert!((v2.avatar.vals[ir] - 0.8).abs() < 1e-6, "verknüpft: rechtes Auge folgt");
+        s2.vrm.as_mut().unwrap().avatar.eye_linked = false;
+        s2.avatar_set(ie, -0.3);
+        assert!((s2.vrm.as_ref().unwrap().avatar.vals[ir] - 0.8).abs() < 1e-6, "getrennt: rechtes Auge bleibt");
     }
 }

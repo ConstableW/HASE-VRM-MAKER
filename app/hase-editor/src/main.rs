@@ -1,3 +1,4 @@
+mod anime_bases;
 mod app;
 mod camera;
 mod export_ui;

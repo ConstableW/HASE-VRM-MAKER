@@ -181,10 +181,13 @@ mod testvrm {
     use super::*;
     #[test]
     fn list_test_vrm() {
-        let p = std::path::Path::new("/root/.claude/uploads/c759dbf5-f338-59fd-9a78-b4266d05211b/618946e3-test.vrm");
-        if !p.exists() { return; }
-        let m = load(p).unwrap();
-        for (i, x) in m.parts.iter().enumerate() { let (lo, hi) = x.pos.iter().fold(([9f32; 3], [-9f32; 3]), |a, q| ([a.0[0].min(q[0]), a.0[1].min(q[1]), a.0[2].min(q[2])], [a.1[0].max(q[0]), a.1[1].max(q[1]), a.1[2].max(q[2])])); eprintln!("PART {i} {} v={} tex={:?} mask={} lo={:?} hi={:?}", x.name, x.pos.len(), x.image.as_ref().map(|i| (i.w, i.h)), x.mask, lo, hi); }
+        for f in ["618946e3-test.vrm", "3df6c184-Lylia_v2.vrm"] {
+        let p = std::path::PathBuf::from("/root/.claude/uploads/c759dbf5-f338-59fd-9a78-b4266d05211b").join(f);
+        if !p.exists() { continue; }
+        let m = load(&p).unwrap();
+        for (i, x) in m.parts.iter().enumerate() { let (lo, hi) = x.pos.iter().fold(([9f32; 3], [-9f32; 3]), |a, q| ([a.0[0].min(q[0]), a.0[1].min(q[1]), a.0[2].min(q[2])], [a.1[0].max(q[0]), a.1[1].max(q[1]), a.1[2].max(q[2])])); eprintln!("PART {i} {} mat={} v={} tex={:?} mask={} lo={:?} hi={:?}", x.name, x.mat_name, x.pos.len(), x.image.as_ref().map(|i| (i.w, i.h)), x.mask, lo, hi); }
         eprintln!("HUM {:?}", m.humanoid.iter().map(|(k, v)| format!("{k}={}", m.bones[*v].name)).collect::<Vec<_>>());
+        eprintln!("EXPR {:?}", m.expressions.iter().map(|e| (e.0.clone(), e.1.len())).collect::<Vec<_>>());
+        }
     }
 }

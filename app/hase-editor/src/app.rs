@@ -79,6 +79,9 @@ pub struct App {
     pub(crate) pending_load: Option<(CharacterState, Vec<String>, String)>,
     pub(crate) pending_body: Option<(serde_json::Value, hase_core::packages::BodyPackage, String)>,
     pub(crate) rtab: usize,
+    pub(crate) base_picker: bool,
+    pub(crate) bases: Vec<crate::anime_bases::AnimeBase>,
+    pub(crate) side_filter: u8,
     pub(crate) open_regions: HashSet<usize>,
     pub(crate) scroll_to: Option<usize>,
     pub(crate) panels_hidden: bool,
@@ -107,7 +110,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -293,6 +296,7 @@ impl App {
             }
         }
         let updates = self.session.as_mut().map(|s| s.refresh()).unwrap_or_default();
+        if self.session.as_ref().map(|s| s.avatar_pending()).unwrap_or(false) { self.ctx.request_repaint_after(std::time::Duration::from_millis(120)); }
         let aspect = (rect.width() / rect.height().max(1.0)).max(0.1);
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals_lit(aspect, &LIGHTS[self.light.min(2)], self.grid) }));
         self.viewport_overlays(ui, rect);
@@ -355,23 +359,51 @@ impl App {
 
     /// Speichern in die Bibliothek: vorhandenen Eintrag aktualisieren, sonst nach einem Namen fragen.
     pub(crate) fn quick_save(&mut self) {
-        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) { self.status = "Ein geöffnetes VRM-Modell lässt sich nicht in der Bibliothek speichern (nur gestaltete Charaktere).".into(); return; }
+        if self.session.as_ref().map(|s| s.vrm.as_ref().map(|v| v.base_id.is_none()).unwrap_or(false)).unwrap_or(false) { self.ensure_base_registered(); }
         let ctx = self.ctx.clone();
         if self.lib.current.is_some() { self.lib_save_current(&ctx); self.status = "In Bibliothek gespeichert".into(); }
         else { self.lib.save_prompt = true; }
     }
+    /// Ein geöffnetes VRM wird beim ersten Speichern als Basis registriert (Kopie in user-content/anime-bases).
+    pub(crate) fn ensure_base_registered(&mut self) {
+        let Some(s) = self.session.as_mut() else { return };
+        let (repo, path) = (s.repo.clone(), s.vrm.as_ref().map(|v| v.path.clone()));
+        let Some(path) = path else { return };
+        match crate::anime_bases::register(&repo, &path, None) { Ok(b) => { if let Some(v) = s.vrm.as_mut() { v.base_id = Some(b.id.clone()); v.base_sha = b.sha.clone(); } self.status = format!("Basis „{}“ registriert", b.name); } Err(e) => self.status = format!("Basis konnte nicht registriert werden: {e}") }
+    }
+
+    pub(crate) fn start_avatar(&mut self, base: &crate::anime_bases::AnimeBase) {
+        let Some(s) = self.session.as_mut() else { return };
+        self.status = match s.open_avatar_base(base) { Ok(_) => { self.ws = Workspace::Charakter; self.main = Main::Gesicht; self.region = usize::MAX; self.lib.current = None; self.camera = crate::camera::Camera::default(); format!("Neuer Avatar auf Basis „{}“", base.name) } Err(e) => format!("Basis konnte nicht geöffnet werden: {e}") };
+    }
+
     pub(crate) fn open_vrm_dialog(&mut self) {
         let Some(p) = rfd::FileDialog::new().add_filter("VRM / GLB", &["vrm", "glb"]).pick_file() else { return };
         self.open_vrm_path(&p);
     }
     pub(crate) fn open_vrm_path(&mut self, p: &std::path::Path) {
         let Some(s) = self.session.as_mut() else { return };
-        self.status = match s.open_vrm(p) { Ok(i) => { self.ws = Workspace::Charakter; self.main = Main::Charakter; self.region = usize::MAX; format!("Modell geöffnet – {i}") } Err(e) => format!("Modell konnte nicht geöffnet werden: {e}") };
+        let r = s.open_vrm(p);
+        self.status = match r { Ok(i) => { self.ws = Workspace::Charakter; self.main = Main::Gesicht; self.region = usize::MAX; format!("Basis geöffnet – {i}") } Err(e) => format!("Modell konnte nicht geöffnet werden: {e}") };
+        if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false) { self.ensure_base_registered(); }
     }
     pub(crate) fn goto_export(&mut self) { self.ws = Workspace::Finalisieren; self.main = Main::Animation; self.export.sub = 1; }
 
     pub(crate) fn continue_load(&mut self, v: serde_json::Value, path: String) {
         let Some(s) = self.session.as_mut() else { return };
+        if v["kind"].as_str() == Some("avatar") {
+            let id = v["base"]["id"].as_str().unwrap_or("").to_string();
+            match crate::anime_bases::find(&s.repo, &id) {
+                None => self.status = format!("Die Basis „{id}“ ist nicht installiert – Charakter nicht geladen."),
+                Some(b) => {
+                    let same = s.vrm.as_ref().map(|x| x.base_id.as_deref() == Some(id.as_str())).unwrap_or(false);
+                    let ok = if same { Ok(String::new()) } else { s.open_avatar_base(&b) };
+                    match ok { Ok(_) => { s.apply_avatar_json(&v); self.ws = Workspace::Charakter; self.status = format!("Geladen: {path}"); } Err(e) => self.status = format!("Basis konnte nicht geöffnet werden: {e}") }
+                }
+            }
+            return;
+        }
+        if s.vrm.is_some() { s.close_vrm(); }
         match s.plan_load(&v) {
             crate::session::LoadPlan::Ready(st, issues) => {
                 if issues.is_empty() { s.apply_state(st); self.status = format!("Geladen: {path}"); }
@@ -514,9 +546,9 @@ impl App {
     /// Regler einer Region/Auswahl in Unterabschnitten. `fine`: nur Feinparameter (Position/Winkel, Asymmetrie), sonst Anatomie/Form/Proportionen.
     pub(crate) fn region_sliders(&mut self, ui: &mut egui::Ui, region: Option<usize>, macros: bool, fine: bool) {
         let Some(s) = self.session.as_mut() else { return };
-        let key = (if macros { 9999 } else { region.unwrap_or(10_000) } * 2 + fine as usize, s.params.defs.len());
+        let key = ((if macros { 9999 } else { region.unwrap_or(10_000) } * 2 + fine as usize) * 4 + self.side_filter as usize, s.params.defs.len());
         if key != self.reg_key {
-            self.reg_idx = (0..s.params.defs.len()).filter(|&i| { let d = &s.params.defs[i]; if macros { d.group == "Makro" } else { let t = regions::tier(d); let ok = if fine { t >= 3 } else { t < 3 }; ok && match region { Some(r) => regions::region_of(d) == Some(r), None => d.group != "Makro" && regions::region_of(d).is_none() } } }).collect();
+            self.reg_idx = (0..s.params.defs.len()).filter(|&i| { let d = &s.params.defs[i]; if macros { d.group == "Makro" } else { let t = regions::tier(d); let sideok = !(self.side_filter == 1 && d.id.starts_with("mh:r-")) && !(self.side_filter == 2 && d.id.starts_with("mh:l-")); let ok = sideok && if fine { t >= 3 } else { t < 3 }; ok && match region { Some(r) => regions::region_of(d) == Some(r), None => d.group != "Makro" && regions::region_of(d).is_none() } } }).collect();
             self.reg_idx.sort_by_key(|&i| (regions::tier(&s.params.defs[i]), s.params.defs[i].label.clone()));
             self.reg_key = key;
         }
@@ -528,7 +560,7 @@ impl App {
             let d = &s.params.defs[i];
             if !macros { let t = regions::tier(d); if t != last { if last != usize::MAX || t != 1 { crate::ui_kit::section(ui, TIER_LABELS[t]); } last = t; } }
             let (lo, hi) = s.range(i);
-            if let Some(v) = crate::ui_kit::param_row(ui, &crate::theme::label_de(&d.label), s.state.values[i], lo..=hi.max(lo + 1e-4), d.default, "") { set = Some((i, v)); }
+            if let Some(v) = crate::ui_kit::param_row(ui, &{ let l = crate::theme::label_de(&d.label); if self.side_filter != 0 { l.replace(" (links)", "").replace(" (rechts)", "") } else { l } }, s.state.values[i], lo..=hi.max(lo + 1e-4), d.default, "") { set = Some((i, v)); }
         }
         ui.add_space(4.0);
         if ui.add(egui::Button::new(egui::RichText::new("Bereich zurücksetzen").size(12.5))).clicked() { s.reset_indices(&idx); }
@@ -538,6 +570,14 @@ impl App {
     pub(crate) fn detail_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.session.is_none() { ui.label("Lade …"); return; }
         let vrm = self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
+        if vrm && self.ws == Workspace::Charakter {
+            match self.main {
+                Main::Gesicht | Main::Koerper => { let g = self.main == Main::Gesicht; self.panel_title(ui, if g { Icon::Head } else { Icon::Overview }, if g { "Gesicht" } else { "Körper" }); self.region_accordion(ui, self.main, false); }
+                Main::Stil => { if self.sub == 0 { self.avatar_colors(ui); } else { self.vrm_panel(ui); } }
+                _ => { self.panel_title(ui, Icon::Overview, "Avatar erstellen"); ui.colored_label(theme::TEXT2, "Wähle links einen Bereich – Gesicht, Augen (links/rechts getrennt), Körperform, Farben. Alle Regler wirken sofort am Modell."); ui.add_space(6.0); for l in ["Kopfgröße", "Körpergröße"] { let _ = l; } for id in ["head-size", "height", "shoulder-width", "hip-width", "breast-size"] { if let Some(i) = hase_core::avatar::index_of(id) { let d = &hase_core::avatar::DEFS[i]; let cur = self.session.as_ref().and_then(|s| s.vrm.as_ref()).map(|v| v.avatar.vals[i]).unwrap_or(0.0); if let Some(nv) = crate::ui_kit::param_row(ui, d.label, cur, d.min..=d.max, d.def, "") { if let Some(s) = self.session.as_mut() { s.avatar_set(i, nv); } } } } }
+            }
+            return;
+        }
         if vrm && self.ws != Workspace::Finalisieren && self.ws != Workspace::Studio && self.ws != Workspace::Outfit { self.vrm_panel(ui); return; }
         if self.ws == Workspace::Studio { self.studio_detail(ui); return; }
         if self.ws == Workspace::Charakter {
