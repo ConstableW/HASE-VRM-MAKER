@@ -129,3 +129,9 @@ pub fn section(ui: &mut Ui, t: &str) { ui.add_space(6.0); ui.label(egui::RichTex
 pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
     ui.add(egui::Button::new(egui::RichText::new(label).color(Color32::WHITE).strong()).fill(theme::ACTIVE).stroke(Stroke::new(1.0, theme::ACCENT)).min_size(egui::vec2(0.0, 30.0)))
 }
+
+/// Regler für einzelne f32-Werte im einheitlichen Zeilenstil. Liefert `true`, wenn sich der Wert geändert hat.
+pub fn slider(ui: &mut Ui, label: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+    let def = 0f32.clamp(*range.start(), *range.end());
+    match param_row(ui, label, *v, range, def, "") { Some(n) => { *v = n; true } None => false }
+}

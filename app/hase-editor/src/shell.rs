@@ -196,14 +196,14 @@ impl App {
         }
         ui_kit::section(ui, "Haare & Stil");
         if nav_row(ui, Icon::Hair, "Frisur", self.main == Main::Haare).clicked() { go = Some((Main::Haare, usize::MAX, 0)); }
-        for (i, (l, ic)) in [("Haut", Icon::Skin), ("Make-up", Icon::Makeup), ("Details", Icon::Details), ("Augenfarbe → Augen", Icon::Eye), ("Brauen & Wimpern", Icon::Lashes)].iter().enumerate() {
+        for (i, (l, ic)) in [("Haut", Icon::Skin), ("Make-up", Icon::Makeup), ("Details", Icon::Details), ("Augenfarbe (siehe Augen)", Icon::Eye), ("Brauen & Wimpern", Icon::Lashes)].iter().enumerate() {
             if nav_row(ui, *ic, l, self.main == Main::Stil && self.sub == i).clicked() { if i == 3 { go = Some((Main::Gesicht, REGIONS.iter().position(|r| r.label == "Augen").unwrap(), 0)); } else { go = Some((Main::Stil, usize::MAX, i)); } }
         }
         if let Some((m, r, sub)) = go {
             self.main = m; self.region = r; self.sub = sub;
             if self.rtab != 0 && self.rtab != 3 || m == Main::Haare || m == Main::Stil { if self.rtab != 3 { self.rtab = 1; } }
             if r != usize::MAX { self.open_regions.clear(); self.open_regions.insert(r); self.scroll_to = Some(r); self.focus(REGIONS[r].cam); }
-            else if m == Main::Haare { self.focus(regions::CAM_HEAD); } else if m == Main::Charakter { self.focus(regions::CAM_BODY); }
+            else if m == Main::Haare || (m == Main::Stil && sub == 1) { self.focus(regions::CAM_HEAD); } else { self.focus(regions::CAM_BODY); }
         }
     }
 

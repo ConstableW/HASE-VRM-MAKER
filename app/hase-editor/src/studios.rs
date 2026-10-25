@@ -150,7 +150,7 @@ impl App {
                 let side_idx = if s.state.style.eyes.linked { 0 } else { self.eye_side };
                 let mut v = if side_idx == 0 { s.state.style.eyes.left.pupil } else { s.state.style.eyes.right.pupil };
                 let old = v;
-                ui.add(egui::Slider::new(&mut v, 0.4..=2.2).text("Pupillengröße (Faktor)"));
+                crate::ui_kit::slider(ui, "Pupillengröße (Faktor)", &mut v, 0.4..=2.2);
                 if (v - old).abs() > 1e-6 { let linked = s.state.style.eyes.linked; s.edit_style(6 + side_idx, |st| { if side_idx == 0 { st.eyes.left.pupil = v; if linked { st.eyes.right.pupil = v; } } else { st.eyes.right.pupil = v; } }); }
                 ui.weak("Verändert die Pupille in der Iris-Textur (Dilatation). Pupillenform (Schlitz/Herz …) ist noch nicht unterstützt.");
             }
@@ -158,8 +158,8 @@ impl App {
                 let s = self.session.as_mut().unwrap();
                 let (mut refl, mut limb) = (s.state.style.eyes.reflection, s.state.style.eyes.limbal);
                 let (o1, o2) = (refl, limb);
-                ui.add(egui::Slider::new(&mut refl, 0.0..=1.0).text("Hornhautglanz / Reflexion"));
-                ui.add(egui::Slider::new(&mut limb, 0.0..=1.0).text("Limbusring (Irisrand-Abdunklung)"));
+                crate::ui_kit::slider(ui, "Hornhautglanz / Reflexion", &mut refl, 0.0..=1.0);
+                crate::ui_kit::slider(ui, "Limbusring (Irisrand-Abdunklung)", &mut limb, 0.0..=1.0);
                 if refl != o1 { s.edit_style(10, |st| st.eyes.reflection = refl); }
                 if limb != o2 { s.edit_style(11, |st| st.eyes.limbal = limb); }
                 ui.weak("Augenweiß-Farbe, Augen-Make-up und Irismuster: noch nicht unterstützt.");
@@ -258,11 +258,11 @@ impl App {
         let s = self.session.as_mut().unwrap();
         let h = s.state.style.hair.clone();
         let mut n = h.clone();
-        ui.add(egui::Slider::new(&mut n.length, -0.6..=0.8).text("Länge (kürzer ↔ länger)"));
-        ui.add(egui::Slider::new(&mut n.vol_top, -0.8..=1.5).text("Volumen Oberkopf"));
-        ui.add(egui::Slider::new(&mut n.vol_front, -0.8..=1.5).text("Volumen Vorderseite / Pony"));
-        ui.add(egui::Slider::new(&mut n.vol_side, -0.8..=1.5).text("Volumen Seiten"));
-        ui.add(egui::Slider::new(&mut n.vol_back, -0.8..=1.5).text("Volumen Hinterkopf"));
+        crate::ui_kit::slider(ui, "Länge (kürzer ↔ länger)", &mut n.length, -0.6..=0.8);
+        crate::ui_kit::slider(ui, "Volumen Oberkopf", &mut n.vol_top, -0.8..=1.5);
+        crate::ui_kit::slider(ui, "Volumen Vorderseite / Pony", &mut n.vol_front, -0.8..=1.5);
+        crate::ui_kit::slider(ui, "Volumen Seiten", &mut n.vol_side, -0.8..=1.5);
+        crate::ui_kit::slider(ui, "Volumen Hinterkopf", &mut n.vol_back, -0.8..=1.5);
         if ui.button("Form zurücksetzen").clicked() { n.length = 0.0; n.vol_top = 0.0; n.vol_front = 0.0; n.vol_side = 0.0; n.vol_back = 0.0; }
         ui.weak("Verformt die angepasste Frisur (Länge relativ zur Kopfhaut, Volumen entlang der Haaroberfläche). Kollision mit Schultern/Körper wird nicht berechnet; Scheitel, Strähnen, Locken und Wellen: noch nicht unterstützt.");
         if n != h { s.edit_style(21, |st| st.hair = n.clone()); }
@@ -292,8 +292,8 @@ impl App {
             ui.label("Spitzenfarbe"); ui.color_edit_button_rgb(&mut n.tip); ui.end_row();
             ui.label("Strähnen-/Highlightfarbe"); ui.color_edit_button_rgb(&mut n.highlight); ui.end_row();
         });
-        ui.add(egui::Slider::new(&mut n.highlight_amt, 0.0..=1.0).text("Highlight-Anteil"));
-        ui.add(egui::Slider::new(&mut n.gloss, 0.0..=1.0).text("Glanz"));
+        crate::ui_kit::slider(ui, "Highlight-Anteil", &mut n.highlight_amt, 0.0..=1.0);
+        crate::ui_kit::slider(ui, "Glanz", &mut n.gloss, 0.0..=1.0);
         ui.weak("Der Verlauf läuft von der Kopfhaut zur Haarspitze (über die Haarhöhe). Rauheit/Transparenz als eigene Regler: noch nicht unterstützt.");
         if n != h { s.edit_style(20, |st| st.hair = n.clone()); }
     }
@@ -304,7 +304,7 @@ impl App {
         let cur = s.state.style.skin.clone();
         let mut n = cur.clone();
         for (label, l) in [("Lippenfarbe", &mut n.lips), ("Lidschatten", &mut n.shadow), ("Wangenrouge", &mut n.blush)] {
-            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut l.color); ui.add(egui::Slider::new(&mut l.amount, 0.0..=1.0).text(label)); });
+            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut l.color); crate::ui_kit::slider(ui, label, &mut l.amount, 0.0..=1.0); });
         }
         ui.weak("Die Bereiche folgen der Gesichtsform (Masken aus den Morph-Fußabdrücken von Lippen, Lidfalten und Wangen). Eyeliner, Glanz-/Matt-Lippen und Make-up-Presets: noch nicht unterstützt.");
         if n != cur { s.edit_style(40, |st| st.skin = n.clone()); }
@@ -314,8 +314,8 @@ impl App {
         let cur = self.session.as_ref().unwrap().state.style.skin.clone();
         let mut n = cur.clone();
         ui.strong("Sommersprossen");
-        ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut n.freckles.color); ui.add(egui::Slider::new(&mut n.freckles.amount, 0.0..=1.0).text("Dichte")); });
-        ui.add(egui::Slider::new(&mut n.freckle_size, 0.4..=2.5).text("Größe"));
+        ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut n.freckles.color); crate::ui_kit::slider(ui, "Dichte", &mut n.freckles.amount, 0.0..=1.0); });
+        crate::ui_kit::slider(ui, "Größe", &mut n.freckle_size, 0.4..=2.5);
         if ui.button("Neu verteilen").clicked() { n.freckle_seed = n.freckle_seed.wrapping_mul(1664525).wrapping_add(1013904223) >> 8; }
         ui.separator();
         ui.strong("Muttermale, Tattoos, Narben");
@@ -333,9 +333,9 @@ impl App {
             });
             if sel == Some(i) {
                 ui.indent(("decal", i), |ui| {
-                    ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut d.color); ui.add(egui::Slider::new(&mut d.opacity, 0.05..=1.0).text("Deckkraft")); });
+                    ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut d.color); crate::ui_kit::slider(ui, "Deckkraft", &mut d.opacity, 0.05..=1.0); });
                     ui.add(egui::Slider::new(&mut d.size, 0.002..=0.06).logarithmic(true).text("Größe"));
-                    ui.add(egui::Slider::new(&mut d.rot, -3.14..=3.14).text("Drehung"));
+                    crate::ui_kit::slider(ui, "Drehung", &mut d.rot, -3.14..=3.14);
                 });
             }
         }
@@ -347,7 +347,7 @@ impl App {
     pub(crate) fn skin_style_panel(&mut self, ui: &mut egui::Ui) {
         let s = self.session.as_mut().unwrap();
         let mut g = s.state.style.skin.gloss; let old = g;
-        ui.add(egui::Slider::new(&mut g, 0.0..=1.0).text("Hautglanz"));
+        crate::ui_kit::slider(ui, "Hautglanz", &mut g, 0.0..=1.0);
         if g != old { s.edit_style(30, |st| st.skin.gloss = g); }
     }
 }

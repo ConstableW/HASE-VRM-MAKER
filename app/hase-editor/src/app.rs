@@ -242,13 +242,27 @@ impl App {
     }
 
     pub(crate) fn skin_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, skin: bool) {
-        let Some(s) = self.session.as_mut() else { return };
+        if self.session.is_none() { return; }
         if skin {
-        ui.label("Hautton");
-        let mut pick = None;
-        egui::ScrollArea::vertical().id_salt("skins").max_height(300.0).show(ui, |ui| { for (n, _) in &s.assets.skins { if ui.selectable_label(s.state.skin == *n, n.replace('_', " ")).clicked() { pick = Some(n.clone()); } } });
-        if let Some(n) = pick { s.set_skin(&n); }
-        return; }
+            crate::ui_kit::section(ui, "Hautton");
+            let names: Vec<String> = self.session.as_ref().unwrap().assets.skins.iter().map(|(n, _)| n.clone()).collect();
+            let cols = 3usize; let tile = ((ui.available_width() - 2.0 * 8.0) / cols as f32).floor();
+            let cur = self.session.as_ref().unwrap().state.skin.clone();
+            let mut pick = None;
+            for row in names.chunks(cols) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    for n in row {
+                        let mut st = self.session.as_ref().unwrap().state.clone(); st.skin = n.clone();
+                        if self.tile_card(ui, tile, tile * 0.9, st, "head", &n.replace('_', " "), cur == *n) { pick = Some(n.clone()); }
+                    }
+                });
+                ui.add_space(4.0);
+            }
+            if let Some(n) = pick { self.session.as_mut().unwrap().set_skin(&n); }
+            return;
+        }
+        let Some(s) = self.session.as_mut() else { return };
         ui.label("Augenfarbe");
         let mut eye = None;
         for (n, _) in &s.assets.eye_colors { if ui.selectable_label(s.state.eyes == *n, n.as_str()).clicked() { eye = Some(n.clone()); } }
@@ -463,8 +477,24 @@ impl App {
         });
         let Some(spi) = s.species_opt() else { ui.colored_label(theme::WARN, "Für diese Körperbasis gibt es noch keine Spezies – im Werkzeug „Körperbasen & Spezies“ eine erstellen. Der Charakter kann auch ohne Spezies gestaltet werden."); return; };
         let sp = s.packages.species[spi].clone();
-        if !sp.presets.is_empty() { ui.label("Presets"); ui.horizontal_wrapped(|ui| { for p in &sp.presets { if ui.button(&p.label).clicked() { s.apply_map(&p.params); } } }); }
-        if !sp.traits.is_empty() { ui.label("Merkmale"); ui.horizontal_wrapped(|ui| { for t in &sp.traits { if ui.button(&t.label).on_hover_text("Setzt die zugehörigen Parameter").clicked() { s.apply_map(&t.set); } } }); }
+        let (presets, traits) = (sp.presets.clone(), sp.traits.clone());
+        let _ = s;
+        if !presets.is_empty() {
+            crate::ui_kit::section(ui, "Presets");
+            let cols = 3usize; let tile = ((ui.available_width() - 2.0 * 8.0) / cols as f32).floor();
+            for row in presets.chunks(cols) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    for p in row {
+                        let st = self.session.as_ref().unwrap().state_with(&p.params);
+                        if self.tile_card(ui, tile, tile * 1.1, st, "head", &p.label, false) { self.session.as_mut().unwrap().apply_map(&p.params); }
+                    }
+                });
+                ui.add_space(4.0);
+            }
+        }
+        if !traits.is_empty() { crate::ui_kit::section(ui, "Merkmale"); ui.horizontal_wrapped(|ui| { for t in &traits { if ui.button(&t.label).on_hover_text("Setzt die zugehörigen Parameter").clicked() { self.session.as_mut().unwrap().apply_map(&t.set); } } }); }
+        let Some(s) = self.session.as_mut() else { return };
         if !sp.components.is_empty() { ui.label("Komponenten"); for c in &sp.components { ui.weak(format!("{}{}", c.asset.rsplit('.').next().unwrap_or(&c.asset), if c.stub { " (Stub: noch keine Geometrie)" } else { "" })); } }
         if ui.button("Alle Parameter zurücksetzen").clicked() { s.reset_params(); }
         let issues = s.ref_issues();

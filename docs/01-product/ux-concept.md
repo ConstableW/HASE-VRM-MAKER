@@ -42,4 +42,6 @@ Umgesetzt (Code: `shell.rs`, `ui_kit.rs`, `icons.rs`, `theme.rs`):
 - **Bibliothek:** als Seitenpanel (Tabs, Suche, Kachelraster, Details, Snapshots) statt Fenster.
 - Species „Mensch“ v1.1.0 mit 11 Presets (Natürlich, Junge Frau, Realistisch, Anime, Elfe, Kindlich, Reif, Mann, Markant, Asiatisch, Afrikanisch).
 
+Nachgezogen (gleicher Tag): Reglerzeilen in allen Studios (Haare, Make-up, Details, Pupille, Haut), Haut-/Preset-Kachelraster mit Vorschaubildern, Posenliste und Export als Karten im neuen Stil.
+
 Offen (Mockup-Abweichungen): eigene Fensterleiste (min/max/close) statt nativer Titelleiste; Kopfform-Preset-Reihen je Region; Kamerathumbnails zeigen Icons statt Porträts; Haarstudio/Haut/Make-up/Details/Export/Posen nutzen bereits die neuen Bausteine nur teilweise (Reglerzeilen noch nicht überall im Zeilenstil); Einklappen/Größenänderung der Karten; Schriftart ist die egui-Standardschrift.

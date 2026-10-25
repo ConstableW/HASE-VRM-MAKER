@@ -71,7 +71,7 @@ impl App {
         }
         ui.separator(); ui.strong("Ausdrücke");
         let mut set: Option<(String, f32)> = None;
-        for n in &exprs { let mut val = cur.get(n).copied().unwrap_or(0.0); if ui.add(egui::Slider::new(&mut val, 0.0..=1.0).text(n.as_str())).changed() { set = Some((n.clone(), val)); } }
+        for n in &exprs { let mut val = cur.get(n).copied().unwrap_or(0.0); if crate::ui_kit::slider(ui, n.as_str(), &mut val, 0.0..=1.0) { set = Some((n.clone(), val)); } }
         if let Some((n, val)) = set { s.set_expression(&n, val); }
         ui.horizontal(|ui| {
             if ui.button("Ausdrücke zurücksetzen").clicked() { for n in &exprs { s.set_expression(n, 0.0); } let keys: Vec<(usize, usize)> = s.vrm.as_ref().map(|v| v.raw.keys().copied().collect()).unwrap_or_default(); for (p, t) in keys { s.set_raw_target(p, t, 0.0); } }
@@ -82,71 +82,92 @@ impl App {
             let list: Vec<(usize, usize, String)> = { let v = s.vrm.as_ref().unwrap(); v.model.parts.iter().enumerate().flat_map(|(pi, p)| p.targets.iter().enumerate().map(move |(ti, t)| (pi, ti, t.0.clone()))).collect() };
             let raw: std::collections::BTreeMap<(usize, usize), f32> = s.vrm.as_ref().unwrap().raw.clone();
             let mut chg: Option<(usize, usize, f32)> = None;
-            egui::ScrollArea::vertical().max_height(320.0).id_salt("rawbs").show_rows(ui, 24.0, list.len(), |ui, range| { for r in range { let (pi, ti, n) = &list[r]; let mut val = raw.get(&(*pi, *ti)).copied().unwrap_or(0.0); if ui.add(egui::Slider::new(&mut val, 0.0..=1.0).text(n.as_str())).changed() { chg = Some((*pi, *ti, val)); } } });
+            egui::ScrollArea::vertical().max_height(320.0).id_salt("rawbs").show_rows(ui, 24.0, list.len(), |ui, range| { for r in range { let (pi, ti, n) = &list[r]; let mut val = raw.get(&(*pi, *ti)).copied().unwrap_or(0.0); if crate::ui_kit::slider(ui, n.as_str(), &mut val, 0.0..=1.0) { chg = Some((*pi, *ti, val)); } } });
             if let Some((p, t, val)) = chg { s.set_raw_target(p, t, val); }
         });
     }
 
     pub(crate) fn anim_panel(&mut self, ui: &mut egui::Ui) {
+        use crate::icons::Icon;
         if !self.export.clips_loaded { self.scan_clips(); }
-        ui.heading("Posen & Animation"); ui.separator();
+        self.panel_title(ui, Icon::Pose, "Posen & Animation");
         {
             let s = self.session.as_mut().unwrap();
             if s.generic && s.vrm.is_none() { ui.colored_label(theme::ERR, "Für importierte Körperbasen noch nicht unterstützt (Rig und Gewichte fehlen)."); return; }
             ui.horizontal(|ui| {
-                if ui.button("Ruhepose (A-Pose)").clicked() { s.stop_pose(); }
+                ui.spacing_mut().item_spacing.x = 6.0;
+                if crate::ui_kit::icon_tile(ui, Icon::Reset, "Ruhepose", egui::vec2(72.0, 48.0), s.play.clip.is_none(), "Zurück zur Ruhepose (A-Pose)").clicked() { s.stop_pose(); }
                 if s.play.clip.is_some() {
-                    if ui.button(if s.play.playing { "Pause" } else { "Abspielen" }).clicked() { s.play.playing = !s.play.playing; }
-                    ui.checkbox(&mut s.play.looping, "Schleife");
+                    let playing = s.play.playing;
+                    if crate::ui_kit::icon_tile(ui, if playing { Icon::Pause } else { Icon::Play }, if playing { "Pause" } else { "Abspielen" }, egui::vec2(72.0, 48.0), playing, "").clicked() { s.play.playing = !playing; }
+                    let lp = s.play.looping;
+                    if crate::ui_kit::icon_tile(ui, Icon::Rotate, "Schleife", egui::vec2(72.0, 48.0), lp, "Animation wiederholen").clicked() { s.play.looping = !lp; }
                 }
             });
             if let Some(c) = s.play.clip.as_ref() {
                 let dur = c.duration;
-                ui.label(format!("{} · {:.1} s", c.name.replace('_', " "), dur));
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(format!("{} · {:.1} s", c.name.replace('_', " "), dur)).color(theme::TEXT2));
                 let mut t = s.play.t;
-                if ui.add(egui::Slider::new(&mut t, 0.0..=dur).text("Zeit (s)")).changed() { s.play.t = t; s.play.playing = false; }
-                ui.add(egui::Slider::new(&mut s.play.speed, 0.1..=2.0).text("Tempo"));
+                if crate::ui_kit::slider(ui, "Zeit (s)", &mut t, 0.0..=dur) { s.play.t = t; s.play.playing = false; }
+                crate::ui_kit::slider(ui, "Tempo", &mut s.play.speed, 0.1..=2.0);
             }
         }
-        ui.horizontal(|ui| { ui.label("Suche:"); ui.text_edit_singleline(&mut self.export.filter); });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| { crate::icons::show(ui, Icon::Search, 16.0, theme::TEXT2); ui.add(egui::TextEdit::singleline(&mut self.export.filter).hint_text("Suche Posen und Animationen …").desired_width(f32::INFINITY)); });
         let f = self.export.filter.to_lowercase();
         let list: Vec<usize> = self.export.clips.iter().enumerate().filter(|(_, (n, _))| f.is_empty() || n.to_lowercase().contains(&f)).map(|(i, _)| i).collect();
-        ui.weak(format!("{} Clips (CC0, Quaternius Universal Animation Library als VRMA). Die Pose nutzt das aktuelle Rig des Charakters; Kleidung/Haare folgen über die Körpergewichte.", list.len()));
+        ui.colored_label(theme::TEXT2, format!("{} Clips (CC0, Quaternius Universal Animation Library). Kleidung und Haare folgen über die Körpergewichte.", list.len()));
         if !self.export.clip_msg.is_empty() { ui.colored_label(theme::WARN, &self.export.clip_msg); }
+        ui.add_space(4.0);
+        let cur = self.session.as_ref().and_then(|s| s.play.clip.as_ref().map(|c| c.name.clone())).unwrap_or_default();
         let mut pick: Option<usize> = None;
-        egui::ScrollArea::vertical().id_salt("clips").auto_shrink([false; 2]).show_rows(ui, 22.0, list.len(), |ui, range| { for r in range { let i = list[r]; if ui.selectable_label(false, &self.export.clips[i].0).clicked() { pick = Some(i); } } });
+        ui.spacing_mut().item_spacing.y = 2.0;
+        for &i in &list {
+            let n = self.export.clips[i].0.clone();
+            let label = n.split_once(" · ").map(|x| x.1).unwrap_or(&n).to_string();
+            let active = !cur.is_empty() && cur.replace('_', " ") == label.replace('_', " ");
+            if crate::ui_kit::nav_row(ui, Icon::Pose, &label, active).clicked() { pick = Some(i); }
+        }
         if let Some(i) = pick { let p = self.export.clips[i].1.clone(); let s = self.session.as_mut().unwrap(); self.export.clip_msg = match s.load_clip(&p) { Ok(()) => String::new(), Err(e) => e }; }
     }
 
     pub(crate) fn export_panel(&mut self, ui: &mut egui::Ui) {
-        let Some(s) = self.session.as_ref() else { return };
-        ui.heading("Exportieren (VRM 1.0)"); ui.separator();
-        if s.vrm.is_some() { ui.colored_label(theme::TEXT2, "Geöffnetes Modell: Es wird mit seinem eigenen Skelett, Körper, Haaren und Ausdrücken exportiert; anprobierte Kleidung wird hinzugefügt (Profil „mit Outfit“)."); }
+        use crate::icons::Icon;
+        if self.session.is_none() { return; }
+        self.panel_title(ui, Icon::Export, "Exportieren (VRM 1.0)");
+        let s = self.session.as_ref().unwrap();
+        if s.vrm.is_some() { ui.colored_label(theme::TEXT2, "Geöffnetes Modell: Es wird mit eigenem Skelett, Körper, Haaren und Ausdrücken exportiert; anprobierte Kleidung kommt dazu (Profil „mit Outfit“)."); ui.add_space(4.0); }
         let ex = &mut self.export;
-        ui.strong("Profil");
-        ui.radio_value(&mut ex.with_outfit, false, "Basischarakter ohne Outfit");
-        ui.radio_value(&mut ex.with_outfit, true, "Charakter mit Outfit (verdeckte Körperflächen entfallen)");
-        ui.checkbox(&mut ex.expressions, "Expressions (Blinzeln, Vokale, Gefühle) aus MakeHuman-Targets");
-        ui.add_space(6.0);
-        ui.strong("Metadaten");
-        egui::Grid::new("meta").num_columns(2).show(ui, |ui| {
-            ui.label("Name"); ui.text_edit_singleline(&mut ex.name); ui.end_row();
-            ui.label("Autor"); ui.text_edit_singleline(&mut ex.author); ui.end_row();
-            ui.label("Nutzung"); egui::ComboBox::from_id_salt("commercial").selected_text(COMMERCIAL[ex.commercial].1).show_ui(ui, |ui| { for (i, c) in COMMERCIAL.iter().enumerate() { ui.selectable_value(&mut ex.commercial, i, c.1); } }); ui.end_row();
+        crate::ui_kit::section(ui, "Profil");
+        let mut prof = ex.with_outfit as usize;
+        if crate::ui_kit::tabs(ui, &["Basischarakter", "Mit Outfit"], &mut prof) { ex.with_outfit = prof == 1; }
+        ui.colored_label(theme::TEXT2, if ex.with_outfit { "Charakter mit getragener Kleidung (verdeckte Körperflächen entfallen)." } else { "Nackter Basischarakter ohne Kleidung." });
+        ui.add_space(4.0);
+        ui.checkbox(&mut ex.expressions, "Expressions (Blinzeln, Vokale, Gefühle)");
+        crate::ui_kit::section(ui, "Metadaten");
+        egui::Grid::new("meta").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+            ui.label("Name"); ui.add(egui::TextEdit::singleline(&mut ex.name).desired_width(240.0)); ui.end_row();
+            ui.label("Autor"); ui.add(egui::TextEdit::singleline(&mut ex.author).desired_width(240.0)); ui.end_row();
+            ui.label("Nutzung"); egui::ComboBox::from_id_salt("commercial").width(240.0).selected_text(COMMERCIAL[ex.commercial].1).show_ui(ui, |ui| { for (i, c) in COMMERCIAL.iter().enumerate() { ui.selectable_value(&mut ex.commercial, i, c.1); } }); ui.end_row();
         });
         ui.checkbox(&mut ex.redistribution, "Weitergabe erlaubt");
-        ui.add_space(6.0);
-        ui.strong("Vorabinformationen");
+        crate::ui_kit::section(ui, "Vorabinformationen");
         let (v, t) = s.counts();
-        ui.label(format!("Zielprofil: VRM 1.0 (generisch) · Skelett 53 Bones, 15 Pflicht-Bones im Humanoid-Mapping"));
-        ui.label(format!("Sichtbar im Editor: {v} Vertices, {t} Dreiecke ({} Assets)", s.active_asset_count()));
-        if t > 70_000 { ui.colored_label(theme::WARN, "Hinweis: über 70.000 Dreiecke – für manche VTuber-/Avatar-Plattformen zu hoch."); }
-        if s.generic { ui.colored_label(theme::ERR, "Export für importierte Körperbasen ist noch nicht unterstützt (Rig- und Gewichtsübernahme aus dem Import fehlt)."); }
-        ui.colored_label(theme::TEXT2, "Wird nicht exportiert: Haar-Farbverlauf/Highlights (nur Mittelfarbe), Augen-Reflexion, einzelne Hautdetail-Ebenen (eingerechnet), Pupillenform; Haarphysik/Spring Bones sind noch nicht gesetzt.");
+        crate::ui_kit::card(ui, None, |ui| {
+            ui.label(format!("Zielprofil: VRM 1.0 · {} Bones", if s.vrm.is_some() { s.vrm.as_ref().map(|x| x.model.bones.len()).unwrap_or(0) } else { 53 }));
+            ui.label(format!("Sichtbar im Editor: {v} Vertices, {t} Dreiecke ({} Assets)", s.active_asset_count()));
+            if t > 70_000 { ui.colored_label(theme::WARN, "Über 70.000 Dreiecke – für manche Avatar-Plattformen zu hoch."); }
+            if s.generic { ui.colored_label(theme::ERR, "Export für importierte Körperbasen ist noch nicht unterstützt (Rig- und Gewichtsübernahme aus dem Import fehlt)."); }
+            ui.colored_label(theme::TEXT2, "Wird nicht exportiert: Haar-Farbverlauf (nur Mittelfarbe), Augen-Reflexion, einzelne Hautdetail-Ebenen (eingerechnet), Pupillenform; Haarphysik/Spring Bones sind noch nicht gesetzt.");
+        });
         ui.add_space(8.0);
         let enabled = !ex.busy && !s.generic;
-        if ui.add_enabled(enabled, egui::Button::new(if ex.busy { "Schreibe …" } else { "Exportieren …" })).clicked() { self.export_start(); }
-        if !self.export.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.export.msg); }
+        let busy = ex.busy;
+        let mut go = false;
+        ui.add_enabled_ui(enabled, |ui| { if crate::ui_kit::primary_button(ui, if busy { "Schreibe …" } else { "Exportieren …" }).clicked() { go = true; } });
+        if go { self.export_start(); }
+        if !self.export.msg.is_empty() { ui.add_space(4.0); ui.colored_label(theme::TEXT2, &self.export.msg); }
         for r in &self.export.report { ui.colored_label(if r.starts_with("Verlust") { theme::WARN } else { theme::TEXT2 }, r); }
     }
 
