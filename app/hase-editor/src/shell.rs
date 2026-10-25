@@ -211,7 +211,7 @@ impl App {
             if !self.session.as_ref().map(|s| s.feature_allowed(kind)).unwrap_or(true) { continue; }
             let on = self.session.as_ref().map(|s| s.feature(kind).enabled).unwrap_or(false);
             let ic = [Icon::Ear, Icon::Species, Icon::Star, Icon::Hair][k];
-            if nav_row(ui, ic, &format!("{label}{}", if on { "  ●" } else { "" }), self.main == Main::Stil && self.sub == 20 + k).clicked() { go = Some((Main::Stil, usize::MAX, 20 + k)); }
+            if nav_row(ui, ic, &format!("{label}{}", if on { "  · an" } else { "" }), self.main == Main::Stil && self.sub == 20 + k).clicked() { go = Some((Main::Stil, usize::MAX, 20 + k)); }
         }
         ui_kit::section(ui, "Haare & Stil");
         if nav_row(ui, Icon::Hair, "Frisur", self.main == Main::Haare).clicked() { go = Some((Main::Haare, usize::MAX, 0)); }
@@ -406,7 +406,7 @@ impl App {
         for (k, (kind, label)) in hase_core::features::KINDS.iter().enumerate() {
             let on = self.session.as_ref().map(|s| s.feature(kind).enabled).unwrap_or(false);
             let ic = [Icon::Ear, Icon::Species, Icon::Star, Icon::Hair][k];
-            if nav_row(ui, ic, &format!("{label}{}", if on { "  ●" } else { "" }), self.main == Main::Stil && self.sub == 10 + k).clicked() { go = Some((Main::Stil, usize::MAX, 10 + k)); }
+            if nav_row(ui, ic, &format!("{label}{}", if on { "  · an" } else { "" }), self.main == Main::Stil && self.sub == 10 + k).clicked() { go = Some((Main::Stil, usize::MAX, 10 + k)); }
         }
         ui_kit::section(ui, "Aussehen");
         for (i, (l, ic)) in [("Farben", Icon::Skin), ("Modell & Ausdrücke", Icon::Overview)].iter().enumerate() { if nav_row(ui, *ic, l, self.main == Main::Stil && self.sub == i).clicked() { go = Some((Main::Stil, usize::MAX, i)); } }
@@ -497,13 +497,13 @@ impl App {
     /// Panel eines additiven Merkmals (Ohren, Schweif, Hörner): Schalter, Vorlagen, Regler, Farben.
     pub(crate) fn feature_panel(&mut self, ui: &mut egui::Ui, k: usize) {
         let (kind, label) = hase_core::features::KINDS[k];
-        let icon = [Icon::Ear, Icon::Species, Icon::Star][k];
+        let icon = [Icon::Ear, Icon::Species, Icon::Star, Icon::Hair][k];
         self.panel_title(ui, icon, label);
         let Some(s) = self.session.as_mut() else { return };
         let mut st = s.feature(kind);
         let before = st.clone();
         ui.checkbox(&mut st.enabled, format!("{label} verwenden"));
-        ui.colored_label(theme::TEXT2, match kind { "ears" => "Zusätzliche Ohren am Kopf (Tier-, Elfenohren). Die Basisohren lassen sich unter Gesicht › Ohren verkleinern.", "tail" => "Schweif mit eigener Bone-Kette (wird mit Spring Bones exportiert).", _ => "Hörner am Kopf." });
+        ui.colored_label(theme::TEXT2, match kind { "ears" => "Zusätzliche Ohren am Kopf (Tier-, Elfenohren). Die Basisohren lassen sich unter Gesicht › Ohren verkleinern.", "tail" => "Schweif mit eigener Bone-Kette (wird mit Spring Bones exportiert).", "hair" => "Frisur aus Strähnen, frei formbar (Längen, Volumen, Welle, Scheitel). Ersetzt ein gewähltes Haar-Asset; langes Haar bekommt Spring Bones.", _ => "Hörner am Kopf." });
         if st.enabled {
             ui_kit::section(ui, "Vorlagen");
             ui.horizontal_wrapped(|ui| { for (name, vals) in hase_core::features::presets(kind) { if ui.button(*name).clicked() { st.vals = vals.to_vec(); } } });
@@ -512,6 +512,11 @@ impl App {
             ui_kit::section(ui, "Farben");
             ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color); ui.label(if kind == "ears" { "Außenseite" } else { "Farbe" }); });
             if kind == "ears" { ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color2); ui.label("Innenseite"); }); }
+        }
+        if kind == "hair" && st.enabled && !before.enabled {
+            // Generierte Frisur ersetzt ein ausgewähltes Haar-Asset
+            let ids: Vec<String> = s.state.assets.iter().filter(|a| a.id.starts_with("hair/")).map(|a| a.id.clone()).collect();
+            for id in ids { s.toggle_asset_off(&id); }
         }
         if st != before { if let Some(f) = s.feature_mut(kind) { *f = st; } }
     }
