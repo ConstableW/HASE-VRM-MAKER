@@ -154,7 +154,7 @@ impl App {
         card(ui, Some((Icon::Species, "Spezies")), |ui| {
             // Spezies-Kacheln (Vorschau mit den Standardwerten der Spezies)
             {
-                let items: Vec<(usize, String, std::collections::BTreeMap<String, f32>, bool)> = { let s = self.session.as_ref().unwrap(); let cur = s.species_opt(); s.species_selectable().into_iter().map(|i| { let sp = &s.packages.species[i]; (i, format!("{}{}", sp.label, if sp.stub { " (Stub)" } else { "" }), sp.defaults.clone(), cur == Some(i)) }).collect() };
+                let items: Vec<(usize, String, std::collections::BTreeMap<String, f32>, bool, hase_core::state::PkgRef)> = { let s = self.session.as_ref().unwrap(); let cur = s.species_opt(); s.species_selectable().into_iter().map(|i| { let sp = &s.packages.species[i]; (i, format!("{}{}", sp.label, if sp.stub { " (Stub)" } else { "" }), sp.defaults.clone(), cur == Some(i), hase_core::state::PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() }) }).collect() };
                 let cols = 3usize; let gap = 6.0;
                 let tw = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
                 let mut pick = None;
@@ -162,9 +162,9 @@ impl App {
                     for row in items.chunks(cols) {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = gap;
-                            for (i, label, defs, on) in row {
+                            for (i, label, defs, on, pref) in row {
                                 let st = { let s = self.session.as_ref().unwrap(); let mut st = s.state.clone(); st.values = s.params.defaults(); drop(s); st };
-                                let st = { let s = self.session.as_ref().unwrap(); let mut st = st; for (k, v) in defs { if let Some(j) = s.params.canonical(k) { st.values[j] = *v; } } st };
+                                let st = { let s = self.session.as_ref().unwrap(); let mut st = st; for (k, v) in defs { if let Some(j) = s.params.canonical(k) { st.values[j] = *v; } } st.species = pref.id.clone(); st.species_ref = pref.clone(); st };
                                 if self.tile_card(ui, tw, tw * 1.15, st, "head", label, *on) { pick = Some(*i); }
                             }
                         });

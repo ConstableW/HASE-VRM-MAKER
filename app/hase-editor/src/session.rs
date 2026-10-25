@@ -349,10 +349,20 @@ impl Session {
         self.dirty = true;
         self.var_vals.clear();
         self.refresh_species_layer();
+        self.apply_species_features(&sp);
+    }
+    /// Standardmerkmale der Spezies einschalten, nicht erlaubte ausschalten.
+    pub fn apply_species_features(&mut self, sp: &hase_core::packages::Species) {
         for (kind, pi) in sp.default_features() { if sp.shape.allows(kind) && !self.sh.features.get(kind).map(|f| f.enabled).unwrap_or(false) { let f = self.feature_mut(kind).unwrap(); f.enabled = true; f.vals = hase_core::features::presets(kind)[pi.min(hase_core::features::presets(kind).len() - 1)].1.to_vec(); } }
         for (k, _) in hase_core::features::KINDS.iter() { if !sp.shape.allows(k) && self.sh.features.get(*k).map(|f| f.enabled).unwrap_or(false) { self.feature_mut(k).unwrap().enabled = false; } }
     }
     /// Ist das Merkmal für die gewählte Spezies zulässig?
+    /// Nur für Vorschaubilder: Spezieskörper-Ebene und Standardmerkmale der Spezies im aktuellen Zustand anwenden.
+    pub fn species_visuals(&mut self) {
+        self.var_vals.clear();
+        self.refresh_species_layer();
+        if let Some(sp) = self.species_opt().map(|i| self.packages.species[i].clone()) { self.apply_species_features(&sp); }
+    }
     pub fn feature_allowed(&self, kind: &str) -> bool { self.species_opt().map(|i| self.packages.species[i].shape.allows(kind)).unwrap_or(true) }
 
     /// Spezieskörper-Ebene neu berechnen (eingebackene Grundform + Variationen · Wert) und Differenz auf die Körperpositionen anwenden.

@@ -43,7 +43,7 @@ pub fn make_key_avatar(j: &serde_json::Value, base_sha: &str, cam_kind: &str, w:
 pub fn make_key(state: &CharacterState, body_digest: &str, cam_kind: &str, w: u32, h: u32, params: &hase_core::params::Catalog) -> String {
     let mut j = state.to_json(params, &state.body_ref.id);
     j["style"] = state.style.to_json();
-    let s = format!("{RENDER_VERSION}|{body_digest}|{j}|{cam_kind}|{w}x{h}");
+    let s = format!("{RENDER_VERSION}|{body_digest}|{j}|{}|{cam_kind}|{w}x{h}", state.species_ref.digest);
     sha256_hex(s.as_bytes())[..32].to_string()
 }
 
@@ -99,7 +99,7 @@ fn worker(repo: PathBuf, dir: PathBuf, rx: Receiver<ThumbJob>, tx: Sender<ThumbD
             // Körperbasis passend halten
             if sess.packages.body.id != job.body.id { if sess.activate_body(&job.body).is_err() { continue; } }
             sess.set_state_silent(job.state.clone());
-            if let Some(x) = &job.extra { sess.apply_shared_json(x); } else { sess.apply_shared_json(&serde_json::json!({})); }
+            if let Some(x) = &job.extra { sess.apply_shared_json(x); } else { sess.apply_shared_json(&serde_json::json!({})); sess.species_visuals(); }
             sess.ensure_assets_blocking();
         }
         let updates = sess.refresh();
