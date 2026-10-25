@@ -109,6 +109,14 @@ fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f3
     let rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.18;
     let lit = hemi * 0.55 + G.key_col.rgb * kw * 0.75 + vec3<f32>(0.55, 0.65, 0.85) * fill * 0.25 + vec3<f32>(rim);
     let sp = pow(max(dot(n, h), 0.0), spec_pow) * spec * step(0.0, key);
+    if (G.flags.w > 0.5) {
+        // Toon-Vorschau (nah an MToon im VRM-Viewer): zwei Stufen Licht/Schatten, weiche Kante, farbiger Schatten, Rim
+        let shade_t = smoothstep(-0.02, 0.12, dot(n, kd) - 0.12);
+        let shade_col = base.rgb * vec3<f32>(0.62, 0.58, 0.72);
+        let lit_col = base.rgb * (0.82 + 0.18 * hemi);
+        let rim_t = pow(1.0 - max(dot(n, v), 0.0), 4.0) * 0.12;
+        return vec4<f32>(encode(mix(shade_col, lit_col, shade_t) + vec3<f32>(rim_t)), 1.0);
+    }
     return vec4<f32>(encode(base.rgb * lit + G.key_col.rgb * sp), 1.0);
 }
 

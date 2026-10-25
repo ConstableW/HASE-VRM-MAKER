@@ -52,7 +52,7 @@ pub struct App {
     pub(crate) expert: bool,
     pub(crate) saved_cam: Option<Camera>,
     pub(crate) reg_idx: Vec<usize>, pub(crate) reg_key: (usize, usize),
-    pub(crate) filter: String, pub(crate) asset_filter: String, pub(crate) outfit_name: String, pub(crate) blend_t: f32, pub(crate) blend_target: usize,
+    pub(crate) filter: String, pub(crate) asset_filter: String, pub(crate) outfit_name: String, pub(crate) toon: bool, pub(crate) blend_t: f32, pub(crate) blend_target: usize,
     pub(crate) open_groups: HashSet<String>,
     pub(crate) rows: Vec<Row>, pub(crate) rows_key: (String, usize),
     pub(crate) loading: HashSet<String>,
@@ -113,7 +113,7 @@ impl App {
         }
         crate::theme::apply(&cc.egui_ctx);
         spawn_session_load(tx.clone(), cc.egui_ctx.clone(), repo.clone());
-        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), outfit_name: String::new(), blend_t: 0.0, blend_target: 0, open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, pending_shared: None, sculpt_hover: None, sculpt_anchor: None, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
+        Self { rx, tx, session: None, error: None, camera: Camera::default(), ws: Workspace::Charakter, main: Main::Charakter, region: usize::MAX, sub: 0, expert: false, saved_cam: None, reg_idx: vec![], reg_key: (usize::MAX, 0), filter: String::new(), asset_filter: String::new(), outfit_name: String::new(), toon: false, blend_t: 0.0, blend_target: 0, open_groups: ["Makro".to_string()].into_iter().collect(), rows: vec![], rows_key: (String::new(), usize::MAX), loading: HashSet::new(), show_stats: false, frame_ms: 0.0, frame_avg: 0.0, started: Instant::now(), status: "Lade Daten …".into(), gpu_name, studio: Default::default(), thumbs: crate::thumbs::ThumbService::new(repo.clone(), cc.egui_ctx.clone()), eye_tab: 0, eye_side: 0, hair_tab: 0, lib: Default::default(), export: Default::default(), ctx: cc.egui_ctx.clone(), tool: Tool::Orbit, open_on_start: None, decal_shape: 0, decal_sel: None, region_energy: vec![], light: 0, grid: true, pending_load: None, pending_body: None, rtab: 1, pending_shared: None, sculpt_hover: None, sculpt_anchor: None, base_picker: false, bases: vec![], side_filter: 0, open_regions: HashSet::new(), scroll_to: None, panels_hidden: false }
     }
 
     pub(crate) fn start_asset_load(&mut self, ctx: &egui::Context, id: &str, mhclo: std::path::PathBuf, tex: Option<std::path::PathBuf>) {
@@ -302,7 +302,7 @@ impl App {
         let updates = self.session.as_mut().map(|s| s.refresh()).unwrap_or_default();
         if self.session.as_ref().map(|s| s.avatar_pending()).unwrap_or(false) { self.ctx.request_repaint_after(std::time::Duration::from_millis(120)); }
         let aspect = (rect.width() / rect.height().max(1.0)).max(0.1);
-        ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: self.camera.globals_lit(aspect, &LIGHTS[self.light.min(2)], self.grid) }));
+        ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, SceneCallback { updates: Mutex::new(Some(updates)), globals: { let mut g = self.camera.globals_lit(aspect, &LIGHTS[self.light.min(2)], self.grid); g.flags[3] = if self.toon { 1.0 } else { 0.0 }; g } }));
         self.viewport_overlays(ui, rect);
         if self.show_stats {
             let mut t = format!("Frame {:.1} ms (Ø {:.1}) · {:.0} fps\nGPU: {}", self.frame_ms, self.frame_avg, 1000.0 / self.frame_avg.max(0.1), self.gpu_name);

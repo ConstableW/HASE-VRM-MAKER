@@ -324,6 +324,16 @@ impl App {
             p.rect_stroke(r, CornerRadius::same(5), Stroke::new(if self.light == i { 2.0 } else { 1.0 }, if self.light == i { theme::ACCENT } else if resp.hovered() { theme::TEXT2 } else { theme::LINE }), StrokeKind::Inside);
             if resp.on_hover_text(l.name).clicked() { self.light = i; }
         }
+        // Toon-Vorschau umschalten (MToon-ähnlich)
+        {
+            let r = egui::Rect::from_min_size(egui::pos2(seg.left(), seg.bottom() + 58.0), egui::vec2(w, 26.0));
+            let resp = ui.interact(r, egui::Id::new("toon"), egui::Sense::click());
+            let on = self.toon;
+            p.rect_filled(r, CornerRadius::same(6), if on { theme::ACTIVE } else if resp.hovered() { theme::HOVER } else { Color32::from_rgba_unmultiplied(16, 24, 36, 220) });
+            p.rect_stroke(r, CornerRadius::same(6), Stroke::new(1.0, if on { theme::ACCENT } else { theme::LINE }), StrokeKind::Inside);
+            p.text(r.center(), Align2::CENTER_CENTER, if on { "Toon-Vorschau: an" } else { "Toon-Vorschau: aus" }, FontId::proportional(12.5), Color32::WHITE);
+            if resp.on_hover_text("Zeigt den Charakter mit Toon-Schattierung wie in VRM-Viewern (MToon)").clicked() { self.toon = !self.toon; }
+        }
         // Kameraansichten rechts
         let mut y = rect.top() + 132.0;
         let cam_w = 118.0;

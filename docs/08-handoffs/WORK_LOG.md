@@ -101,3 +101,5 @@ Beispiel-Spezies „Anime-Humanoid“ (größerer Kopf, große Augen, kleine Nas
 Frisur: Farbverlauf Ansatz→Spitze über Gradient-Textur (V entlang der Strähne); Bibliothek: Tags bearbeitbar. Export schreibt den Verlauf als Textur (Material Feature_Hair).
 
 Stil angleichen (erste Stufe der Stilüberführung): in der Spezieskarte lässt sich der Charakter stufenlos (0…1) zu den Standardwerten einer Zielspezies mischen (z. B. realistisch → Anime-Humanoid: Augen, Nase, Mund, Proportionen). Nur Parameter, keine Geometrie-/Haar-/Materialüberführung; Undo-fähig. Test style_blend_interpolates.
+
+Viewport: Toon-Vorschau (Schalter unter den Licht-Presets) – zweistufige Schattierung mit farbigem Schatten und Rim, angelehnt an MToon im VRM-Viewer; Näherung, nicht pixelgleich zum Export.
