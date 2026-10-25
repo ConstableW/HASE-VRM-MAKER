@@ -22,6 +22,9 @@ pub struct StudioState {
     pub body_name: String,
     pub import_path: Option<std::path::PathBuf>,
     pub prep: Option<Prep>,
+    pub var_name: String,
+    pub var_min: f32,
+    pub var_max: f32,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -74,7 +77,7 @@ impl App {
             else {
                 let cur = s.species_opt().map(|i| s.packages.species[i].clone());
                 let defaults = s.params.defs.iter().enumerate().filter(|(i, d)| (s.state.values[*i] - d.default).abs() > 1e-4).map(|(i, d)| (d.id.clone(), s.state.values[i])).collect();
-                let sp = Species { id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.as_ref().map(|c| c.components.clone()).unwrap_or_default(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Körperbasis: {}{}).", s.packages.body.label, cur.as_ref().map(|c| format!(", Basis-Spezies: {}", c.label)).unwrap_or_default()), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
+                let sp = Species { shape: Default::default(), id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.as_ref().map(|c| c.components.clone()).unwrap_or_default(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Körperbasis: {}{}).", s.packages.body.label, cur.as_ref().map(|c| format!(", Basis-Spezies: {}", c.label)).unwrap_or_default()), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
                 match sp.write(&s.repo, &s.packages.body) {
                     Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir.clone()); let (nid, nver, ndig) = (sp.id.clone(), sp.version.clone(), sp.digest.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; s.state.species = nid.clone(); s.state.species_ref = hase_core::state::PkgRef { id: nid, version: nver, digest: ndig }; self.studio.msg = format!("Gespeichert: {} – der aktuelle Charakter nutzt sie jetzt", dir.display()); self.studio.new_name.clear(); }
                     Err(e) => self.studio.msg = e,
@@ -122,6 +125,31 @@ impl App {
                 ui.colored_label(theme::TEXT2, format!("{} · {} v{}", pkg.label, pkg.id, pkg.version));
                 ui.add_space(6.0);
                 for st in validate::body_stages(&s.body, &s.params, &pkg, un) { stage_row(ui, &st); }
+                ui.separator();
+                ui.strong("Spezieskörper aus der Formung");
+                if self.studio.var_min == 0.0 && self.studio.var_max == 0.0 { self.studio.var_max = 1.0; }
+                let nsc = s.sculpt_count();
+                ui.weak("Körperbasis → Speziesmodell: Mit dem Pinsel („Direkt formen“) gestaltete Geometrie gehört entweder fest zum Spezieskörper (einbacken) oder wird bewusst zu einem Regler (Variation). Nicht jede Formung muss ein Regler werden.");
+                let sp_label = s.packages.species[sel].label.clone();
+                ui.label(format!("Ziel-Spezies: {sp_label} · aktuelle Formung: {nsc} Vertices · eingebacken: {} · Variationen: {}", s.packages.species[sel].shape.baked.len(), s.packages.species[sel].shape.variations.len()));
+                if !editable { ui.colored_label(theme::WARN, "Mitgelieferte Spezies sind schreibgeschützt – links duplizieren oder als neue Spezies speichern."); }
+                else {
+                    if ui.add_enabled(nsc > 0, egui::Button::new("In Spezieskörper einbacken (feste Grundform)")).on_hover_text("Die Formung wird Teil des Körpers dieser Spezies – ohne Regler. Beispiel: Schädelform eines Asura.").clicked() {
+                        self.studio.msg = match s.bake_into_species(sel) { Ok(n) => { self.studio.dirty = false; format!("{n} Vertices eingebacken") } Err(e) => e };
+                    }
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut self.studio.var_name).hint_text("Name der Variation, z. B. Ohrlänge").desired_width(190.0));
+                        ui.add(egui::DragValue::new(&mut self.studio.var_min).speed(0.05).prefix("min "));
+                        ui.add(egui::DragValue::new(&mut self.studio.var_max).speed(0.05).prefix("max "));
+                    });
+                    if ui.add_enabled(nsc > 0 && !self.studio.var_name.trim().is_empty(), egui::Button::new("Als Variation (Regler) definieren")).on_hover_text("Die Formung wird zu einem benannten Regler dieser Spezies (Wert 1 = jetzige Formung). Die Charakter-Phase zeigt nur diese Regler.").clicked() {
+                        let (nm, mn, mx) = (self.studio.var_name.trim().to_string(), self.studio.var_min.min(self.studio.var_max), self.studio.var_max.max(self.studio.var_min));
+                        self.studio.msg = match s.define_variation(sel, &nm, mn, mx) { Ok(n) => { self.studio.var_name.clear(); format!("Variation „{nm}“ gespeichert ({n} Vertices)") } Err(e) => e };
+                    }
+                }
+                let vars: Vec<String> = s.packages.species[sel].shape.variations.iter().map(|v| format!("{}  [{:.1} … {:.1}]  · {} Vertices", v.label, v.min, v.max, v.delta.len())).collect();
+                for v in vars { ui.label(format!("• {v}")); }
+                if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
                 ui.separator();
                 ui.strong("Körperbasen");
                 let bodies = s.packages.bodies.clone();
@@ -543,7 +571,7 @@ mod tests {
             assert_eq!(s.state.values[r], 0.5);
             // keine MakeHuman-Spezies sichtbar; Spezies auf Basis B erstellen
             assert!(s.species_indices().is_empty());
-            let sp = Species { id: "user.species.testwesen-b".into(), label: "Testwesen B".into(), version: "1.0.0".into(), defaults: [("morph:head_larger".to_string(), 0.4f32)].into_iter().collect(), limits: [("morph:head_larger".to_string(), [0.0f32, 0.8f32])].into_iter().collect(), traits: vec![], presets: vec![], components: vec![], stub: false, user: true, description: "Test".into(), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
+            let sp = Species { shape: Default::default(), id: "user.species.testwesen-b".into(), label: "Testwesen B".into(), version: "1.0.0".into(), defaults: [("morph:head_larger".to_string(), 0.4f32)].into_iter().collect(), limits: [("morph:head_larger".to_string(), [0.0f32, 0.8f32])].into_iter().collect(), traits: vec![], presets: vec![], components: vec![], stub: false, user: true, description: "Test".into(), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
             let sdir = sp.write(&repo, &s.packages.body).unwrap();
             let mut sp = sp; sp.digest = hase_core::packages::file_digest(&sdir.join("hase-package.json")); sp.dir = Some(sdir.clone());
             s.packages.species.push(sp);

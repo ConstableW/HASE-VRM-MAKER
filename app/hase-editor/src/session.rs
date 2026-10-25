@@ -75,6 +75,10 @@ pub struct Session {
     pub vrm: Option<VrmRuntime>,
     pub sh: Shared,
     pub mh_sculpt: std::collections::BTreeMap<u32, [f32; 3]>,
+    /// Spezieskörper-Ebene (eingebackene Grundform + gewichtete Variationen), liegt unter der individuellen Formung.
+    pub species_layer: std::collections::BTreeMap<u32, [f32; 3]>,
+    /// Werte der Spezies-Variationen des aktuellen Charakters (Variation-ID → Wert).
+    pub var_vals: std::collections::BTreeMap<String, f32>,
     /// Stil-/Proportionsregler (Landmarken-Verformung) auf der MakeHuman-Basis
     pub style_vals: Vec<f32>,
     style_layer: std::collections::BTreeMap<u32, [f32; 3]>,
@@ -184,7 +188,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), style_vals: hase_core::avatar::defaults(), style_layer: Default::default(), sty_dirty: false, mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), species_layer: Default::default(), var_vals: Default::default(), style_vals: hase_core::avatar::defaults(), style_layer: Default::default(), sty_dirty: false, mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -330,6 +334,72 @@ impl Session {
         self.state.species_ref = PkgRef { id: sp.id.clone(), version: sp.version.clone(), digest: sp.digest.clone() };
         self.history.record(&before, None);
         self.dirty = true;
+        self.var_vals.clear();
+        self.refresh_species_layer();
+    }
+
+    /// Spezieskörper-Ebene neu berechnen (eingebackene Grundform + Variationen · Wert) und Differenz auf die Körperpositionen anwenden.
+    pub fn refresh_species_layer(&mut self) {
+        let mut new: std::collections::BTreeMap<u32, [f32; 3]> = Default::default();
+        if self.vrm.is_none() {
+            if let Some(sp) = self.species_opt().map(|i| &self.packages.species[i]) {
+                for (v, d) in &sp.shape.baked { new.insert(*v, *d); }
+                for var in &sp.shape.variations {
+                    let w = self.var_vals.get(&var.id).copied().unwrap_or(0.0).clamp(var.min, var.max);
+                    if w.abs() < 1e-6 { continue; }
+                    for (v, d) in &var.delta { let e = new.entry(*v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c] * w; } }
+                }
+            }
+        }
+        let n = self.eval.pos.len();
+        let keys: std::collections::BTreeSet<u32> = self.species_layer.keys().chain(new.keys()).copied().filter(|v| (*v as usize) < n).collect();
+        let mut any = false;
+        for v in keys {
+            let (o, nw) = (self.species_layer.get(&v).copied().unwrap_or([0.0; 3]), new.get(&v).copied().unwrap_or([0.0; 3]));
+            if (0..3).all(|c| (o[c] - nw[c]).abs() < 1e-9) { continue; }
+            let q = &mut self.eval.pos[v as usize]; for c in 0..3 { q[c] += nw[c] - o[c]; }
+            any = true;
+        }
+        self.species_layer = new;
+        if any { self.assets_dirty = true; self.sh.feat_dirty = true; self.resend_body = true; self.dirty = true; }
+    }
+
+    pub fn set_variation(&mut self, id: &str, v: f32) { self.var_vals.insert(id.into(), v); self.refresh_species_layer(); }
+
+    /// Aktuelle Formung (Pinsel) fest in den Spezieskörper einbacken: Grundgeometrie der Spezies, kein Regler.
+    pub fn bake_into_species(&mut self, idx: usize) -> Result<usize, String> {
+        if self.vrm.is_some() { return Err("Nur für die parametrische Körperbasis".into()); }
+        let sp = self.packages.species.get_mut(idx).ok_or("keine Spezies")?;
+        if !sp.user { return Err("Mitgelieferte Spezies sind schreibgeschützt – zuerst duplizieren".into()); }
+        let n = self.mh_sculpt.len(); if n == 0 { return Err("Keine Formung vorhanden".into()); }
+        for (v, d) in &self.mh_sculpt { let e = sp.shape.baked.entry(*v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c]; } }
+        self.finish_shape_move(idx);
+        Ok(n)
+    }
+
+    /// Aktuelle Formung als benannte Variation (Regler mit Bereich) der Spezies definieren.
+    pub fn define_variation(&mut self, idx: usize, label: &str, min: f32, max: f32) -> Result<usize, String> {
+        if self.vrm.is_some() { return Err("Nur für die parametrische Körperbasis".into()); }
+        let sp = self.packages.species.get_mut(idx).ok_or("keine Spezies")?;
+        if !sp.user { return Err("Mitgelieferte Spezies sind schreibgeschützt – zuerst duplizieren".into()); }
+        let n = self.mh_sculpt.len(); if n == 0 { return Err("Keine Formung vorhanden".into()); }
+        let id = format!("var-{}", hase_core::packages::slug(label)); if id == "var-" { return Err("Name fehlt".into()); }
+        if sp.shape.variations.iter().any(|x| x.id == id) { return Err(format!("Variation „{label}“ existiert bereits")); }
+        sp.shape.variations.push(hase_core::packages::Variation { id, label: label.into(), min, max, delta: self.mh_sculpt.clone() });
+        self.finish_shape_move(idx);
+        Ok(n)
+    }
+
+    fn finish_shape_move(&mut self, idx: usize) {
+        // Formung wandert in die Spezies; der sichtbare Körper bleibt (Baked) bzw. wird bei Wert 0 der Variation neutral
+        let layer = std::mem::take(&mut self.mh_sculpt);
+        for (v, d) in &layer { let q = &mut self.eval.pos[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        self.mh_hist.clear(); self.mh_redo.clear(); self.mh_stroke = None;
+        let old = std::mem::take(&mut self.species_layer);
+        for (v, d) in &old { let q = &mut self.eval.pos[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        self.refresh_species_layer();
+        if let Some(sp) = self.packages.species.get(idx) { if let Some(d) = sp.write(&self.repo, &self.packages.body).ok() { let dg = hase_core::packages::file_digest(&d.join("hase-package.json")); self.packages.species[idx].digest = dg.clone(); self.state.species_ref.digest = dg; } }
+        self.resend_body = true; self.dirty = true; self.assets_dirty = true; self.sh.feat_dirty = true;
     }
 
     pub fn apply_map(&mut self, m: &std::collections::BTreeMap<String, f32>) {
@@ -381,7 +451,7 @@ impl Session {
     /// Sofortige Auswertung der Parameter (nur für Arbeits-/Worker-Kontexte).
     fn apply_eval_now(&mut self) {
         self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
-        if let Some(st) = self.eval.apply(&self.body, &self.desired) { if st.full { for (v, d) in &self.mh_sculpt { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } }
+        if let Some(st) = self.eval.apply(&self.body, &self.desired) { if st.full { for (v, d) in self.species_layer.iter().chain(self.mh_sculpt.iter()) { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } }
     }
     fn restore(&mut self, s: CharacterState) {
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
@@ -414,7 +484,7 @@ impl Session {
             let mut morph_changed = need_body || std::mem::take(&mut self.resend_body);
             if self.dirty {
                 self.params.target_weights(&self.state.values, self.body.morphs.names.len(), &mut self.desired);
-                if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; if st.full { for (v, d) in &self.mh_sculpt { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
+                if let Some(st) = self.eval.apply(&self.body, &self.desired) { morph_changed = true; if st.full { for (v, d) in self.species_layer.iter().chain(self.mh_sculpt.iter()) { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } self.perf = Perf { morph_ms: st.ms, changed: st.changed_targets, active: st.active_targets, full: st.full, ..self.perf }; }
             }
             if self.sty_dirty || (morph_changed && !self.style_layer.is_empty()) { self.recompute_style(); morph_changed = true; }
             body_moved = morph_changed;
@@ -1878,7 +1948,7 @@ impl Session {
     pub fn shared_json(&self) -> serde_json::Value {
         let feats: serde_json::Map<String, serde_json::Value> = self.sh.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect();
         let sculpt: Vec<serde_json::Value> = self.mh_sculpt.iter().flat_map(|(v, d)| [serde_json::json!(v), serde_json::json!((d[0] * 1e5).round() / 1e5), serde_json::json!((d[1] * 1e5).round() / 1e5), serde_json::json!((d[2] * 1e5).round() / 1e5)]).collect();
-        serde_json::json!({"features": feats, "mhSculpt": sculpt, "style": hase_core::avatar::to_map(&self.style_vals)})
+        serde_json::json!({"features": feats, "mhSculpt": sculpt, "variations": self.var_vals, "style": hase_core::avatar::to_map(&self.style_vals)})
     }
     pub fn apply_shared_json(&mut self, j: &serde_json::Value) {
         self.sh.features.clear();
@@ -1894,6 +1964,8 @@ impl Session {
             let sm: std::collections::BTreeMap<String, f32> = j["style"].as_object().map(|o| o.iter().filter_map(|(k, x)| Some((k.clone(), x.as_f64()? as f32))).collect()).unwrap_or_default();
             self.style_vals = hase_core::avatar::from_map(&sm); self.sty_dirty = true;
             self.mh_reset_sculpt();
+            self.var_vals = j["variations"].as_object().map(|o| o.iter().filter_map(|(k, x)| Some((k.clone(), x.as_f64()? as f32))).collect()).unwrap_or_default();
+            self.refresh_species_layer();
             let nums: Vec<f64> = j["mhSculpt"].as_array().into_iter().flatten().filter_map(|x| x.as_f64()).collect();
             for c in nums.chunks_exact(4) { let v = c[0] as u32; if (v as usize) < self.eval.pos.len() { self.mh_set(v, [c[1] as f32, c[2] as f32, c[3] as f32]); } }
             self.resend_body = true; self.dirty = true; self.assets_dirty = true;
@@ -1904,6 +1976,40 @@ impl Session {
 #[cfg(test)]
 mod mh_tool_tests {
     use super::*;
+
+    #[test]
+    fn species_bake_and_variation() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        let mut sp = s.packages.species[s.species_opt().unwrap_or(0)].clone();
+        sp.id = "user.species.test-shape".into(); sp.label = "TestShape".into(); sp.user = true; sp.dir = None; sp.shape = Default::default();
+        s.packages.species.push(sp);
+        let idx = s.packages.species.len() - 1;
+        s.apply_species(idx); s.refresh();
+        let h = s.body_height();
+        let hit = s.avatar_pick([0.0, h * 0.62, 3.0], [0.0, 0.0, -1.0]).expect("Treffer");
+        s.sh.brush.radius = 0.08;
+        let p0 = s.eval.pos.clone();
+        s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
+        let p1 = s.eval.pos.clone();
+        // Variation: Formung wandert in die Spezies, Körper ist bei Wert 0 neutral, bei 1 geformt
+        s.define_variation(idx, "Bauch", 0.0, 1.5).unwrap();
+        assert_eq!(s.mh_sculpt.len(), 0);
+        assert_eq!(s.eval.pos.iter().zip(&p0).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Wert 0 = neutral");
+        s.set_variation("var-bauch", 1.0);
+        assert_eq!(s.eval.pos.iter().zip(&p1).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Wert 1 = Formung");
+        // Einbacken: fester Teil des Körpers
+        s.set_variation("var-bauch", 0.0);
+        s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
+        let p2 = s.eval.pos.clone();
+        s.bake_into_species(idx).unwrap();
+        assert_eq!(s.eval.pos.iter().zip(&p2).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Einbacken ändert die Form nicht");
+        // Neu laden: Spezies samt Form kommt aus dem Paket
+        let pk = hase_core::packages::Packages::load(&repo).unwrap();
+        let back = pk.species.iter().find(|x| x.id == "user.species.test-shape").unwrap();
+        let _ = std::fs::remove_dir_all(hase_core::packages::user_dir(&repo).join("user.species.test-shape"));
+        assert!(!back.shape.baked.is_empty() && back.shape.variations.len() == 1);
+    }
 
     #[test]
     fn makehuman_features_sculpt_export() {
@@ -1967,7 +2073,7 @@ impl Session {
         // Morph-Zustand ohne Stil- und Formungsebene
         let mut pos_m = self.eval.pos.clone();
         for (v, d) in &self.style_layer { let q = &mut pos_m[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
-        for (v, d) in &self.mh_sculpt { let q = &mut pos_m[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
+        for (v, d) in self.species_layer.iter().chain(self.mh_sculpt.iter()) { let q = &mut pos_m[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
         let mut new_layer: std::collections::BTreeMap<u32, [f32; 3]> = Default::default();
         if self.style_active() {
             if self.rig.is_none() { self.rig = hase_core::export::RigData::load(&self.packages.body.data_root, &self.body.obj).ok(); }
@@ -2009,7 +2115,7 @@ impl Session {
         // Ergebnis: eval.pos = Morphs + Stilebene + Formung
         let mut out = pos_m;
         for (v, d) in &new_layer { let q = &mut out[*v as usize]; for c in 0..3 { q[c] += d[c]; } }
-        for (v, d) in &self.mh_sculpt { let q = &mut out[*v as usize]; for c in 0..3 { q[c] += d[c]; } }
+        for (v, d) in self.species_layer.iter().chain(self.mh_sculpt.iter()) { let q = &mut out[*v as usize]; for c in 0..3 { q[c] += d[c]; } }
         self.eval.pos = out;
         self.style_layer = new_layer;
         self.pose_rig = None; self.push_grid = None;

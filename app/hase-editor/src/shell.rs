@@ -169,6 +169,12 @@ impl App {
                 });
                 if sel != cur && sel != usize::MAX { s.apply_species(sel); self.rows_key.1 = usize::MAX; }
             }
+            // Variationen der Spezies (bewusst definierte Regler)
+            let vars: Vec<(String, String, f32, f32, f32)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].shape.variations.iter().map(|v| (v.id.clone(), v.label.clone(), v.min, v.max, s.var_vals.get(&v.id).copied().unwrap_or(0.0))).collect()).unwrap_or_default() };
+            if !vars.is_empty() {
+                ui_kit::section(ui, "Variationen der Spezies");
+                for (id, label, mn, mx, val) in vars { if let Some(n) = ui_kit::param_row(ui, &label, val, mn..=mx, 0.0, "Von der Spezies definierte Variation") { self.session.as_mut().unwrap().set_variation(&id, n); } }
+            }
             // Preset-Vorschau (erste fünf)
             let presets: Vec<(String, std::collections::BTreeMap<String, f32>)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].presets.iter().take(5).map(|p| (p.label.clone(), p.params.clone())).collect()).unwrap_or_default() };
             if !presets.is_empty() {

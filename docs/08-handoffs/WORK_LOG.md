@@ -58,3 +58,6 @@ Posen (A→T-Kompensation), Kleidungskollision, Lippenmaske, Header Speichern/Ex
 
 ## 2026-10-24 – UI-Meilenstein nach verbindlichem Mockup
 Neues Hauptlayout (Kopfzeile, Navigation links mit Icons, Viewport-Overlays, Akkordeon rechts, Presetleiste, Bibliothek als Panel, Outfit-Kachelraster), 11 Presets für „Mensch“. Details: ux-concept.md.
+
+## 2026-10-25 – Spezieskörper: Einbacken vs. Variation
+`packages::SpeciesShape` (baked + Variationen, Sidecar `shape.json`, Hash im Manifest), `Session::{bake_into_species, define_variation, set_variation, refresh_species_layer}`, Studio-Abschnitt „Spezieskörper aus der Formung“ (Tab Körperbasis, nur eigene Spezies), Variationsregler in der Spezieskarte der Charakter-Phase, Persistenz in Charakterdatei (`variations`). Test `species_bake_and_variation`. Nicht per Hand in der Windows-GUI geprüft; Exe nicht neu gebaut.

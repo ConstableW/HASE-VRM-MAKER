@@ -10,8 +10,27 @@ pub struct Preset { pub id: String, pub label: String, pub params: BTreeMap<Stri
 #[derive(Clone, Debug)]
 pub struct Component { pub asset: String, pub slot: String, pub stub: bool }
 
+/// Benannte, bewusst gewählte Variation eines Spezieskörpers (Regler mit Bereich); `delta` = Vertexverschiebung bei Wert 1.
+#[derive(Clone, Debug)]
+pub struct Variation { pub id: String, pub label: String, pub min: f32, pub max: f32, pub delta: BTreeMap<u32, [f32; 3]> }
+/// Geometrie des Spezieskörpers über der Körperbasis: `baked` = fester Teil des Körpers (Grundform), `variations` = einstellbare Varianten.
+#[derive(Clone, Debug, Default)]
+pub struct SpeciesShape { pub baked: BTreeMap<u32, [f32; 3]>, pub variations: Vec<Variation> }
+
+fn layer_json(m: &BTreeMap<u32, [f32; 3]>) -> Value { Value::Array(m.iter().flat_map(|(v, d)| [serde_json::json!(v), serde_json::json!((d[0] * 1e5).round() / 1e5), serde_json::json!((d[1] * 1e5).round() / 1e5), serde_json::json!((d[2] * 1e5).round() / 1e5)]).collect()) }
+fn layer_from(v: &Value) -> BTreeMap<u32, [f32; 3]> { let n: Vec<f64> = v.as_array().into_iter().flatten().filter_map(|x| x.as_f64()).collect(); n.chunks_exact(4).map(|c| (c[0] as u32, [c[1] as f32, c[2] as f32, c[3] as f32])).collect() }
+
+impl SpeciesShape {
+    pub fn is_empty(&self) -> bool { self.baked.is_empty() && self.variations.is_empty() }
+    pub fn to_json(&self) -> Value { serde_json::json!({"baked": layer_json(&self.baked), "variations": self.variations.iter().map(|x| serde_json::json!({"id": x.id, "label": x.label, "min": x.min, "max": x.max, "delta": layer_json(&x.delta)})).collect::<Vec<_>>()}) }
+    pub fn from_json(v: &Value) -> SpeciesShape {
+        SpeciesShape { baked: layer_from(&v["baked"]), variations: v["variations"].as_array().map(|a| a.iter().map(|x| Variation { id: x["id"].as_str().unwrap_or("").into(), label: x["label"].as_str().unwrap_or("").into(), min: x["min"].as_f64().unwrap_or(0.0) as f32, max: x["max"].as_f64().unwrap_or(1.0) as f32, delta: layer_from(&x["delta"]) }).collect()).unwrap_or_default() }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Species {
+    pub shape: SpeciesShape,
     pub id: String,
     pub label: String,
     pub version: String,
@@ -77,6 +96,7 @@ impl Packages {
                         description: v["description"].as_str().unwrap_or("").into(),
                         body_id: v["requires"].as_array().and_then(|a| a.iter().filter_map(|r| r["id"].as_str()).find(|i| i.contains(".body."))).unwrap_or("").into(),
                         dir: user_dirs.get(v["id"].as_str().unwrap_or("")).cloned(),
+                        shape: user_dirs.get(v["id"].as_str().unwrap_or("")).and_then(|d| std::fs::read_to_string(d.join("shape.json")).ok()).and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|j| SpeciesShape::from_json(&j)).unwrap_or_default(),
                         digest: digests.get(v["id"].as_str().unwrap_or("")).cloned().unwrap_or_default(),
                     });
                 }
@@ -141,12 +161,14 @@ impl Species {
             "schemaVersion": "1.0", "id": self.id, "type": "species", "version": self.version,
             "name": {"de": self.label}, "description": self.description, "authors": ["Benutzer"], "tags": ["user"],
             "license": {"spdx": "CC0-1.0", "attribution": null, "redistribution": true},
-            "requires": requires, "files": [], "dev": {"status": "user"},
+            "requires": requires, "files": [], "dev": {"status": "user", "shapeSha": if self.shape.is_empty() { String::new() } else { sha256_hex(self.shape.to_json().to_string().as_bytes()) }},
             "species": {
                 "targets": {"bodyInterface": {"id": body.interface, "range": "^1.0"}},
                 "defaults": self.defaults, "limits": limits, "traits": traits, "components": comps, "capabilities": [], "presets": presets
             }
         });
+        let sf = dir.join("shape.json");
+        if self.shape.is_empty() { let _ = std::fs::remove_file(&sf); } else { std::fs::write(&sf, self.shape.to_json().to_string()).map_err(|e| format!("{}: {e}", sf.display()))?; }
         let f = dir.join("hase-package.json");
         std::fs::write(&f, serde_json::to_string_pretty(&m).unwrap()).map_err(|e| format!("{}: {e}", f.display()))?;
         Ok(dir)
