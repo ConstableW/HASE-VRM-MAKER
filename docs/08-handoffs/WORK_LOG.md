@@ -93,3 +93,5 @@ Frisur: Zopf/Pferdeschwanz (Parameter „Zusammenbinden“, „Zopf-Höhe“, Pr
 
 ## 2026-10-25 – Outfit-Vorlagen
 Outfit-Studio: „Meine Outfits“ – getragene Kleidung samt Farben als benannte Vorlage speichern (user-content/outfits.json), anwenden (lädt Teile, setzt Farben, legt andere Kleidung ab) und löschen. Test outfit_roundtrip.
+
+Studio: Auswahl einer Spezies zeigt sie im Viewport; Tab Körperbasis enthält dieselben Werkzeuge wie die Charakter-Phase (Pinsel, Merkmale inkl. Frisur) – eine Toolbox; fehlende Glyphen (→) durch ASCII ersetzt.

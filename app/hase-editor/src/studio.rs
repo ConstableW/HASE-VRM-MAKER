@@ -65,7 +65,7 @@ impl App {
             for i in 0..n {
                 let sp = &s.packages.species[i];
                 let label = format!("{}{}{}{}", sp.label, if sp.user { "  · eigene" } else { "" }, if sp.stub { "  · Stub" } else { "" }, if !sp.body_id.is_empty() && sp.body_id != s.packages.body.id { "  · andere Körperbasis" } else { "" });
-                if ui.selectable_label(self.studio.sel == i, label).clicked() { self.studio.sel = i; }
+                if ui.selectable_label(self.studio.sel == i, label).clicked() { self.studio.sel = i; let _ = s.select_species(i); }
             }
         });
         ui.separator();
@@ -114,12 +114,31 @@ impl App {
         if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
     }
 
+    /// Werkzeuge des Studios (dieselben wie in der Charakter-Phase): Pinsel-Formung und Merkmale wirken auf den Spezieskörper im Viewport.
+    fn studio_tools(&mut self, ui: &mut egui::Ui) {
+        let vrm = self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(false);
+        if vrm { return; }
+        egui::CollapsingHeader::new("Formen & Merkmale (Werkzeuge)").default_open(true).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if crate::ui_kit::icon_tile(ui, crate::icons::Icon::Sculpt, "Pinsel", egui::vec2(64.0, 50.0), self.tool == crate::app::Tool::Sculpt, "Direkt am Körper im Viewport formen").clicked() { self.tool = if self.tool == crate::app::Tool::Sculpt { crate::app::Tool::Orbit } else { crate::app::Tool::Sculpt }; }
+                ui.weak("Formen im Viewport, danach unten einbacken oder als Variation definieren.");
+            });
+            if self.tool == crate::app::Tool::Sculpt { self.sculpt_panel(ui); }
+            for (k, (kind, label)) in hase_core::features::KINDS.iter().enumerate() {
+                if !self.session.as_ref().map(|s| s.feature_allowed(kind)).unwrap_or(true) { continue; }
+                egui::CollapsingHeader::new(*label).id_salt(("studiofeat", k)).show(ui, |ui| self.feature_panel(ui, k));
+            }
+        });
+        ui.separator();
+    }
+
     pub(crate) fn studio_detail(&mut self, ui: &mut egui::Ui) {
         if self.session.is_none() { return; }
         let un = unassigned(self);
         ui.horizontal_wrapped(|ui| { for (i, t) in TABS.iter().enumerate() { if ui.selectable_label(self.studio.tab == i, *t).clicked() { self.studio.tab = i; } } });
         ui.separator();
         self.workflow_bar(ui);
+        if self.studio.tab == 1 { self.studio_tools(ui); }
         let sel = self.studio.sel;
         let s = self.session.as_mut().unwrap();
         let sel = sel.min(s.packages.species.len() - 1);
@@ -147,7 +166,7 @@ impl App {
                 ui.strong("Spezieskörper aus der Formung");
                 if self.studio.var_min == 0.0 && self.studio.var_max == 0.0 { self.studio.var_max = 1.0; }
                 let nsc = s.sculpt_count();
-                ui.weak("Körperbasis → Speziesmodell: Mit dem Pinsel („Direkt formen“) gestaltete Geometrie gehört entweder fest zum Spezieskörper (einbacken) oder wird bewusst zu einem Regler (Variation). Nicht jede Formung muss ein Regler werden.");
+                ui.weak("Körperbasis -> Speziesmodell: Mit dem Pinsel („Direkt formen“) gestaltete Geometrie gehört entweder fest zum Spezieskörper (einbacken) oder wird bewusst zu einem Regler (Variation). Nicht jede Formung muss ein Regler werden.");
                 let sp_label = s.packages.species[sel].label.clone();
                 ui.label(format!("Ziel-Spezies: {sp_label} · aktuelle Formung: {nsc} Vertices · eingebacken: {} · Variationen: {}", s.packages.species[sel].shape.baked.len(), s.packages.species[sel].shape.variations.len()));
                 if !editable { ui.colored_label(theme::WARN, "Mitgelieferte Spezies sind schreibgeschützt – links duplizieren oder als neue Spezies speichern."); }

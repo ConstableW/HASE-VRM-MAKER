@@ -27,7 +27,7 @@ pub fn body_stages(body: &Body, params: &Catalog, pkg: &BodyPackage, unassigned_
         st("Importiert", Some(true), format!("{} Vertices (inkl. Helfer), {} Gruppen", body.obj.pos.len(), body.obj.groups.len())),
         st("Geometrisch verwendbar", Some(degenerate == 0 && nv > 0), format!("{nv} sichtbare Vertices, {nt} Dreiecke, {degenerate} degenerierte")),
         st("Rig-kompatibel", Some(bones.is_some() && weights), match bones { Some(b) => format!("{b} Bones, Gewichte {}", if weights { "vorhanden" } else { "fehlen" }), None => "kein Rig gefunden".into() }),
-        st("Morph-kompatibel", Some(!body.morphs.names.is_empty()), format!("{} Targets → {} Parameter", body.morphs.names.len(), params.defs.len())),
+        st("Morph-kompatibel", Some(!body.morphs.names.is_empty()), format!("{} Targets -> {} Parameter", body.morphs.names.len(), params.defs.len())),
         st("Als Körperbasis vollständig konfiguriert", Some(pairs > 0 && unassigned_params == 0 && humanoid), format!("{pairs} Links/Rechts-Paare, {unassigned_params} Parameter ohne Region, VRM-Humanoid-Fähigkeit {}", if humanoid { "deklariert" } else { "fehlt" })),
     ]
 }

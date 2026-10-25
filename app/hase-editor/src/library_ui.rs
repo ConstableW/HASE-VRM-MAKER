@@ -231,7 +231,7 @@ impl App {
             });
             ui.separator();
             ui.label(format!("{} Parameter unterscheiden sich", diffs.len()));
-            egui::ScrollArea::vertical().max_height(110.0).show(ui, |ui| { for (n, a, b) in diffs.iter().take(30) { ui.label(format!("{n}: {a:.2} → {b:.2}")); } });
+            egui::ScrollArea::vertical().max_height(110.0).show(ui, |ui| { for (n, a, b) in diffs.iter().take(30) { ui.label(format!("{n}: {a:.2} -> {b:.2}")); } });
         });
         if !open { self.lib.compare = false; }
     }

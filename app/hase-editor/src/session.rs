@@ -1251,7 +1251,7 @@ impl Session {
         model.vrm_names = vec![None; n]; for (k, &b) in &humanoid { model.vrm_names[b] = Some(k.clone()); }
         model.rest_rot = vec![[0.0, 0.0, 0.0, 1.0]; n];
         model.bones = bones; model.humanoid = humanoid; model.identity_rest = true; model.rigless = false;
-        Ok(format!("Skelett aus abgebildeter MakeHuman-Basis abgeleitet (Abweichung {:.1} → {:.1} mm, {:.0} ms)", reg.icp_rms_before * 1000.0, reg.icp_rms_after * 1000.0, reg.ms))
+        Ok(format!("Skelett aus abgebildeter MakeHuman-Basis abgeleitet (Abweichung {:.1} -> {:.1} mm, {:.0} ms)", reg.icp_rms_before * 1000.0, reg.icp_rms_after * 1000.0, reg.ms))
     }
 
     pub fn close_vrm(&mut self) {
@@ -1284,7 +1284,7 @@ impl Session {
         let reg = register(&mh_pos, &self.body_uniq, &self.body.topo.base_tris, &mh_bones, &rig.weights, &Target { bones: &tb, humanoid: &v.model.humanoid, skin_pos: &sp, skin_nrm: &sn })?;
         let ids: Vec<u32> = (0..sp.len() as u32).collect();
         let grid = hase_core::fit::BodyGrid::build(&sp, &ids, 0.03);
-        let info = format!("Anprobe: {} Bones zugeordnet, Abweichung zur Haut {:.1} → {:.1} mm, Registrierung {:.0} ms", reg.paired, reg.icp_rms_before * 1000.0, reg.icp_rms_after * 1000.0, reg.ms);
+        let info = format!("Anprobe: {} Bones zugeordnet, Abweichung zur Haut {:.1} -> {:.1} mm, Registrierung {:.0} ms", reg.paired, reg.icp_rms_before * 1000.0, reg.icp_rms_after * 1000.0, reg.ms);
         let v = self.vrm.as_mut().unwrap();
         v.dress = Some(VrmDress { skin_pos: sp, skin_nrm: sn, skin_joints: sj, skin_weights: sw, skin_ids: ids, grid, base: reg.base });
         v.dress_info = info;
