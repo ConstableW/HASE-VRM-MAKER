@@ -18,6 +18,7 @@ pub struct ExDoc {
     pub humanoid: BTreeMap<String, usize>,
     pub expressions: Vec<(String, Vec<(usize, usize, f32)>)>, // (Name, [(Mesh, Target, Gewicht)])
     pub meta: ExMeta,
+    pub springs: Vec<(String, Vec<usize>)>, // (Name, Bone-Kette) → VRMC_springBone
 }
 
 /// UE-Mannequin-Namen → VRM-Humanoid-Bones (nur Pflicht- und gängige optionale Bones).
@@ -185,6 +186,11 @@ pub fn write_glb(doc: &ExDoc) -> Result<Vec<u8>, String> {
         "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}],
         "extensions": {"VRMC_vrm": vrm}
     });
+    if !doc.springs.is_empty() {
+        let springs: Vec<Value> = doc.springs.iter().map(|(n, ch)| json!({"name": n, "joints": ch.iter().map(|&b| json!({"node": b, "hitRadius": 0.02, "stiffness": 0.8, "gravityPower": 0.15, "gravityDir": [0.0, -1.0, 0.0], "dragForce": 0.35})).collect::<Vec<_>>()})).collect();
+        gltf["extensions"]["VRMC_springBone"] = json!({"specVersion": "1.0", "springs": springs});
+        gltf["extensionsUsed"].as_array_mut().unwrap().push(json!("VRMC_springBone"));
+    }
     if !images.is_empty() { gltf["images"] = json!(images); gltf["textures"] = json!(textures); }
     gltf["bufferViews"] = json!(bin.views); gltf["accessors"] = json!(bin.accs);
     pad4(&mut bin.data);

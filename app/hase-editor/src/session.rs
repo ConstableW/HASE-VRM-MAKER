@@ -17,7 +17,7 @@ pub enum LoadPlan { Ready(CharacterState, Vec<String>), NeedsBody(hase_core::pac
 /// Geöffnetes statisches VRM-/glTF-Modell (Ansehen, Posen, Ausdrücke).
 pub struct VrmRuntime { pub model: hase_core::vrm_model::VrmModel, rig: hase_core::pose::PoseRig, tris: Vec<Vec<[u32; 3]>>, floor: f32, pub expr: std::collections::BTreeMap<String, f32>, pub raw: std::collections::BTreeMap<(usize, usize), f32>, shown: Vec<bool>, dirty: bool, pub path: PathBuf, pub hidden: std::collections::BTreeSet<usize>, pub skin_parts: std::collections::BTreeSet<usize>, dress: Option<VrmDress>, pub dress_info: String, pub avatar: AvatarState, pub tints: std::collections::BTreeMap<usize, [f32; 3]>, pub base_id: Option<String>, pub base_sha: String }
 
-pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant> }
+pub struct AvatarState { pub prep: hase_core::avatar::Prep, pub vals: Vec<f32>, orig: Vec<Vec<[f32; 3]>>, orig_bones: Vec<[f32; 3]>, changed: bool, pub eye_linked: bool, dress_due: Option<Instant>, pub features: std::collections::BTreeMap<String, hase_core::features::FeatureState>, pub feat_changed: bool, pub generated: hase_core::features::Generated, pub gen_rev: u64, feat_shown: Vec<String>, feat_rev_seen: u64 }
 
 pub struct VrmDress { skin_pos: Vec<[f32; 3]>, skin_nrm: Vec<[f32; 3]>, skin_joints: Vec<[u16; 4]>, skin_weights: Vec<[f32; 4]>, skin_ids: Vec<u32>, grid: hase_core::fit::BodyGrid, base: Vec<[f32; 3]> }
 
@@ -846,7 +846,7 @@ impl Session {
         if self.state.style.skin.has_details() { report.push("Hinweis: Make-up/Sommersprossen/Details sind in die Hauttextur eingerechnet (nicht mehr einzeln editierbar im VRM).".into()); }
         report.push("Hinweis: Material-Glanz/Reflexion der Augen wird nicht exportiert; Pupillen-/Irisfarben sind in die Augentextur eingebacken.".into());
         let meta = ExMeta { name: o.name.clone(), author: o.author.clone(), copyright: "Basismesh, Targets, Rig, Haare, Augen, Kleidung: MakeHuman/MPFB2-Community-Assets (CC0 1.0); Zusammenstellung mit HASE VRM MAKER".into(), license_url: o.license_url.clone(), commercial: o.commercial.clone(), redistribution: o.redistribution };
-        Ok((ExDoc { meshes, materials, images, bones, humanoid, expressions, meta }, report))
+        Ok((ExDoc { meshes, materials, images, bones, humanoid, expressions, meta, springs: vec![] }, report))
     }
 }
 
@@ -1021,7 +1021,7 @@ impl Session {
         let skin_parts: std::collections::BTreeSet<usize> = model.parts.iter().enumerate().filter(|(_, p)| { let (lo, hi) = p.pos.iter().fold((f32::MAX, f32::MIN), |a, q| (a.0.min(q[1]), a.1.max(q[1]))); hi - lo >= 0.5 * model.height }).map(|(i, _)| i).collect();
         for rt in self.proxies.values_mut() { rt.created = false; }
         self.proxy_skin.clear(); self.assets_dirty = true;
-        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None } };
+        let avatar = { let model_ref = &model; let prep = hase_core::avatar::prepare(model_ref); AvatarState { prep, vals: hase_core::avatar::defaults(), orig: model_ref.parts.iter().map(|p| p.pos.clone()).collect(), orig_bones: model_ref.bones.iter().map(|b| b.pos).collect(), changed: false, eye_linked: true, dress_due: None, features: Default::default(), feat_changed: false, generated: Default::default(), gen_rev: 0, feat_shown: vec![], feat_rev_seen: 0 } };
         self.vrm = Some(VrmRuntime { model, rig, tris, floor, expr: Default::default(), raw: Default::default(), shown: vec![], dirty: true, path: path.to_path_buf(), hidden: Default::default(), skin_parts, dress: None, dress_info: String::new(), avatar, tints: Default::default(), base_id: None, base_sha: String::new() });
         let info = if rigless_info.is_empty() { info } else { format!("{info} · {rigless_info}") };
         Ok(info)
@@ -1133,18 +1133,35 @@ impl Session {
     fn avatar_update(&mut self) {
         let Some(v) = self.vrm.as_mut() else { return };
         if let Some(t) = v.avatar.dress_due { if Instant::now() >= t { v.avatar.dress_due = None; v.dress = None; self.assets_dirty = true; } }
-        if !v.avatar.changed { return; }
-        v.avatar.changed = false;
-        let d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
-        for (i, p) in v.model.parts.iter_mut().enumerate() { p.pos = d.pos[i].clone(); normals(&p.pos, &v.tris[i], &mut p.nrm); }
-        for (b, bn) in v.model.bones.iter_mut().enumerate() { bn.pos = d.bones[b]; }
-        let (lo, hi) = v.model.parts.iter().flat_map(|p| p.pos.iter().map(|q| q[1])).fold((f32::MAX, f32::MIN), |a, y| (a.0.min(y), a.1.max(y)));
-        v.model.height = hi; v.floor = -lo;
-        let bones: Vec<hase_core::export::ExBone> = v.model.bones.iter().map(|b| hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }).collect();
-        v.rig = hase_core::pose::PoseRig::generic(bones, v.model.rest_rot.clone(), v.model.vrm_names.clone());
+        let deform = v.avatar.changed;
+        if !deform && !v.avatar.feat_changed { return; }
+        v.avatar.changed = false; v.avatar.feat_changed = false;
+        if deform {
+            let d = hase_core::avatar::deform(&v.model, &v.avatar.prep, &v.avatar.orig, &v.avatar.orig_bones, &v.avatar.vals);
+            for (i, p) in v.model.parts.iter_mut().enumerate() { p.pos = d.pos[i].clone(); normals(&p.pos, &v.tris[i], &mut p.nrm); }
+            for (b, bn) in v.model.bones.iter_mut().enumerate() { bn.pos = d.bones[b]; }
+            let (lo, hi) = v.model.parts.iter().flat_map(|p| p.pos.iter().map(|q| q[1])).fold((f32::MAX, f32::MIN), |a, y| (a.0.min(y), a.1.max(y)));
+            v.model.height = hi; v.floor = -lo;
+        }
+        // Merkmale (Ohren, Schweif, Hörner) auf der verformten Basis neu erzeugen
+        let any = v.avatar.features.values().any(|f| f.enabled);
+        v.avatar.generated = if any { let lm = hase_core::avatar::prepare(&v.model).lm; hase_core::features::build(&v.model, &lm, &v.avatar.features) } else { Default::default() };
+        v.avatar.gen_rev += 1;
+        let mut bones: Vec<hase_core::export::ExBone> = v.model.bones.iter().map(|b| hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }).collect();
+        let mut rest = v.model.rest_rot.clone(); let mut names = v.model.vrm_names.clone();
+        for b in &v.avatar.generated.bones { bones.push(hase_core::export::ExBone { name: b.name.clone(), parent: b.parent, pos: [b.pos[0], b.pos[1] + v.floor, b.pos[2]] }); rest.push([0.0, 0.0, 0.0, 1.0]); names.push(None); }
+        v.rig = hase_core::pose::PoseRig::generic(bones, rest, names);
         v.dirty = true;
-        if v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(400)); }
+        if deform && v.dress.is_some() { v.avatar.dress_due = Some(Instant::now() + std::time::Duration::from_millis(400)); }
     }
+
+    // ---- Merkmale
+    pub fn feature_mut(&mut self, kind: &str) -> Option<&mut hase_core::features::FeatureState> {
+        let v = self.vrm.as_mut()?;
+        v.avatar.feat_changed = true;
+        Some(v.avatar.features.entry(kind.to_string()).or_insert_with(|| hase_core::features::FeatureState::new(kind)))
+    }
+    pub fn feature(&self, kind: &str) -> hase_core::features::FeatureState { self.vrm.as_ref().and_then(|v| v.avatar.features.get(kind).cloned()).unwrap_or_else(|| hase_core::features::FeatureState::new(kind)) }
 
     pub fn set_skin_part(&mut self, part: usize, on: bool) { if let Some(v) = self.vrm.as_mut() { if on { v.skin_parts.insert(part); } else { v.skin_parts.remove(&part); } v.dress = None; self.assets_dirty = true; } }
     pub fn set_part_hidden(&mut self, part: usize, hide: bool) { if let Some(v) = self.vrm.as_mut() { if hide { v.hidden.insert(part); } else { v.hidden.remove(&part); } v.dirty = true; } }
@@ -1190,6 +1207,25 @@ impl Session {
                 out.push(MeshUpdate::Positions { id: format!("vrm:{i}"), data });
             }
             v.dirty = false;
+        }
+        // Merkmale: Meshes neu anlegen, wenn neu erzeugt; bei Posen mit Bone-Matrizen skinnen
+        let recreated = v.avatar.gen_rev != v.avatar.feat_rev_seen;
+        if recreated {
+            for id in v.avatar.feat_shown.drain(..) { out.push(MeshUpdate::Remove(id)); }
+            v.avatar.feat_rev_seen = v.avatar.gen_rev;
+        }
+        if recreated || posing {
+            for (k, g) in v.avatar.generated.parts.iter().enumerate() {
+                let id = format!("feat:{k}");
+                let mut pos: Vec<[f32; 3]> = g.pos.iter().map(|q| [q[0], q[1] + floor, q[2]]).collect();
+                if let Some(m) = &mats { for (j, q) in pos.iter_mut().enumerate() { *q = skin_point(m, g.joints[j], g.weights[j], *q); } }
+                let tris: Vec<[u32; 3]> = g.idx.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect();
+                let mut nrm = Vec::new(); normals(&pos, &tris, &mut nrm);
+                let mut data = Vec::with_capacity(pos.len() * 6);
+                for (q, n) in pos.iter().zip(&nrm) { data.extend_from_slice(&[q[0], q[1], q[2], n[0], n[1], n[2]]); }
+                if recreated { out.push(MeshUpdate::Create(MeshDesc { id: id.clone(), indices: g.idx.clone(), uv: g.uv.clone(), data, texture: None, tint: g.color, mask: false, cull_back: false, mat: Default::default() })); v.avatar.feat_shown.push(id); }
+                else { out.push(MeshUpdate::Positions { id, data }); }
+            }
         }
         // Anprobe: Kleidung an die abgebildete Basis fitten, gegen die Haut kollisionskorrigieren, mit den Gewichten der Haut skinnen
         if let Some(d) = v.dress.as_ref() {
@@ -1260,8 +1296,15 @@ impl Session {
         if m.spring_bones { report.push("Verlust: Spring Bones (Haar-/Zubehörphysik) und die MToon-Materialeinstellungen des Originals werden nicht übernommen; Materialien erscheinen vereinfacht.".into()); }
         else { report.push("Verlust: MToon-Materialeinstellungen des Originals werden vereinfacht.".into()); }
         let meta = ExMeta { name: o.name.clone(), author: o.author.clone(), copyright: format!("Basismodell „{}“ (Rechte beim Urheber des Originals), Kleidung: MakeHuman/MPFB2-Community-Assets (CC0 1.0); Zusammenstellung mit HASE VRM MAKER", m.name), license_url: o.license_url.clone(), commercial: o.commercial.clone(), redistribution: o.redistribution };
-        let bones = m.bones.iter().map(|b| ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }).collect();
-        Ok((ExDoc { meshes, materials, images, bones, humanoid: m.humanoid.clone(), expressions, meta }, report))
+        let mut bones: Vec<ExBone> = m.bones.iter().map(|b| ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }).collect();
+        for b in &v.avatar.generated.bones { bones.push(ExBone { name: b.name.clone(), parent: b.parent, pos: b.pos }); }
+        for g in &v.avatar.generated.parts {
+            materials.push(ExMaterial { name: format!("Feature_{}", g.name), color: [g.color[0], g.color[1], g.color[2], 1.0], image: None, mask: false });
+            meshes.push(ExMesh { name: g.name.clone(), pos: g.pos.clone(), nrm: g.nrm.clone(), uv: g.uv.clone(), idx: g.idx.clone(), joints: g.joints.clone(), weights: g.weights.clone(), material: materials.len() - 1, targets: vec![] });
+        }
+        if !v.avatar.generated.parts.is_empty() { report.push(format!("Merkmale: {} Teile, {} Zusatz-Bones, {} Spring-Bone-Ketten", v.avatar.generated.parts.len(), v.avatar.generated.bones.len(), v.avatar.generated.springs.len())); }
+        let springs = v.avatar.generated.springs.clone();
+        Ok((ExDoc { meshes, materials, images, bones, humanoid: m.humanoid.clone(), expressions, meta, springs }, report))
     }
 }
 
@@ -1355,7 +1398,8 @@ impl Session {
         let tints: serde_json::Map<String, serde_json::Value> = v.tints.iter().map(|(k, c)| (k.to_string(), serde_json::json!(c))).collect();
         let assets: Vec<serde_json::Value> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| serde_json::json!({"id": a.id, "tint": a.tint})).collect();
         Some(serde_json::json!({"formatVersion": "0.1-avatar", "kind": "avatar", "species": {"id": ""}, "body": {"id": format!("avatar:{id}")}, "base": {"id": id, "sha": v.base_sha},
-            "params": hase_core::avatar::to_map(&v.avatar.vals), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets}))
+            "params": hase_core::avatar::to_map(&v.avatar.vals), "eyeLinked": v.avatar.eye_linked, "tints": tints, "hidden": v.hidden.iter().collect::<Vec<_>>(), "clothes": assets,
+            "features": v.avatar.features.iter().map(|(k, f)| (k.clone(), serde_json::json!({"enabled": f.enabled, "vals": f.vals, "color": f.color, "color2": f.color2}))).collect::<serde_json::Map<String, serde_json::Value>>()}))
     }
 
     /// Öffnet eine registrierte Basis als neuen Avatar (nackt, Standardwerte).
@@ -1375,6 +1419,15 @@ impl Session {
         v.avatar.changed = true;
         v.tints.clear();
         for (k, c) in j["tints"].as_object().into_iter().flatten() { if let (Ok(i), Some(a)) = (k.parse::<usize>(), c.as_array()) { if i < v.model.parts.len() && a.len() == 3 { v.tints.insert(i, [a[0].as_f64().unwrap_or(1.0) as f32, a[1].as_f64().unwrap_or(1.0) as f32, a[2].as_f64().unwrap_or(1.0) as f32]); } } }
+        v.avatar.features.clear();
+        for (k, f) in j["features"].as_object().into_iter().flatten() {
+            let mut st = hase_core::features::FeatureState::new(k);
+            st.enabled = f["enabled"].as_bool().unwrap_or(false);
+            if let Some(a) = f["vals"].as_array() { let vals: Vec<f32> = a.iter().filter_map(|x| x.as_f64().map(|y| y as f32)).collect(); if vals.len() == st.vals.len() { st.vals = vals; } }
+            for (key, dst) in [("color", &mut st.color), ("color2", &mut st.color2)] { if let Some(a) = f[key].as_array() { if a.len() == 3 { *dst = [a[0].as_f64().unwrap_or(0.5) as f32, a[1].as_f64().unwrap_or(0.5) as f32, a[2].as_f64().unwrap_or(0.5) as f32]; } } }
+            v.avatar.features.insert(k.clone(), st);
+        }
+        v.avatar.feat_changed = true;
         v.hidden = j["hidden"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|i| i as usize)).collect()).unwrap_or_default();
         let clothes: Vec<(String, [f32; 3])> = j["clothes"].as_array().map(|a| a.iter().filter_map(|c| { let t = c["tint"].as_array()?; Some((c["id"].as_str()?.to_string(), [t.first()?.as_f64()? as f32, t.get(1)?.as_f64()? as f32, t.get(2)?.as_f64()? as f32])) }).collect()).unwrap_or_default();
         let old: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
@@ -1387,7 +1440,7 @@ impl Session {
     pub fn reset_avatar(&mut self) {
         let ids: Vec<String> = self.state.assets.iter().filter(|a| a.id.starts_with("clothes/")).map(|a| a.id.clone()).collect();
         for id in ids { self.remove_asset(&id); }
-        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
+        if let Some(v) = self.vrm.as_mut() { v.avatar.vals = hase_core::avatar::defaults(); v.avatar.changed = true; v.avatar.features.clear(); v.avatar.feat_changed = true; v.tints.clear(); v.hidden.clear(); v.shown.iter_mut().for_each(|x| *x = false); for i in 0..v.model.parts.len() { self.pending.push(MeshUpdate::Remove(format!("vrm:{i}"))); } v.dirty = true; }
     }
 }
 

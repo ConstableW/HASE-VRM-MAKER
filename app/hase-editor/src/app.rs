@@ -573,7 +573,7 @@ impl App {
         if vrm && self.ws == Workspace::Charakter {
             match self.main {
                 Main::Gesicht | Main::Koerper => { let g = self.main == Main::Gesicht; self.panel_title(ui, if g { Icon::Head } else { Icon::Overview }, if g { "Gesicht" } else { "Körper" }); self.region_accordion(ui, self.main, false); }
-                Main::Stil => { if self.sub == 0 { self.avatar_colors(ui); } else { self.vrm_panel(ui); } }
+                Main::Stil => { if self.sub >= 10 { self.feature_panel(ui, self.sub - 10); } else if self.sub == 0 { self.avatar_colors(ui); } else { self.vrm_panel(ui); } }
                 _ => { self.panel_title(ui, Icon::Overview, "Avatar erstellen"); ui.colored_label(theme::TEXT2, "Wähle links einen Bereich – Gesicht, Augen (links/rechts getrennt), Körperform, Farben. Alle Regler wirken sofort am Modell."); ui.add_space(6.0); for l in ["Kopfgröße", "Körpergröße"] { let _ = l; } for id in ["head-size", "height", "shoulder-width", "hip-width", "breast-size"] { if let Some(i) = hase_core::avatar::index_of(id) { let d = &hase_core::avatar::DEFS[i]; let cur = self.session.as_ref().and_then(|s| s.vrm.as_ref()).map(|v| v.avatar.vals[i]).unwrap_or(0.0); if let Some(nv) = crate::ui_kit::param_row(ui, d.label, cur, d.min..=d.max, d.def, "") { if let Some(s) = self.session.as_mut() { s.avatar_set(i, nv); } } } } }
             }
             return;

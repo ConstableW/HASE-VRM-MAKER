@@ -381,11 +381,17 @@ impl App {
             ui_kit::section(ui, t);
             for (i, r) in regions::regions_of(m) { if !hase_core::avatar::DEFS.iter().any(|d| d.region == r.label) { continue; } if nav_row(ui, icons::for_region(r.label), r.label, self.main == m && self.region == i).clicked() { go = Some((m, i, 0)); } }
         }
+        ui_kit::section(ui, "Merkmale");
+        for (k, (kind, label)) in hase_core::features::KINDS.iter().enumerate() {
+            let on = self.session.as_ref().map(|s| s.feature(kind).enabled).unwrap_or(false);
+            let ic = [Icon::Ear, Icon::Species, Icon::Star][k];
+            if nav_row(ui, ic, &format!("{label}{}", if on { "  ●" } else { "" }), self.main == Main::Stil && self.sub == 10 + k).clicked() { go = Some((Main::Stil, usize::MAX, 10 + k)); }
+        }
         ui_kit::section(ui, "Aussehen");
         for (i, (l, ic)) in [("Farben", Icon::Skin), ("Modell & Ausdrücke", Icon::Overview)].iter().enumerate() { if nav_row(ui, *ic, l, self.main == Main::Stil && self.sub == i).clicked() { go = Some((Main::Stil, usize::MAX, i)); } }
         if let Some((m, r, sub)) = go {
             self.main = m; self.region = r; self.sub = sub;
-            if r != usize::MAX { self.open_regions.clear(); self.open_regions.insert(r); self.scroll_to = Some(r); self.focus(REGIONS[r].cam); } else { self.focus(regions::CAM_BODY); }
+            if r != usize::MAX { self.open_regions.clear(); self.open_regions.insert(r); self.scroll_to = Some(r); self.focus(REGIONS[r].cam); } else if m == Main::Stil && sub == 10 { self.focus(regions::CAM_HEAD); } else if m == Main::Stil && sub == 11 { let mut c = regions::CAM_BODY; c.yaw = 3.14; self.focus(c); } else if m == Main::Stil && sub == 12 { self.focus(regions::CAM_HEAD); } else { self.focus(regions::CAM_BODY); }
         }
     }
 
@@ -462,5 +468,29 @@ impl App {
         }
         if let Some(b) = start { self.start_avatar(&b); close = true; }
         if close { self.base_picker = false; }
+    }
+}
+
+impl App {
+    /// Panel eines additiven Merkmals (Ohren, Schweif, Hörner): Schalter, Vorlagen, Regler, Farben.
+    pub(crate) fn feature_panel(&mut self, ui: &mut egui::Ui, k: usize) {
+        let (kind, label) = hase_core::features::KINDS[k];
+        let icon = [Icon::Ear, Icon::Species, Icon::Star][k];
+        self.panel_title(ui, icon, label);
+        let Some(s) = self.session.as_mut() else { return };
+        let mut st = s.feature(kind);
+        let before = st.clone();
+        ui.checkbox(&mut st.enabled, format!("{label} verwenden"));
+        ui.colored_label(theme::TEXT2, match kind { "ears" => "Zusätzliche Ohren am Kopf (Tier-, Elfenohren). Die Basisohren lassen sich unter Gesicht › Ohren verkleinern.", "tail" => "Schweif mit eigener Bone-Kette (wird mit Spring Bones exportiert).", _ => "Hörner am Kopf." });
+        if st.enabled {
+            ui_kit::section(ui, "Vorlagen");
+            ui.horizontal_wrapped(|ui| { for (name, vals) in hase_core::features::presets(kind) { if ui.button(*name).clicked() { st.vals = vals.to_vec(); } } });
+            ui_kit::section(ui, "Form");
+            for (i, d) in hase_core::features::defs(kind).iter().enumerate() { let mut vv = st.vals[i]; if let Some(n) = ui_kit::param_row(ui, d.label, vv, d.min..=d.max, d.def, "") { vv = n; st.vals[i] = vv; } }
+            ui_kit::section(ui, "Farben");
+            ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color); ui.label(if kind == "ears" { "Außenseite" } else { "Farbe" }); });
+            if kind == "ears" { ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut st.color2); ui.label("Innenseite"); }); }
+        }
+        if st != before { if let Some(f) = s.feature_mut(kind) { *f = st; } }
     }
 }
