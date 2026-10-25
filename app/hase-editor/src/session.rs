@@ -350,6 +350,8 @@ impl Session {
         self.var_vals.clear();
         self.refresh_species_layer();
         self.apply_species_features(&sp);
+        let (tc, ta) = sp.shape.skin_tone.unwrap_or(([1.0; 3], 0.0));
+        if self.state.style.skin.tone != tc || self.state.style.skin.tone_amt != ta { self.state.style.skin.tone = tc; self.state.style.skin.tone_amt = ta; self.dirty = true; self.skin_dirty = true; self.style_dirty = true; }
     }
     /// Standardmerkmale der Spezies einschalten, nicht erlaubte ausschalten.
     pub fn apply_species_features(&mut self, sp: &hase_core::packages::Species) {
@@ -431,6 +433,7 @@ impl Session {
     pub fn derived_shape(&self) -> hase_core::packages::SpeciesShape {
         let mut sh = self.species_opt().map(|i| self.packages.species[i].shape.clone()).unwrap_or_default();
         if self.vrm.is_none() { for (v, d) in &self.mh_sculpt { let e = sh.baked.entry(*v).or_insert([0.0; 3]); for c in 0..3 { e[c] += d[c]; } } }
+        if self.state.style.skin.tone_amt > 0.0 { sh.skin_tone = Some((self.state.style.skin.tone, self.state.style.skin.tone_amt)); }
         sh
     }
     /// Nach dem Anlegen einer abgeleiteten Spezies: individuelle Formung steckt nun im Spezieskörper.
@@ -2051,8 +2054,8 @@ mod mh_tool_tests {
             head.iter().filter_map(|&v| { let p = s.eval.pos[v as usize]; let t = ((nose[1] - 0.025 - p[1]) / 0.03).clamp(0.0, 1.0) * ((nose[1] - 0.13 - p[1]) / -0.03).clamp(0.0, 1.0); if t < 0.01 || p[2] < nose[2] - 0.16 { None } else { Some((v, [-p[0] * 0.14 * amount * t, -0.008 * amount * t, 0.0])) } }).collect()
         };
         let write = |id: &str, shape: SpeciesShape| { let d = repo.join("examples/species/packages").join(id); std::fs::write(d.join("shape.json"), shape.to_json().to_string()).unwrap(); };
-        write("org.hase.species.dog-demi", SpeciesShape { baked: muzzle(0.022, 0.035, 0.014), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -0.6, max: 1.6, delta: muzzle(0.018, 0.035, 0.014) }], features: None });
-        write("org.hase.species.elf", SpeciesShape { baked: jaw(1.0), variations: vec![Variation { id: "var-kinnspitze".into(), label: "Kinnspitze".into(), min: -1.0, max: 1.5, delta: jaw(1.0) }], features: None });
+        write("org.hase.species.dog-demi", SpeciesShape { baked: muzzle(0.022, 0.035, 0.014), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -0.6, max: 1.6, delta: muzzle(0.018, 0.035, 0.014) }], features: None, skin_tone: None });
+        write("org.hase.species.elf", SpeciesShape { baked: jaw(1.0), variations: vec![Variation { id: "var-kinnspitze".into(), label: "Kinnspitze".into(), min: -1.0, max: 1.5, delta: jaw(1.0) }], features: None, skin_tone: Some(([0.9, 0.9, 1.0], 0.35)) });
         // Orkin: breiter, schwerer Unterkiefer und kräftige Brauenwülste; Zwerg: große, breite Nase und kantigeres Gesicht
         let heavy = |amount: f32| -> std::collections::BTreeMap<u32, [f32; 3]> {
             let mut m = std::collections::BTreeMap::new();
@@ -2079,10 +2082,10 @@ mod mh_tool_tests {
             std::fs::write(d.join("shape.json"), shape.to_json().to_string()).unwrap();
         };
         mkspecies("org.hase.species.orc", "Orkin", "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform), breite Schultern, kräftige Arme; Hörner erlaubt.", serde_json::json!({"mh:macro-age": 0.5, "mh:macro-gender": 0.8, "mh:torso-scale-horiz-decr-incr": 0.45, "mh:measure-shoulder-dist-decr-incr": 0.5, "mh:upperarm-fat-decr-incr": 0.4, "mh:measure-neck-circ-decr-incr": 0.5}),
-            SpeciesShape { baked: heavy(1.0), variations: vec![Variation { id: "var-kiefer".into(), label: "Kieferbreite".into(), min: -0.8, max: 1.5, delta: heavy(0.6) }], features: Some(vec!["horns".into(), "ears".into()]) });
+            SpeciesShape { baked: heavy(1.0), variations: vec![Variation { id: "var-kiefer".into(), label: "Kieferbreite".into(), min: -0.8, max: 1.5, delta: heavy(0.6) }], features: Some(vec!["horns".into(), "ears".into()]), skin_tone: Some(([0.5, 0.7, 0.55], 0.8)) });
         mkspecies("org.hase.species.dwarf", "Zwerg", "Humanoide mit großer, breiter Nase und kantigerem Gesicht (eingebackene Grundform), kurze Beine, breiter Rumpf.", serde_json::json!({"mh:macro-age": 0.55, "mh:macro-gender": 0.7, "mh:measure-lowerleg-height-decr-incr": -0.75, "mh:measure-upperleg-height-decr-incr": -0.5, "mh:torso-scale-horiz-decr-incr": 0.4, "mh:torso-scale-depth-decr-incr": 0.3, "mh:upperleg-fat-decr-incr": 0.2}),
-            SpeciesShape { baked: nosey(1.0), variations: vec![Variation { id: "var-nasengroesse".into(), label: "Nasengröße".into(), min: -0.8, max: 1.6, delta: nosey(0.8) }], features: None });
-        write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None });
+            SpeciesShape { baked: nosey(1.0), variations: vec![Variation { id: "var-nasengroesse".into(), label: "Nasengröße".into(), min: -0.8, max: 1.6, delta: nosey(0.8) }], features: None, skin_tone: None });
+        write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None, skin_tone: None });
     }
 
     #[test]

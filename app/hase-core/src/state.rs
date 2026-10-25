@@ -30,11 +30,11 @@ pub struct Decal { pub shape: u8, pub u: f32, pub v: f32, pub size: f32, pub rot
 pub const DECAL_SHAPES: [&str; 6] = ["Muttermal", "Stern", "Herz", "Ring", "Kreuz", "Narbe"];
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SkinStyle { pub gloss: f32, pub lips: Layer, pub shadow: Layer, pub blush: Layer, pub freckles: Layer, pub freckle_size: f32, pub freckle_seed: u32, pub decals: Vec<Decal> }
+pub struct SkinStyle { pub tone: [f32; 3], pub tone_amt: f32, pub gloss: f32, pub lips: Layer, pub shadow: Layer, pub blush: Layer, pub freckles: Layer, pub freckle_size: f32, pub freckle_seed: u32, pub decals: Vec<Decal> }
 impl Default for SkinStyle { fn default() -> Self { Self {
-    gloss: 0.3, lips: Layer { color: [0.72, 0.25, 0.30], amount: 0.0 }, shadow: Layer { color: [0.45, 0.30, 0.45], amount: 0.0 }, blush: Layer { color: [0.85, 0.40, 0.40], amount: 0.0 },
+    tone: [1.0, 1.0, 1.0], tone_amt: 0.0, gloss: 0.3, lips: Layer { color: [0.72, 0.25, 0.30], amount: 0.0 }, shadow: Layer { color: [0.45, 0.30, 0.45], amount: 0.0 }, blush: Layer { color: [0.85, 0.40, 0.40], amount: 0.0 },
     freckles: Layer { color: [0.45, 0.27, 0.15], amount: 0.0 }, freckle_size: 1.0, freckle_seed: 1, decals: vec![] } } }
-impl SkinStyle { pub fn has_details(&self) -> bool { self.lips.amount > 0.0 || self.shadow.amount > 0.0 || self.blush.amount > 0.0 || self.freckles.amount > 0.0 || !self.decals.is_empty() } }
+impl SkinStyle { pub fn has_details(&self) -> bool { self.tone_amt > 0.0 || self.lips.amount > 0.0 || self.shadow.amount > 0.0 || self.blush.amount > 0.0 || self.freckles.amount > 0.0 || !self.decals.is_empty() } }
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Style { pub eyes: EyeStyle, pub hair: HairStyle, pub skin: SkinStyle }
@@ -51,7 +51,7 @@ impl Style {
         json!({
             "eyes": {"linked": self.eyes.linked, "left": side(&self.eyes.left), "right": side(&self.eyes.right), "reflection": self.eyes.reflection, "limbal": self.eyes.limbal},
             "hair": {"root": jv3(&self.hair.root), "tip": jv3(&self.hair.tip), "highlight": jv3(&self.hair.highlight), "highlightAmount": self.hair.highlight_amt, "gloss": self.hair.gloss, "length": self.hair.length, "volTop": self.hair.vol_top, "volFront": self.hair.vol_front, "volSide": self.hair.vol_side, "volBack": self.hair.vol_back},
-            "skin": {"gloss": self.skin.gloss, "lips": lj(&self.skin.lips), "shadow": lj(&self.skin.shadow), "blush": lj(&self.skin.blush), "freckles": lj(&self.skin.freckles), "freckleSize": self.skin.freckle_size, "freckleSeed": self.skin.freckle_seed, "decals": self.skin.decals.iter().map(|d| json!({"shape": d.shape, "u": d.u, "v": d.v, "size": d.size, "rot": d.rot, "color": jv3(&d.color), "opacity": d.opacity})).collect::<Vec<_>>()}
+            "skin": {"tone": jv3(&self.skin.tone), "toneAmount": self.skin.tone_amt, "gloss": self.skin.gloss, "lips": lj(&self.skin.lips), "shadow": lj(&self.skin.shadow), "blush": lj(&self.skin.blush), "freckles": lj(&self.skin.freckles), "freckleSize": self.skin.freckle_size, "freckleSeed": self.skin.freckle_seed, "decals": self.skin.decals.iter().map(|d| json!({"shape": d.shape, "u": d.u, "v": d.v, "size": d.size, "rot": d.rot, "color": jv3(&d.color), "opacity": d.opacity})).collect::<Vec<_>>()}
         })
     }
     pub fn from_json(v: &Value) -> Style {
@@ -60,7 +60,7 @@ impl Style {
         Style {
             eyes: EyeStyle { linked: v["eyes"]["linked"].as_bool().unwrap_or(true), left: side(&v["eyes"]["left"], &d.eyes.left), right: side(&v["eyes"]["right"], &d.eyes.right), reflection: pf(&v["eyes"]["reflection"], d.eyes.reflection), limbal: pf(&v["eyes"]["limbal"], d.eyes.limbal) },
             hair: HairStyle { root: pv3(&v["hair"]["root"], d.hair.root), tip: pv3(&v["hair"]["tip"], d.hair.tip), highlight: pv3(&v["hair"]["highlight"], d.hair.highlight), highlight_amt: pf(&v["hair"]["highlightAmount"], d.hair.highlight_amt), gloss: pf(&v["hair"]["gloss"], d.hair.gloss), length: pf(&v["hair"]["length"], 0.0), vol_top: pf(&v["hair"]["volTop"], 0.0), vol_front: pf(&v["hair"]["volFront"], 0.0), vol_side: pf(&v["hair"]["volSide"], 0.0), vol_back: pf(&v["hair"]["volBack"], 0.0) },
-            skin: SkinStyle { gloss: pf(&v["skin"]["gloss"], d.skin.gloss), lips: pl(&v["skin"]["lips"], &d.skin.lips), shadow: pl(&v["skin"]["shadow"], &d.skin.shadow), blush: pl(&v["skin"]["blush"], &d.skin.blush), freckles: pl(&v["skin"]["freckles"], &d.skin.freckles), freckle_size: pf(&v["skin"]["freckleSize"], 1.0), freckle_seed: v["skin"]["freckleSeed"].as_u64().unwrap_or(1) as u32,
+            skin: SkinStyle { tone: pv3(&v["skin"]["tone"], d.skin.tone), tone_amt: pf(&v["skin"]["toneAmount"], 0.0), gloss: pf(&v["skin"]["gloss"], d.skin.gloss), lips: pl(&v["skin"]["lips"], &d.skin.lips), shadow: pl(&v["skin"]["shadow"], &d.skin.shadow), blush: pl(&v["skin"]["blush"], &d.skin.blush), freckles: pl(&v["skin"]["freckles"], &d.skin.freckles), freckle_size: pf(&v["skin"]["freckleSize"], 1.0), freckle_seed: v["skin"]["freckleSeed"].as_u64().unwrap_or(1) as u32,
                 decals: v["skin"]["decals"].as_array().map(|a| a.iter().map(|x| Decal { shape: x["shape"].as_u64().unwrap_or(0) as u8, u: pf(&x["u"], 0.5), v: pf(&x["v"], 0.5), size: pf(&x["size"], 0.02), rot: pf(&x["rot"], 0.0), color: pv3(&x["color"], [0.2, 0.12, 0.1]), opacity: pf(&x["opacity"], 0.8) }).collect()).unwrap_or_default() },
         }
     }

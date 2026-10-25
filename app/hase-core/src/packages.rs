@@ -15,17 +15,17 @@ pub struct Component { pub asset: String, pub slot: String, pub stub: bool }
 pub struct Variation { pub id: String, pub label: String, pub min: f32, pub max: f32, pub delta: BTreeMap<u32, [f32; 3]> }
 /// Geometrie des Spezieskörpers über der Körperbasis: `baked` = fester Teil des Körpers (Grundform), `variations` = einstellbare Varianten.
 #[derive(Clone, Debug, Default)]
-pub struct SpeciesShape { pub baked: BTreeMap<u32, [f32; 3]>, pub variations: Vec<Variation>, /** erlaubte Merkmale (ears/tail/horns); `None` = alle */ pub features: Option<Vec<String>> }
+pub struct SpeciesShape { pub baked: BTreeMap<u32, [f32; 3]>, pub variations: Vec<Variation>, /** erlaubte Merkmale (ears/tail/horns); `None` = alle */ pub features: Option<Vec<String>>, /** Standard-Hautton (Farbe, Stärke) */ pub skin_tone: Option<([f32; 3], f32)> }
 
 fn layer_json(m: &BTreeMap<u32, [f32; 3]>) -> Value { Value::Array(m.iter().flat_map(|(v, d)| [serde_json::json!(v), serde_json::json!((d[0] * 1e5).round() / 1e5), serde_json::json!((d[1] * 1e5).round() / 1e5), serde_json::json!((d[2] * 1e5).round() / 1e5)]).collect()) }
 fn layer_from(v: &Value) -> BTreeMap<u32, [f32; 3]> { let n: Vec<f64> = v.as_array().into_iter().flatten().filter_map(|x| x.as_f64()).collect(); n.chunks_exact(4).map(|c| (c[0] as u32, [c[1] as f32, c[2] as f32, c[3] as f32])).collect() }
 
 impl SpeciesShape {
     pub fn allows(&self, kind: &str) -> bool { self.features.as_ref().map(|f| f.iter().any(|k| k == kind)).unwrap_or(true) }
-    pub fn is_empty(&self) -> bool { self.baked.is_empty() && self.variations.is_empty() && self.features.is_none() }
-    pub fn to_json(&self) -> Value { serde_json::json!({"features": self.features, "baked": layer_json(&self.baked), "variations": self.variations.iter().map(|x| serde_json::json!({"id": x.id, "label": x.label, "min": x.min, "max": x.max, "delta": layer_json(&x.delta)})).collect::<Vec<_>>()}) }
+    pub fn is_empty(&self) -> bool { self.baked.is_empty() && self.variations.is_empty() && self.features.is_none() && self.skin_tone.is_none() }
+    pub fn to_json(&self) -> Value { serde_json::json!({"skinTone": self.skin_tone.map(|(c, a)| serde_json::json!({"color": c, "amount": a})), "features": self.features, "baked": layer_json(&self.baked), "variations": self.variations.iter().map(|x| serde_json::json!({"id": x.id, "label": x.label, "min": x.min, "max": x.max, "delta": layer_json(&x.delta)})).collect::<Vec<_>>()}) }
     pub fn from_json(v: &Value) -> SpeciesShape {
-        SpeciesShape { features: v["features"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()), baked: layer_from(&v["baked"]), variations: v["variations"].as_array().map(|a| a.iter().map(|x| Variation { id: x["id"].as_str().unwrap_or("").into(), label: x["label"].as_str().unwrap_or("").into(), min: x["min"].as_f64().unwrap_or(0.0) as f32, max: x["max"].as_f64().unwrap_or(1.0) as f32, delta: layer_from(&x["delta"]) }).collect()).unwrap_or_default() }
+        SpeciesShape { skin_tone: v["skinTone"].as_object().and_then(|o| { let c = o.get("color")?.as_array()?; Some(([c.first()?.as_f64()? as f32, c.get(1)?.as_f64()? as f32, c.get(2)?.as_f64()? as f32], o.get("amount")?.as_f64()? as f32)) }), features: v["features"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()), baked: layer_from(&v["baked"]), variations: v["variations"].as_array().map(|a| a.iter().map(|x| Variation { id: x["id"].as_str().unwrap_or("").into(), label: x["label"].as_str().unwrap_or("").into(), min: x["min"].as_f64().unwrap_or(0.0) as f32, max: x["max"].as_f64().unwrap_or(1.0) as f32, delta: layer_from(&x["delta"]) }).collect()).unwrap_or_default() }
     }
 }
 

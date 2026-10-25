@@ -351,5 +351,9 @@ impl App {
         let mut g = s.state.style.skin.gloss; let old = g;
         crate::ui_kit::slider(ui, "Hautglanz", &mut g, 0.0..=1.0);
         if g != old { s.edit_style(30, |st| st.skin.gloss = g); }
+        let (mut tone, mut amt) = (s.state.style.skin.tone, s.state.style.skin.tone_amt); let (ot, oa) = (tone, amt);
+        ui.horizontal(|ui| { ui.color_edit_button_rgb(&mut tone); crate::ui_kit::slider(ui, "Hautton (Tönung)", &mut amt, 0.0..=1.0); });
+        ui.weak("Tönt die Hauttextur (z. B. grün, bläulich, blass). Die Spezies kann einen Standardton vorgeben.");
+        if tone != ot || amt != oa { s.edit_style(31, |st| { st.skin.tone = tone; st.skin.tone_amt = amt; }); }
     }
 }

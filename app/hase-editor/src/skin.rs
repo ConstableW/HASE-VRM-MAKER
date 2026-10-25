@@ -97,6 +97,7 @@ pub fn compose(base: &ImageRgba, masks: &Masks, st: &SkinStyle) -> Arc<ImageRgba
     let src = &base.levels[lvl];
     let mut out = vec![255u8; N * N * 4];
     for y in 0..N { for x in 0..N { let (sx, sy) = (x * w / N, y * h / N); let i = (sy * w + sx) * 4; let o = (y * N + x) * 4; out[o..o + 4].copy_from_slice(&src[i..i + 4]); } }
+    if st.tone_amt > 0.0 { let a = st.tone_amt.clamp(0.0, 1.0); for px in out.chunks_exact_mut(4) { for k in 0..3 { let f = 1.0 - a + a * st.tone[k] * 1.6; px[k] = (px[k] as f32 * f).clamp(0.0, 255.0) as u8; } } }
     let blend = |px: &mut [u8], c: [f32; 3], a: f32| { if a <= 0.0 { return; } let a = a.clamp(0.0, 1.0); for k in 0..3 { px[k] = (px[k] as f32 * (1.0 - a) + c[k] * 255.0 * a) as u8; } };
     let (lc, sc, bc, fc) = (lin(st.lips.color), lin(st.shadow.color), lin(st.blush.color), lin(st.freckles.color));
     let fsize = (6.0 / st.freckle_size.max(0.3)).max(2.0);
