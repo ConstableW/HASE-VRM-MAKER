@@ -18,10 +18,10 @@ pub const TAIL_PRESETS: &[(&str, &[f32])] = &[("Katze", &[0.9, 0.7, 0.4, 0.0, 0.
 pub const HORNS: &[PDef] = &[p("length", "Länge", 0.1, 2.0, 0.7), p("thick", "Dicke", 0.3, 2.5, 1.0), p("curl", "Krümmung", -1.0, 1.5, 0.6), p("spread", "Abstand", -1.0, 1.0, 0.2), p("fwd", "Richtung nach vorn", -1.0, 1.0, 0.2), p("height", "Position: Höhe", -1.0, 1.0, 0.0), p("taper", "Spitze", 0.0, 1.0, 0.8)];
 pub const HORNS_PRESETS: &[(&str, &[f32])] = &[("Dämon", &[0.8, 1.0, 0.7, 0.3, 0.3, 0.0, 0.9]), ("Widder (eingerollt)", &[1.2, 1.6, 1.4, 0.8, -0.2, -0.4, 0.5]), ("Kurz", &[0.35, 1.0, 0.2, 0.1, 0.0, 0.2, 0.9]), ("Hirsch-artig (gerade)", &[1.4, 0.7, 0.1, 0.4, 0.0, 0.2, 0.9])];
 
-pub const HAIR: &[PDef] = &[p("fringe", "Pony / Stirnhaar (Länge)", 0.0, 4.0, 0.7), p("side", "Seitenlänge", 0.3, 7.0, 2.0), p("back", "Hinterkopf-Länge", 0.3, 8.0, 2.4), p("volume", "Volumen", 0.0, 1.0, 0.45), p("width", "Strähnenbreite", 0.4, 2.5, 1.0), p("density", "Dichte", 0.5, 2.0, 1.0), p("wave", "Welle", 0.0, 1.0, 0.1), p("part", "Scheitel (links/rechts)", -1.0, 1.0, 0.0), p("gravity", "Fall (Schwerkraft)", 0.1, 1.0, 0.7)];
+pub const HAIR: &[PDef] = &[p("fringe", "Pony / Stirnhaar (Länge)", 0.0, 4.0, 0.7), p("side", "Seitenlänge", 0.3, 7.0, 2.0), p("back", "Hinterkopf-Länge", 0.3, 8.0, 2.4), p("volume", "Volumen", 0.0, 1.0, 0.45), p("width", "Strähnenbreite", 0.4, 2.5, 1.0), p("density", "Dichte", 0.5, 2.0, 1.0), p("wave", "Welle", 0.0, 1.0, 0.1), p("part", "Scheitel (links/rechts)", -1.0, 1.0, 0.0), p("gravity", "Fall (Schwerkraft)", 0.1, 1.0, 0.7), p("tie", "Zusammenbinden (Zopf)", 0.0, 1.0, 0.0), p("tieh", "Zopf-Höhe", -1.0, 1.0, 0.35)];
 pub const HAIR_PRESETS: &[(&str, &[f32])] = &[
-    ("Kurz", &[0.45, 0.8, 0.8, 0.55, 1.0, 1.2, 0.0, 0.0, 0.7]), ("Bob", &[0.7, 2.0, 2.0, 0.45, 1.1, 1.2, 0.05, 0.0, 0.8]), ("Lang", &[0.7, 4.5, 6.0, 0.4, 1.1, 1.3, 0.1, 0.0, 0.75]),
-    ("Lang, gewellt", &[0.6, 4.5, 5.5, 0.55, 1.2, 1.4, 0.7, 0.3, 0.6]), ("Fransig (Anime)", &[1.0, 2.6, 3.2, 0.6, 1.4, 1.2, 0.15, 0.2, 0.7]),
+    ("Kurz", &[0.45, 0.8, 0.8, 0.55, 1.0, 1.2, 0.0, 0.0, 0.7, 0.0, 0.35]), ("Bob", &[0.7, 2.0, 2.0, 0.45, 1.1, 1.2, 0.05, 0.0, 0.8, 0.0, 0.35]), ("Lang", &[0.7, 4.5, 6.0, 0.4, 1.1, 1.3, 0.1, 0.0, 0.75, 0.0, 0.35]), ("Pferdeschwanz", &[0.6, 0.7, 4.5, 0.4, 1.0, 1.3, 0.05, 0.0, 0.7, 1.0, 0.35]),
+    ("Lang, gewellt", &[0.6, 4.5, 5.5, 0.55, 1.2, 1.4, 0.7, 0.3, 0.6, 0.0, 0.35]), ("Fransig (Anime)", &[1.0, 2.6, 3.2, 0.6, 1.4, 1.2, 0.15, 0.2, 0.7, 0.0, 0.35]),
 ];
 
 pub const KINDS: &[(&str, &str)] = &[("ears", "Ohren"), ("tail", "Schweif"), ("horns", "Hörner"), ("hair", "Frisur (generiert)")];
@@ -220,6 +220,7 @@ fn tail_part(m: &VrmModel, lm: &Landmarks, st: &FeatureState, hips_bone: usize, 
 fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, base_bones: usize, out: &mut Generated) {
     let v = &st.vals;
     let (fringe, side_l, back_l, vol, wscale, dens, wave, part, grav) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
+    let (tie, tieh) = (v.get(9).copied().unwrap_or(0.0), v.get(10).copied().unwrap_or(0.35));
     let (crown, hw, drop) = head_extent(m, lm);
     let hu = drop; // Längeneinheit: Scheitel bis Ohrhöhe
     let c = [0.0, crown[1] - drop, lm.ear_l[2]];
@@ -244,7 +245,7 @@ fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, b
             // Gesichtsbereich freihalten: vorn nur oberhalb der Haarlinie; Nacken nur hinten/seitlich
             let th_deg = th.to_degrees();
             if cf > 0.35 && th_deg > 52.0 { continue; }
-            if cf > -0.2 && th_deg > 88.0 && sf.abs() < 0.8 { continue; }
+            if cf > -0.3 && th_deg > 90.0 { continue; }
             let root = [c[0] + sf * th.sin() * ax, c[1] + th.cos() * ay, c[2] + cf * th.sin() * az];
             let nrm0 = norm([sf * th.sin() / ax, th.cos() / ay, cf * th.sin() / az]);
             let (wf, wb) = (cf.max(0.0).powi(2), (-cf).max(0.0).powi(2));
@@ -268,13 +269,27 @@ fn hair_parts(m: &VrmModel, lm: &Landmarks, st: &FeatureState, head_bone: u16, b
                 // außerhalb des Kopfes halten
                 let e = ell(q); if e < 1.0 { let r = sub(q, c); let rn = norm([r[0] / (ax + margin), r[1] / (ay + margin), r[2] / (az + margin)]); q = [c[0] + rn[0] * (ax + margin), c[1] + rn[1] * (ay + margin), c[2] + rn[2] * (az + margin)]; }
                 // Oberkörper (Schultern) als Ellipse im Grundriss freihalten
-                if q[1] < c[1] - ay * 0.95 {
+                if q[1] < c[1] - ay - hu * 0.8 {
                     let (cz, rx, rz) = (c[2] - hw * 0.35, hw * 2.5 + margin * 0.5, hw * 1.25 + margin * 0.5);
                     let (ex, ez) = ((q[0]) / rx, (q[2] - cz) / rz);
                     let e2 = ex * ex + ez * ez;
                     if e2 < 1.0 { let k = 1.0 / e2.sqrt().max(1e-3); q[0] = ex * k * rx; q[2] = cz + ez * k * rz; }
                 }
                 dirs.push(norm(sub(q, p))); p = q; pts.push(p);
+            }
+            // Zopf: Strähnen von Hinterkopf/Seiten laufen zu einem Bindepunkt zusammen und fallen dann gebündelt
+            if tie > 0.0 && len > hu * 1.2 && cf < 0.55 {
+                let tp = [0.0, c[1] + ay * (0.1 + 0.6 * tieh), c[2] - az - margin * 1.5];
+                let tl = back_l.max(side_l) * hu * 0.9;
+                let jit = [(rnd() - 0.5) * hu * 0.22, (rnd() - 0.5) * hu * 0.05, (rnd() - 0.5) * hu * 0.22];
+                for j in 0..pts.len() {
+                    let t = j as f32 / nstep as f32;
+                    let q = (t / 0.2).clamp(0.0, 1.0); let w = tie * q * q * (3.0 - 2.0 * q);
+                    let tgt = add(add(tp, [0.0, -tl * (t - 0.15).max(0.0) / 0.85, -tl * 0.06 * (t - 0.15).max(0.0)]), mul(jit, 0.3 + 1.2 * (t - 0.15).max(0.0)));
+                    pts[j] = [lerp(pts[j][0], tgt[0], w), lerp(pts[j][1], tgt[1], w), lerp(pts[j][2], tgt[2], w)];
+                }
+                for j in 1..pts.len() { dirs[j] = norm(sub(pts[j], pts[j - 1])); }
+                dirs[0] = norm(sub(pts[1], pts[0]));
             }
             // Band: Breite verjüngt zur Spitze
             let w0 = hu * 0.075 * wscale / dens.sqrt();
