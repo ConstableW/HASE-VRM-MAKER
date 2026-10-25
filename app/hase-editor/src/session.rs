@@ -391,14 +391,22 @@ impl Session {
     }
 
     /// Aktuelle Formung als benannte Variation (Regler mit Bereich) der Spezies definieren.
-    pub fn define_variation(&mut self, idx: usize, label: &str, min: f32, max: f32) -> Result<usize, String> {
+    pub fn define_variation(&mut self, idx: usize, label: &str, min: f32, max: f32, split_lr: bool) -> Result<usize, String> {
         if self.vrm.is_some() { return Err("Nur für die parametrische Körperbasis".into()); }
         let sp = self.packages.species.get_mut(idx).ok_or("keine Spezies")?;
         if !sp.user { return Err("Mitgelieferte Spezies sind schreibgeschützt – zuerst duplizieren".into()); }
         let n = self.mh_sculpt.len(); if n == 0 { return Err("Keine Formung vorhanden".into()); }
         let id = format!("var-{}", hase_core::packages::slug(label)); if id == "var-" { return Err("Name fehlt".into()); }
         if sp.shape.variations.iter().any(|x| x.id == id) { return Err(format!("Variation „{label}“ existiert bereits")); }
-        sp.shape.variations.push(hase_core::packages::Variation { id, label: label.into(), min, max, delta: self.mh_sculpt.clone() });
+        if split_lr {
+            // getrennte Regler links/rechts: Aufteilung nach Seite der Vertexposition (+x = linke Körperseite)
+            let (mut l, mut r) = (std::collections::BTreeMap::new(), std::collections::BTreeMap::new());
+            for (v, d) in &self.mh_sculpt { if self.eval.pos[*v as usize][0] >= 0.0 { l.insert(*v, *d); } else { r.insert(*v, *d); } }
+            sp.shape.variations.push(hase_core::packages::Variation { id: format!("{id}-l"), label: format!("{label} links"), min, max, delta: l });
+            sp.shape.variations.push(hase_core::packages::Variation { id: format!("{id}-r"), label: format!("{label} rechts"), min, max, delta: r });
+        } else {
+            sp.shape.variations.push(hase_core::packages::Variation { id, label: label.into(), min, max, delta: self.mh_sculpt.clone() });
+        }
         self.finish_shape_move(idx);
         Ok(n)
     }
@@ -2006,11 +2014,17 @@ mod mh_tool_tests {
         s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
         let p1 = s.eval.pos.clone();
         // Variation: Formung wandert in die Spezies, Körper ist bei Wert 0 neutral, bei 1 geformt
-        s.define_variation(idx, "Bauch", 0.0, 1.5).unwrap();
+        s.define_variation(idx, "Bauch", 0.0, 1.5, false).unwrap();
         assert_eq!(s.mh_sculpt.len(), 0);
         assert_eq!(s.eval.pos.iter().zip(&p0).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Wert 0 = neutral");
         s.set_variation("var-bauch", 1.0);
         assert_eq!(s.eval.pos.iter().zip(&p1).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Wert 1 = Formung");
+        // Links/rechts getrennt
+        s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
+        s.define_variation(idx, "Brust", 0.0, 1.0, true).unwrap();
+        let sh = &s.packages.species[idx].shape;
+        let (l, r) = (sh.variations.iter().find(|x| x.id == "var-brust-l").unwrap(), sh.variations.iter().find(|x| x.id == "var-brust-r").unwrap());
+        assert!(l.delta.len() + r.delta.len() > 10 && l.delta.keys().all(|k| !r.delta.contains_key(k)));
         // Einbacken: fester Teil des Körpers
         s.set_variation("var-bauch", 0.0);
         s.sculpt_begin(hit); s.sculpt_grab([0.0, 0.0, 0.04]); s.refresh(); s.sculpt_end(); s.refresh();
@@ -2021,7 +2035,7 @@ mod mh_tool_tests {
         let pk = hase_core::packages::Packages::load(&repo).unwrap();
         let back = pk.species.iter().find(|x| x.id == "user.species.test-shape").unwrap();
         let _ = std::fs::remove_dir_all(hase_core::packages::user_dir(&repo).join("user.species.test-shape"));
-        assert!(!back.shape.baked.is_empty() && back.shape.variations.len() == 1);
+        assert!(!back.shape.baked.is_empty() && back.shape.variations.len() == 3);
     }
 
     #[test]

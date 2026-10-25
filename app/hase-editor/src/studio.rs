@@ -23,6 +23,7 @@ pub struct StudioState {
     pub import_path: Option<std::path::PathBuf>,
     pub prep: Option<Prep>,
     pub var_name: String,
+    pub var_split: bool,
     pub var_min: f32,
     pub var_max: f32,
 }
@@ -142,9 +143,10 @@ impl App {
                         ui.add(egui::DragValue::new(&mut self.studio.var_min).speed(0.05).prefix("min "));
                         ui.add(egui::DragValue::new(&mut self.studio.var_max).speed(0.05).prefix("max "));
                     });
+                    ui.checkbox(&mut self.studio.var_split, "Links/rechts getrennt (zwei Regler)");
                     if ui.add_enabled(nsc > 0 && !self.studio.var_name.trim().is_empty(), egui::Button::new("Als Variation (Regler) definieren")).on_hover_text("Die Formung wird zu einem benannten Regler dieser Spezies (Wert 1 = jetzige Formung). Die Charakter-Phase zeigt nur diese Regler.").clicked() {
                         let (nm, mn, mx) = (self.studio.var_name.trim().to_string(), self.studio.var_min.min(self.studio.var_max), self.studio.var_max.max(self.studio.var_min));
-                        self.studio.msg = match s.define_variation(sel, &nm, mn, mx) { Ok(n) => { self.studio.var_name.clear(); format!("Variation „{nm}“ gespeichert ({n} Vertices)") } Err(e) => e };
+                        self.studio.msg = match s.define_variation(sel, &nm, mn, mx, self.studio.var_split) { Ok(n) => { self.studio.var_name.clear(); format!("Variation „{nm}“ gespeichert ({n} Vertices)") } Err(e) => e };
                     }
                 }
                 let vars: Vec<String> = s.packages.species[sel].shape.variations.iter().map(|v| format!("{}  [{:.1} … {:.1}]  · {} Vertices", v.label, v.min, v.max, v.delta.len())).collect();
