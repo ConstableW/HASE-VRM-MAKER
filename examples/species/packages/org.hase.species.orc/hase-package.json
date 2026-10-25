@@ -1,0 +1,51 @@
+{
+  "$schema": "../../../../docs/03-specifications/schemas/package.schema.json",
+  "authors": [
+    "HASE VRM MAKER"
+  ],
+  "description": "Humanoide mit breitem, schwerem Unterkiefer und kräftigen Brauenwülsten (eingebackene Grundform); Hörner erlaubt.",
+  "dev": {
+    "status": "specimen"
+  },
+  "files": [],
+  "id": "org.hase.species.orc",
+  "license": {
+    "attribution": null,
+    "redistribution": true,
+    "spdx": "CC0-1.0"
+  },
+  "name": {
+    "de": "Orkin"
+  },
+  "requires": [
+    {
+      "id": "org.hase.body.humanoid-mh08",
+      "range": "^1.0"
+    }
+  ],
+  "schemaVersion": "1.0",
+  "species": {
+    "capabilities": [
+      "trait:pointed-ears"
+    ],
+    "components": [],
+    "defaults": {
+      "mh:macro-age": 0.5
+    },
+    "limits": {},
+    "presets": [],
+    "targets": {
+      "bodyInterface": {
+        "id": "org.hase.iface.humanoid-mh08",
+        "range": "^1.0"
+      }
+    },
+    "traits": {}
+  },
+  "tags": [
+    "humanoid",
+    "fantasy"
+  ],
+  "type": "species",
+  "version": "1.0.0"
+}

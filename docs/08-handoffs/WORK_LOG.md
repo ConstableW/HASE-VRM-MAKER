@@ -72,3 +72,6 @@ Beispiel-Spezies können `shape.json` im Paketordner tragen (Digest = Manifest +
 
 ## 2026-10-25 – Elf-Geometrie, Spezies teilen
 Elf: Kinnspitze (eingebacken + Regler), Preset-Index-Korrektur (Elf = 4), seitliche Elfenohren. Spezies-Export/-Import als `.hasespecies` (Manifest + Spezieskörper; Import vergibt neue ID bei Kollision) im Spezies-Studio; Test `user_species_roundtrip` deckt Export→Import ab. Nicht teilbar sind bisher die referenzierten Assets/Körperbasen (nur IDs).
+
+## 2026-10-25 – Weitere Beispiel-Spezies
+Orkin (breiter Kiefer, Brauenwülste eingebacken, Regler Kieferbreite, Hörner/Ohren erlaubt) und Zwerg (große breite Nase, Regler Nasengröße), prozedural per `generate_species_shapes` erzeugt (Manifest + shape.json). Effekte bewusst moderat; Feinschliff erst mit echten Körperbasen je Spezies.
