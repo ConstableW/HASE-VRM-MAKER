@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-*Zuletzt aktualisiert: 2026-10-24*
+*Zuletzt aktualisiert: 2026-10-25*
 
 ## Projektphase
 Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testcandidate-Aufbereitung (OD-023, OD-024). **Erste lauffähige Editor-Version vorhanden** (`app/`, Rust/wgpu/egui: 3D-Viewport, Orbit-Kamera, ~294 Morph-Regler, Spezies/Presets, Haare/Kleidung, Haut/Augenfarbe, Undo/Redo, Save/Load, F3-Profiling). UI 2.0 begonnen (3 Arbeitsbereiche, Bereichsnavigation, siehe `docs/01-product/ux-concept.md`). Windows-exe `app/win/` (Start: `Starten.bat`) **nicht auf echter Windows-GPU getestet**. Körper-&-Spezies-Studio (Erstfassung: `docs/02-architecture/body-species-studio.md`). Kette Import→Körperbasis→Spezies→Charakter→Speichern/Laden mit **zwei** Körperbasen per Test belegt (siehe body-species-studio.md); Fitting auf fremde Topologien bewusst zurückgestellt. Studios (Augen, Haar, Haut/Make-up/Details, anatomische Brust/Gesäß-Morphs), Charakterbibliothek, Thumbnail-Dienst, Viewport-Werkzeuge: siehe `docs/02-architecture/character-studios.md`. Finalisieren: VRM-1.0-Export und Posen-/Animationsvorschau (Erstfassung). Nicht enthalten: Export importierter Körperbasen, Spring Bones/Haarphysik, VRM-Export aus dem Editor. Alle Arbeit direkt auf `main` (kein Feature-Branch).
@@ -16,6 +16,10 @@ Discovery & Architecture (Konzept) **plus** vom Owner freigegebene Asset-/Testca
 - **Werkzeuge (`tools/`):** bpy-Build-Skripte (`assets/`), VRM-Schema-Validator (`validate/`). Benötigen PyPI `bpy` 5.2.3 und `bpy-vrm-format` 4.10.2 (nur lokal, GPL/MIT-or-GPL, nicht Teil des Produkts), Python 3.13.
 - **Entfernt:** Mixamo-abgeleitete `assets/animation-*` und Duplikate (Historie bleibt).
 - **Repo-Größe:** Klon ca. 770 MB (Owner-Upload der Rohpacks in `content/testcandidate/downloads/` inkl. Historie). Kein History-Rewrite vorgenommen.
+
+## Editor-Stand (2026-10-25, `app/`, Details in WORK_LOG)
+Ein Editor, drei Workspaces (Charakter/Outfit/Finalisieren) nach Mockup. **Körperbasis → Speziesmodell → Charaktere:** Speziespakete tragen Standardwerte, Grenzen, Presets, erlaubte/Standard-Merkmale, Hautton und einen Spezieskörper (`shape.json`: eingebackene Grundform + benannte Variationen mit Bereich, optional links/rechts). Studio: Pinsel-Formung einbacken oder als Variation definieren, Spezies ableiten/duplizieren/exportieren/importieren (`.hasespecies`). Charakter-Phase: Speziesauswahl als Kacheln (wechselt bei Bedarf die Körperbasis), nur Variationen der Spezies als Zusatzregler. Beispiel-Spezies: Humanoid, Elf, Orkin, Zwerg, Katzen-/Hunde-Demi (Geometrie prozedural erzeugt). Merkmale: Ohren, Schweif, Hörner, **Frisur (generiert, Strähnen, Spring Bones)**. Augen links/rechts getrennt. Export: VRM 1.0, glTF/GLB, OBJ. Importierte VRMs: Anprobe, parametrische Avatar-Regler, Formung, Merkmale.
+**Grenzen:** nur eine echte Körperbasis (MakeHuman hm08); Spezies-Geometrie ist moderat (Gesicht/Proportionen); Windows-GUI-Test steht aus (alles headless unter Linux/Lavapipe geprüft); Frisur-Physik im Viewer nicht geprüft.
 
 ## Performance (OD-025, 2026-10-24)
 Zielwerte vorab: `docs/07-quality/performance-targets.md`. Spike-Teil 1 gemessen (`docs/04-research/benchmarks.md`): CPU-Morph/Speicher/UI weit innerhalb der Ziele; **GPU-Frame-Times offen** – Windows-Lauf nötig (NEXT_ACTIONS 14). ADR-0002 (Stack) PROPOSED, nicht freigabefähig bis dahin. Architekturregeln: `docs/02-architecture/performance-architecture.md`.

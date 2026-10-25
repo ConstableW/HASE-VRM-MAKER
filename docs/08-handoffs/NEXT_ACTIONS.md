@@ -1,6 +1,6 @@
 # NEXT_ACTIONS
 
-*Stand: 2026-10-23.* Status: offen / in Arbeit / erledigt / wartet auf Owner. Entwicklungs-/Asset-Arbeit läuft seit OD-023/OD-024 auf `main`; Aktionen 2–11 sind Konzeptarbeit.
+*Stand: 2026-10-25.* Status: offen / in Arbeit / erledigt / wartet auf Owner. Entwicklungs-/Asset-Arbeit läuft seit OD-023/OD-024 auf `main`; Aktionen 2–11 sind Konzeptarbeit.
 
 | # | Aktion | Ziel | Voraussetzung | Erwartetes Ergebnis | Akzeptanzkriterien | Status | Agent |
 |---|---|---|---|---|---|---|---|
@@ -43,3 +43,6 @@
 
 33. **Kurskorrektur (Owner 2026-10-25):** Jede Spezies bekommt ein eigenes Charaktermodell (Körperbasis); Werkzeuge (Regler, Formen, Merkmale, Outfit, Export) arbeiten auf der Basis der gewählten Spezies, **eine** Oberfläche. Vorrang haben die Körperbasen und die Bindung Spezies ↔ Körperbasis (Speziesauswahl wechselt die Basis), nicht Feinschliff an Werkzeugen. Die Landmarken-Verformung (`avatar.rs`) bleibt als Parameterkatalog für importierte Körperbasen (`parametric`); ihr Einsatz auf der MakeHuman-Basis wurde bewusst zurückgenommen (Netz reißt an Lidern, wirkt gegen die Targets).
 34. **Körperbasis → Speziesmodell → Charaktere (Owner 2026-10-25, umgesetzt für die MakeHuman-Basis):** Speziespaket enthält `shape.json` (Spezieskörper-Ebene). Formung im Studio kann (a) **eingebacken** werden (feste Grundform, kein Regler, z. B. Asura-Schädel) oder (b) als **Variation** (benannter Regler mit Bereich, z. B. Ohrlänge) definiert werden; die Charakter-Phase zeigt nur die Variationen der gewählten Spezies. Speziesauswahl wechselt bei Bedarf die Körperbasis (`select_species`). Variationen lassen sich links/rechts getrennt anlegen. Pro Spezies sind die erlaubten Merkmale wählbar (Tab „Werte & Grenzen“; Charakter-Phase zeigt nur erlaubte). Offen: Variationen für importierte Avatare, echte Körperbasen je Spezies.
+
+35. Erledigt 2026-10-25: Frisuren-Generator (Merkmal `hair`, Spring Bones), Hautton + Spezies-Standardton, Spezies-Kacheln mit Körper, Exportformate (glTF/GLB, OBJ). Offen daraus: Blender-/Viewer-Prüfung der Exporte und der Haar-Physik (Owner), FBX/Ziel-Presets, Haar: Zopf/Pferdeschwanz/Locken, Haarfarbe aus Style-Verlauf, bessere Schulterkollision.
+36. Nächste Entwicklungsblöcke (autonom): Outfit-Studio vertiefen (Layer, Materialfarben je Teil), Bibliothek (Vorlagen/Duplizieren/Tags), Stilüberführung (Start: Proportionen/Augen), weitere Körperbasen je Spezies (Quelle klären: eigene Ableitung statt Fremdmeshes).
