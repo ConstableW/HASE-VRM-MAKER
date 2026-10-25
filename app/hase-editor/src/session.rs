@@ -441,7 +441,7 @@ impl Session {
         let old = std::mem::take(&mut self.species_layer);
         for (v, d) in &old { let q = &mut self.eval.pos[*v as usize]; for c in 0..3 { q[c] -= d[c]; } }
         self.refresh_species_layer();
-        if let Some(sp) = self.packages.species.get(idx) { if let Some(d) = sp.write(&self.repo, &self.packages.body).ok() { let dg = hase_core::packages::file_digest(&d.join("hase-package.json")); self.packages.species[idx].digest = dg.clone(); self.state.species_ref.digest = dg; } }
+        if let Some(sp) = self.packages.species.get(idx) { if let Some(d) = sp.write(&self.repo, &self.packages.body).ok() { let dg = hase_core::packages::package_digest(&d); self.packages.species[idx].digest = dg.clone(); self.state.species_ref.digest = dg; } }
         self.resend_body = true; self.dirty = true; self.assets_dirty = true; self.sh.feat_dirty = true;
     }
 
@@ -2019,6 +2019,27 @@ impl Session {
 #[cfg(test)]
 mod mh_tool_tests {
     use super::*;
+
+    /// Erzeugt die prozeduralen Spezieskörper (Schnauze) der Beispiel-Spezies. Aufruf: `cargo test --release generate_species_shapes -- --ignored`.
+    #[test]
+    #[ignore]
+    fn generate_species_shapes() {
+        use hase_core::packages::{SpeciesShape, Variation};
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        s.refresh();
+        let h = s.body_height();
+        let top = s.body.topo.vmap.iter().map(|&v| s.eval.pos[v as usize][1]).fold(f32::MIN, f32::max);
+        let head: Vec<u32> = s.body.topo.vmap.iter().copied().filter(|&v| s.eval.pos[v as usize][1] > top - h * 0.135).collect();
+        let nose = head.iter().map(|&v| s.eval.pos[v as usize]).filter(|p| p[0].abs() < 0.012).fold([0.0f32, 0.0, -9.0], |a, p| if p[2] > a[2] { p } else { a });
+        let muzzle = |amount: f32, sigma: f32, drop: f32| -> std::collections::BTreeMap<u32, [f32; 3]> {
+            let c = [0.0, nose[1] - drop, nose[2] - 0.012];
+            head.iter().filter_map(|&v| { let p = s.eval.pos[v as usize]; if p[2] < c[2] - 0.05 || p[1] < nose[1] - 0.04 { return None; } let d2 = (p[0] - c[0]).powi(2) + 1.6 * (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2); let w = (-d2 / (2.0 * sigma * sigma)).exp(); if w < 0.02 { None } else { Some((v, [0.0, -0.1 * amount * w, amount * w])) } }).collect()
+        };
+        let write = |id: &str, shape: SpeciesShape| { let d = repo.join("examples/species/packages").join(id); std::fs::write(d.join("shape.json"), shape.to_json().to_string()).unwrap(); };
+        write("org.hase.species.dog-demi", SpeciesShape { baked: muzzle(0.022, 0.035, 0.014), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -0.6, max: 1.6, delta: muzzle(0.018, 0.035, 0.014) }], features: None });
+        write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None });
+    }
 
     #[test]
     fn species_default_features() {

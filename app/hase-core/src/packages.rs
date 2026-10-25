@@ -68,9 +68,10 @@ impl Packages {
         if let Ok(rd) = std::fs::read_dir(&udir) { entries.extend(rd.flatten().map(|e| (e, true))); }
         let mut user_dirs: BTreeMap<String, PathBuf> = BTreeMap::new();
         let mut digests: BTreeMap<String, String> = BTreeMap::new();
+        let mut all_dirs: BTreeMap<String, PathBuf> = BTreeMap::new();
         for (e, user) in entries {
             let mf = e.path().join("hase-package.json");
-            if let Ok(s) = std::fs::read_to_string(&mf) { match serde_json::from_str::<Value>(&s) { Ok(v) => { digests.insert(v["id"].as_str().unwrap_or("").into(), sha256_hex(s.as_bytes())); if user { user_dirs.insert(v["id"].as_str().unwrap_or("").into(), e.path()); } manifests.push((e.file_name().to_string_lossy().into(), v)) }, Err(err) => issues.push(format!("{}: {err}", mf.display())) } }
+            if let Ok(s) = std::fs::read_to_string(&mf) { match serde_json::from_str::<Value>(&s) { Ok(v) => { let mut dg = sha256_hex(s.as_bytes()); if let Ok(sh) = std::fs::read(e.path().join("shape.json")) { dg = sha256_hex(format!("{dg}{}", sha256_hex(&sh)).as_bytes()); } digests.insert(v["id"].as_str().unwrap_or("").into(), dg); all_dirs.insert(v["id"].as_str().unwrap_or("").into(), e.path()); if user { user_dirs.insert(v["id"].as_str().unwrap_or("").into(), e.path()); } manifests.push((e.file_name().to_string_lossy().into(), v)) }, Err(err) => issues.push(format!("{}: {err}", mf.display())) } }
         }
         manifests.sort_by(|a, b| a.0.cmp(&b.0));
         let stub_assets: Vec<String> = manifests.iter().filter(|(_, v)| v["dev"]["status"] == "stub").map(|(_, v)| v["id"].as_str().unwrap_or("").to_string()).collect();
@@ -97,7 +98,7 @@ impl Packages {
                         description: v["description"].as_str().unwrap_or("").into(),
                         body_id: v["requires"].as_array().and_then(|a| a.iter().filter_map(|r| r["id"].as_str()).find(|i| i.contains(".body."))).unwrap_or("").into(),
                         dir: user_dirs.get(v["id"].as_str().unwrap_or("")).cloned(),
-                        shape: user_dirs.get(v["id"].as_str().unwrap_or("")).and_then(|d| std::fs::read_to_string(d.join("shape.json")).ok()).and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|j| SpeciesShape::from_json(&j)).unwrap_or_default(),
+                        shape: all_dirs.get(v["id"].as_str().unwrap_or("")).and_then(|d| std::fs::read_to_string(d.join("shape.json")).ok()).and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|j| SpeciesShape::from_json(&j)).unwrap_or_default(),
                         digest: digests.get(v["id"].as_str().unwrap_or("")).cloned().unwrap_or_default(),
                     });
                 }
@@ -130,6 +131,12 @@ pub fn data_fingerprint(root: &Path, cache_file: &Path) -> String {
     sha256_hex(all.as_bytes())
 }
 
+/// Digest eines Pakets: Manifest + optionale Spezieskörper-Datei (`shape.json`).
+pub fn package_digest(dir: &Path) -> String {
+    let mut dg = file_digest(&dir.join("hase-package.json"));
+    if let Ok(sh) = std::fs::read(dir.join("shape.json")) { dg = sha256_hex(format!("{dg}{}", sha256_hex(&sh)).as_bytes()); }
+    dg
+}
 pub fn file_digest(p: &Path) -> String { std::fs::read(p).map(|b| sha256_hex(&b)).unwrap_or_default() }
 
 pub fn user_dir(repo: &Path) -> PathBuf { repo.join("user-content/packages") }

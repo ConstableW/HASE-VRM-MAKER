@@ -80,7 +80,7 @@ impl App {
                 let defaults = s.params.defs.iter().enumerate().filter(|(i, d)| (s.state.values[*i] - d.default).abs() > 1e-4).map(|(i, d)| (d.id.clone(), s.state.values[i])).collect();
                 let sp = Species { shape: s.derived_shape(), id, label: name.clone(), version: "1.0.0".into(), defaults, limits: Default::default(), traits: vec![], presets: vec![], components: cur.as_ref().map(|c| c.components.clone()).unwrap_or_default(), stub: false, user: true, description: format!("Abgeleitet vom Charakter (Körperbasis: {}{}).", s.packages.body.label, cur.as_ref().map(|c| format!(", Basis-Spezies: {}", c.label)).unwrap_or_default()), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
                 match sp.write(&s.repo, &s.packages.body) {
-                    Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir.clone()); let (nid, nver, ndig) = (sp.id.clone(), sp.version.clone(), sp.digest.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; s.state.species = nid.clone(); s.state.species_ref = hase_core::state::PkgRef { id: nid, version: nver, digest: ndig }; s.adopt_new_species(); self.studio.msg = format!("Gespeichert: {} – der aktuelle Charakter nutzt sie jetzt", dir.display()); self.studio.new_name.clear(); }
+                    Ok(dir) => { let mut sp = sp; sp.digest = hase_core::packages::package_digest(&dir); sp.dir = Some(dir.clone()); let (nid, nver, ndig) = (sp.id.clone(), sp.version.clone(), sp.digest.clone()); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; s.state.species = nid.clone(); s.state.species_ref = hase_core::state::PkgRef { id: nid, version: nver, digest: ndig }; s.adopt_new_species(); self.studio.msg = format!("Gespeichert: {} – der aktuelle Charakter nutzt sie jetzt", dir.display()); self.studio.new_name.clear(); }
                     Err(e) => self.studio.msg = e,
                 }
             }
@@ -92,7 +92,7 @@ impl App {
             while s.packages.species.iter().any(|x| x.id == id) { k += 1; id = format!("user.species.{base}-kopie-{k}"); }
             sp.id = id; sp.label = format!("{} (Kopie)", sp.label); sp.version = "1.0.0".into(); sp.user = true; sp.stub = false; sp.dir = None;
             sp.description = format!("Kopie von {}. {}", s.packages.species[self.studio.sel].label, sp.description);
-            match sp.write(&s.repo, &s.packages.body) { Ok(dir) => { sp.digest = hase_core::packages::file_digest(&dir.join("hase-package.json")); sp.dir = Some(dir); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = "Dupliziert".into(); } Err(e) => self.studio.msg = e }
+            match sp.write(&s.repo, &s.packages.body) { Ok(dir) => { sp.digest = hase_core::packages::package_digest(&dir); sp.dir = Some(dir); s.packages.species.push(sp); self.studio.sel = s.packages.species.len() - 1; self.studio.msg = "Dupliziert".into(); } Err(e) => self.studio.msg = e }
         }
         if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
     }
@@ -291,7 +291,7 @@ impl App {
                 if self.studio.dirty { ui.colored_label(theme::WARN, "Ungespeicherte Änderungen"); }
                 if ui.button("Paket speichern").clicked() {
                     let sp = s.packages.species[sel].clone();
-                    self.studio.msg = match sp.write(&s.repo, &s.packages.body) { Ok(d) => { s.packages.species[sel].digest = hase_core::packages::file_digest(&d.join("hase-package.json")); self.studio.dirty = false; format!("Gespeichert: {}", d.display()) } Err(e) => e };
+                    self.studio.msg = match sp.write(&s.repo, &s.packages.body) { Ok(d) => { s.packages.species[sel].digest = hase_core::packages::package_digest(&d); self.studio.dirty = false; format!("Gespeichert: {}", d.display()) } Err(e) => e };
                 }
                 if !self.studio.msg.is_empty() { ui.colored_label(theme::TEXT2, &self.studio.msg); }
             }
@@ -587,7 +587,7 @@ mod tests {
             assert!(s.species_indices().is_empty());
             let sp = Species { shape: Default::default(), id: "user.species.testwesen-b".into(), label: "Testwesen B".into(), version: "1.0.0".into(), defaults: [("morph:head_larger".to_string(), 0.4f32)].into_iter().collect(), limits: [("morph:head_larger".to_string(), [0.0f32, 0.8f32])].into_iter().collect(), traits: vec![], presets: vec![], components: vec![], stub: false, user: true, description: "Test".into(), body_id: s.packages.body.id.clone(), dir: None, digest: String::new() };
             let sdir = sp.write(&repo, &s.packages.body).unwrap();
-            let mut sp = sp; sp.digest = hase_core::packages::file_digest(&sdir.join("hase-package.json")); sp.dir = Some(sdir.clone());
+            let mut sp = sp; sp.digest = hase_core::packages::package_digest(&sdir); sp.dir = Some(sdir.clone());
             s.packages.species.push(sp);
             let idx = s.packages.species.len() - 1;
             assert_eq!(s.species_indices(), vec![idx]);

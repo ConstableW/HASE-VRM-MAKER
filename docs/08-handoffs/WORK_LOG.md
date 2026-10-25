@@ -66,3 +66,6 @@ Windows-Build-Rezept (Container ohne Vorinstallation): `apt-get install gcc-ming
 
 ## 2026-10-25 – Spezies-Kacheln, Standardmerkmale
 Speziesauswahl als Kachelraster; Spezies mit Komponenten (Katzen-/Hunde-Demi, Elf) leiten erlaubte Merkmale und Standardmerkmale (Ohren/Schweif mit passendem Preset) aus ihren Komponenten ab und aktivieren sie bei Auswahl. Abgeleitete Spezies übernehmen Formung/Variationen. Tests `species_default_features`, `species_bake_and_variation`.
+
+## 2026-10-25 – Eigene Geometrie der Beispiel-Spezies
+Beispiel-Spezies können `shape.json` im Paketordner tragen (Digest = Manifest + Shape). Hunde-/Katzen-Demi haben eine prozedural erzeugte Schnauze eingebacken und den Regler „Schnauzenlänge“ (`cargo test --release generate_species_shapes -- --ignored` erzeugt die Dateien; KI-generiert, keine fremden Meshes). Screenshot `docs/07-quality/screens/dog-demi-muzzle.png`. Noch rudimentär (nur Schnauze); Elf/weitere Spezies folgen.
