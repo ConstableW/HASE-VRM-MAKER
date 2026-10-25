@@ -2036,8 +2036,13 @@ mod mh_tool_tests {
             let c = [0.0, nose[1] - drop, nose[2] - 0.012];
             head.iter().filter_map(|&v| { let p = s.eval.pos[v as usize]; if p[2] < c[2] - 0.05 || p[1] < nose[1] - 0.04 { return None; } let d2 = (p[0] - c[0]).powi(2) + 1.6 * (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2); let w = (-d2 / (2.0 * sigma * sigma)).exp(); if w < 0.02 { None } else { Some((v, [0.0, -0.1 * amount * w, amount * w])) } }).collect()
         };
+        // Elf: schmaleres, spitzeres Kinn (Unterkiefer verjüngt, leicht verlängert)
+        let jaw = |amount: f32| -> std::collections::BTreeMap<u32, [f32; 3]> {
+            head.iter().filter_map(|&v| { let p = s.eval.pos[v as usize]; let t = ((nose[1] - 0.025 - p[1]) / 0.03).clamp(0.0, 1.0) * ((nose[1] - 0.13 - p[1]) / -0.03).clamp(0.0, 1.0); if t < 0.01 || p[2] < nose[2] - 0.16 { None } else { Some((v, [-p[0] * 0.14 * amount * t, -0.008 * amount * t, 0.0])) } }).collect()
+        };
         let write = |id: &str, shape: SpeciesShape| { let d = repo.join("examples/species/packages").join(id); std::fs::write(d.join("shape.json"), shape.to_json().to_string()).unwrap(); };
         write("org.hase.species.dog-demi", SpeciesShape { baked: muzzle(0.022, 0.035, 0.014), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -0.6, max: 1.6, delta: muzzle(0.018, 0.035, 0.014) }], features: None });
+        write("org.hase.species.elf", SpeciesShape { baked: jaw(1.0), variations: vec![Variation { id: "var-kinnspitze".into(), label: "Kinnspitze".into(), min: -1.0, max: 1.5, delta: jaw(1.0) }], features: None });
         write("org.hase.species.cat-demi", SpeciesShape { baked: muzzle(0.007, 0.03, 0.012), variations: vec![Variation { id: "var-schnauzenlaenge".into(), label: "Schnauzenlänge".into(), min: -1.0, max: 2.0, delta: muzzle(0.01, 0.03, 0.012) }], features: None });
     }
 

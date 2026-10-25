@@ -161,7 +161,7 @@ impl Species {
         let mut out: Vec<(&'static str, usize)> = vec![];
         for c in &self.components {
             let a = c.asset.as_str();
-            let f = if a.contains("cat-ears") { Some(("ears", 0)) } else if a.contains("dog-ears") { Some(("ears", 1)) } else if a.contains("pointed-ears") { Some(("ears", 3)) }
+            let f = if a.contains("cat-ears") { Some(("ears", 0)) } else if a.contains("dog-ears") { Some(("ears", 1)) } else if a.contains("pointed-ears") { Some(("ears", 4)) }
                 else if a.contains("cat-tail") { Some(("tail", 0)) } else if a.contains("dog-tail") { Some(("tail", 1)) } else if a.contains("horn") { Some(("horns", 0)) } else { None };
             if let Some(f) = f { if !out.iter().any(|x| x.0 == f.0) { out.push(f); } }
         }
