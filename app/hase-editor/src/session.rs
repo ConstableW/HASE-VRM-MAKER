@@ -79,6 +79,8 @@ pub struct Session {
     pub species_layer: std::collections::BTreeMap<u32, [f32; 3]>,
     /// Werte der Spezies-Variationen des aktuellen Charakters (Variation-ID → Wert).
     pub var_vals: std::collections::BTreeMap<String, f32>,
+    /// Ausgangswerte für „Stil angleichen“ (Zielspezies-Index, Werte vor dem Angleichen).
+    pub style_blend: Option<(usize, Vec<f32>)>,
     /// Stil-/Proportionsregler (Landmarken-Verformung) auf der MakeHuman-Basis
     pub style_vals: Vec<f32>,
     style_layer: std::collections::BTreeMap<u32, [f32; 3]>,
@@ -188,7 +190,7 @@ impl Session {
         let reference = packages.body.clone();
         let (br, sr) = (PkgRef { id: packages.body.id.clone(), version: packages.body.version.clone(), digest: packages.body.digest.clone() }, sp0.as_ref().map(|x| PkgRef { id: x.id.clone(), version: x.version.clone(), digest: x.digest.clone() }).unwrap_or_default());
         state.body_ref = br; state.species_ref = sr;
-        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), species_layer: Default::default(), var_vals: Default::default(), style_vals: hase_core::avatar::defaults(), style_layer: Default::default(), sty_dirty: false, mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
+        let mut s = Session { repo: repo.to_path_buf(), packages, body, params, assets, eval, state, history: History::new(), perf: Perf::default(), symmetric: true, proxies: HashMap::new(), textures: HashMap::new(), pending: vec![], desired: vec![0.0; n], body_nrm: vec![], body_created: false, floor_off: 0.0, skin_tex: None, dirty: true, assets_dirty: false, style_dirty: true, skin_dirty: true, play: Playback::default(), rig: None, pose_rig: None, proxy_skin: HashMap::new(), pose_active: false, resend_body: false, push_grid: None, body_uniq: vec![], vrm: None, sh: Default::default(), mh_sculpt: Default::default(), species_layer: Default::default(), var_vals: Default::default(), style_blend: None, style_vals: hase_core::avatar::defaults(), style_layer: Default::default(), sty_dirty: false, mh_stroke: None, mh_hist: vec![], mh_redo: vec![], mh_adj: None, masks: None, generic: false, eyes_loaded: String::new(), hide_body: false, reference_body: reference, markers: vec![] };
         s.floor_off = -s.body.topo.vmap.iter().map(|&v| s.body.base_pos[v as usize][1]).fold(f32::MAX, f32::min);
         s.skin_tex = s.skin_path().and_then(|p| load_image(&p, 2048).ok());
         Ok(s)
@@ -261,6 +263,7 @@ impl Session {
     pub fn mirrors(&self, i: usize) -> bool { if self.params.defs[i].id.contains("-eye-") { self.state.style.eyes.linked } else { self.symmetric } }
 
     pub fn set_param(&mut self, idx: usize, v: f32) {
+        self.style_blend = None;
         let before = self.state.clone();
         let v = self.clamp_to_species(idx, v);
         if (self.state.values[idx] - v).abs() < 1e-7 { return; }
@@ -339,6 +342,7 @@ impl Session {
     pub fn reset_params(&mut self) { let before = self.state.clone(); self.state.values = self.params.defaults(); self.history.record(&before, None); self.dirty = true; }
 
     pub fn apply_species(&mut self, idx: usize) {
+        self.style_blend = None;
         let Some(sp) = self.packages.species.get(idx).cloned() else { return };
         let before = self.state.clone();
         self.state.species = sp.id.clone();
@@ -458,7 +462,31 @@ impl Session {
         self.resend_body = true; self.dirty = true; self.assets_dirty = true; self.sh.feat_dirty = true;
     }
 
+    /// Stil angleichen: Parameter des Charakters stufenlos (0…1) zu den Standardwerten einer Zielspezies hin mischen
+    /// (z. B. realistisch → Anime). 0 stellt den Ausgangszustand wieder her.
+    pub fn blend_style(&mut self, target: usize, t: f32) {
+        let Some(sp) = self.packages.species.get(target).cloned() else { return };
+        if self.style_blend.as_ref().map(|b| b.0 != target).unwrap_or(true) { self.style_blend = Some((target, self.state.values.clone())); }
+        let base = self.style_blend.as_ref().unwrap().1.clone();
+        let before = self.state.clone();
+        let mut vals = base.clone();
+        let defaults = self.params.defaults();
+        for (k, dv) in &sp.defaults {
+            if let Some(i) = self.params.canonical(k) {
+                let (b, d) = (base[i], *dv);
+                let _ = defaults;
+                vals[i] = self.clamp_to_species(i, b + (d - b) * t.clamp(0.0, 1.0));
+                if let Some(mi) = self.params.defs[i].mirror { vals[mi] = vals[i]; }
+            }
+        }
+        if vals == self.state.values { return; }
+        self.state.values = vals;
+        self.history.record(&before, Some(900_000 + target));
+        self.dirty = true;
+    }
+
     pub fn apply_map(&mut self, m: &std::collections::BTreeMap<String, f32>) {
+        self.style_blend = None;
         let before = self.state.clone();
         for (k, v) in m { if let Some(i) = self.params.canonical(k) { let v = self.clamp_to_species(i, *v); self.state.values[i] = v; if self.mirrors(i) { if let Some(mi) = self.params.defs[i].mirror { self.state.values[mi] = v; } } } }
         self.history.record(&before, None);
@@ -510,6 +538,7 @@ impl Session {
         if let Some(st) = self.eval.apply(&self.body, &self.desired) { if st.full { for (v, d) in self.species_layer.iter().chain(self.mh_sculpt.iter()) { let q = &mut self.eval.pos[*v as usize]; q[0] += d[0]; q[1] += d[1]; q[2] += d[2]; } } }
     }
     fn restore(&mut self, s: CharacterState) {
+        self.style_blend = None;
         let removed: Vec<String> = self.state.assets.iter().filter(|a| !s.assets.iter().any(|b| b.id == a.id)).map(|a| a.id.clone()).collect();
         for id in removed { if self.proxies.remove(&id).is_some() { self.pending.push(MeshUpdate::Remove(format!("proxy:{id}"))); } }
         let skin_changed = s.skin != self.state.skin;
@@ -2154,6 +2183,23 @@ mod mh_tool_tests {
         s2.set_state_silent(st); s2.apply_shared_json(&j); s2.refresh();
         assert_eq!(s2.var_vals.get("var-nasengroesse").copied(), Some(1.2));
         assert_eq!(s2.eval.pos.iter().zip(&s.eval.pos).filter(|(a, b)| (a[2] - b[2]).abs() > 1e-5).count(), 0, "Charakter lädt mit gleicher Form");
+    }
+
+    #[test]
+    fn style_blend_interpolates() {
+        let repo = hase_core::find_repo_root(&std::env::current_dir().unwrap()).unwrap();
+        let mut s = Session::load(&repo).unwrap();
+        let human = s.packages.species.iter().position(|x| x.id.ends_with(".human")).unwrap();
+        let anime = s.packages.species.iter().position(|x| x.id.ends_with(".anime")).unwrap();
+        s.select_species(human).unwrap();
+        let orig = s.state.values.clone();
+        let eye = s.params.canonical("mh:l-eye-scale-decr-incr").unwrap();
+        s.blend_style(anime, 0.5);
+        assert!((s.state.values[eye] - (orig[eye] + 0.5 * (0.45 - orig[eye]))).abs() < 1e-4);
+        s.blend_style(anime, 1.0);
+        assert!((s.state.values[eye] - 0.45).abs() < 1e-4);
+        s.blend_style(anime, 0.0);
+        assert_eq!(s.state.values, orig, "0 stellt den Ausgangszustand wieder her");
     }
 
     #[test]

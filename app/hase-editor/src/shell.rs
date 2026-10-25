@@ -175,8 +175,19 @@ impl App {
         if self.session.as_ref().map(|s| s.vrm.is_some()).unwrap_or(true) { return; }
         card(ui, Some((Icon::Species, "Spezies")), |ui| {
             // Spezies-Kacheln (Vorschau mit den Standardwerten der Spezies)
-            if let Some(i) = self.species_grid(ui, false, 250.0, None) { if let Err(e) = self.session.as_mut().unwrap().select_species(i) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
+            if let Some(i) = self.species_grid(ui, false, 250.0, None) { self.blend_t = 0.0; if let Err(e) = self.session.as_mut().unwrap().select_species(i) { self.studio.msg = e; } self.rows_key.1 = usize::MAX; }
             if !self.studio.msg.is_empty() { ui.colored_label(theme::WARN, self.studio.msg.clone()); }
+            // Stil angleichen (z. B. realistisch → Anime), stufenlos
+            {
+                ui_kit::section(ui, "Stil angleichen");
+                let names: Vec<(usize, String)> = { let s = self.session.as_ref().unwrap(); s.species_selectable().into_iter().map(|i| (i, s.packages.species[i].label.clone())).collect() };
+                if !names.iter().any(|(i, _)| *i == self.blend_target) { self.blend_target = names.first().map(|x| x.0).unwrap_or(0); }
+                let cur_label = names.iter().find(|(i, _)| *i == self.blend_target).map(|x| x.1.clone()).unwrap_or_default();
+                egui::ComboBox::from_id_salt("blendtarget").width(ui.available_width() - 8.0).selected_text(format!("Hin zu: {cur_label}")).show_ui(ui, |ui| { for (i, n) in &names { if ui.selectable_value(&mut self.blend_target, *i, n).clicked() { self.blend_t = 0.0; self.session.as_mut().unwrap().style_blend = None; } } });
+                let mut t = self.blend_t;
+                ui.horizontal(|ui| { ui.label("Stärke"); ui.spacing_mut().slider_width = (ui.available_width() - 62.0).max(50.0); ui.add(egui::Slider::new(&mut t, 0.0..=1.0).fixed_decimals(2)).on_hover_text("Mischt Augen, Nase, Mund und Proportionen der Zielspezies in den Charakter; 0 = Ausgangszustand"); });
+                if t != self.blend_t { self.blend_t = t; let tg = self.blend_target; self.session.as_mut().unwrap().blend_style(tg, t); self.rows_key.1 = usize::MAX; }
+            }
             // Variationen der Spezies (bewusst definierte Regler)
             let vars: Vec<(String, String, f32, f32, f32)> = { let s = self.session.as_ref().unwrap(); s.species_opt().map(|i| s.packages.species[i].shape.variations.iter().map(|v| (v.id.clone(), v.label.clone(), v.min, v.max, s.var_vals.get(&v.id).copied().unwrap_or(0.0))).collect()).unwrap_or_default() };
             if !vars.is_empty() {
