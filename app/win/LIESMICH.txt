@@ -1,5 +1,22 @@
-HASE VRM MAKER - erste lauffaehige Version (ungetestet unter Windows/GPU!)
-Start: Starten.bat doppelklicken (im Repo-Klon, Ordner app\win).
-Bedienung: Linke Maustaste = Orbit, Mittel/Rechts = Pan, Mausrad = Zoom, Doppelklick = Reset, F3 = Profiling.
-Links: Spezies, Presets, ~294 Morph-Regler (Suche, Symmetrie, Undo/Redo). Rechts: Haare, Kleidung, Brauen/Wimpern, Haut, Augenfarbe.
+HASE VRM MAKER - Windows-Testversion (bisher nur headless unter Linux geprueft!)
+
+START
+  Starten.bat doppelklicken (im Repo-Klon, Ordner app\win). Bei Startproblemen versucht die Datei automatisch Vulkan statt DX12.
+  Eigene Daten (Charaktere, Spezies, Outfits) liegen im Repo-Ordner user-content\ (wird nicht mitgeliefert, entsteht beim Speichern).
+
+BEDIENUNG
+  Viewport: Linke Maustaste = Orbit, Mittel/Rechts = Pan, Mausrad = Zoom, Doppelklick = Reset, F3 = Profiling.
+  Oben: 1 Charakter | 2 Outfit | 3 Finalisieren; rechts Projekt, Bibliothek, Speichern, Export, Werkzeuge (Koerperbasen & Spezies), Einstellungen.
+  Viewport-Werkzeuge links (Bewegen, Rotieren, Zoomen, Fokus, Bereich, Formen), oben rechts Licht und Toon-Vorschau.
+
+KURZER TESTABLAUF (bitte Auffaelliges als Screenshot/Text zurueckmelden)
+  1. Start: Fenster erscheint, Viewport zeigt den Koerper, FPS (F3) fluessig?
+  2. Spezies-Kachel anklicken (Elf, Orkin, Zwerg, Anime-Humanoid, Katzen-/Hunde-Demi): Koerper, Ohren/Schweif, Hautton aendern sich?
+  3. Gesicht > Augen: links/rechts getrennt einstellen. Stil angleichen: Staerke-Regler bewegen.
+  4. Merkmale > Frisur (generiert): Vorlage waehlen (Lang, Pferdeschwanz), Regler, Farbverlauf.
+  5. Formen (Pinsel) im Viewport; Werkzeuge > Koerperbasis: einbacken oder als Variation definieren.
+  6. Outfit: Kleidung waehlen, Farbe, "Meine Outfits" speichern/anwenden.
+  7. Toon-Vorschau umschalten.
+  8. Export: VRM / glTF / OBJ schreiben; VRM in HASEC oder anderem Viewer oeffnen (Haare schwingen? Augen/Expressions?).
+  9. Bibliothek: speichern, Tags, Duplizieren, wieder laden.
 Bei Fehlern bitte Konsolentext oder Screenshot schicken.
